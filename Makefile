@@ -1,7 +1,7 @@
 # Copyright The Linux Foundation and each contributor to LFX.
 # SPDX-License-Identifier: MIT
 
-APP_NAME := lfx-query-svc
+APP_NAME := lfx-v2-query-service
 VERSION := $(shell git describe --tags --always)
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 GIT_COMMIT := $(shell git rev-parse HEAD)
@@ -13,7 +13,7 @@ DOCKER_TAG := $(VERSION)
 
 # Helm variables
 HELM_CHART_PATH=./charts/lfx-v2-query-service
-HELM_RELEASE_NAME=lfx-v2-query-svc
+HELM_RELEASE_NAME=lfx-v2-query-service
 HELM_NAMESPACE=lfx
 
 # Go

@@ -4,17 +4,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: query-svc
-  namespace: lfx
+  name: lfx-v2-query-service
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: query-svc
+      app: lfx-v2-query-service
   template:
     metadata:
       labels:
-        app: query-svc
+        app: lfx-v2-query-service
     spec:
       containers:
         - name: app
@@ -28,11 +28,11 @@ spec:
             - name: PAGE_TOKEN_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: query-svc-secrets
+                  name: {{ .Values.secret.name }}
                   key: PAGE_TOKEN_SECRET
           envFrom:
             - secretRef:
-                name: query-svc-secrets
+                name: {{ .Values.secret.name }}
           ports:
             - containerPort: 8080
               name: web

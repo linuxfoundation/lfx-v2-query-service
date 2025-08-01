@@ -21,7 +21,7 @@ const (
 	// PS256 is the default for Heimdall's JWT finalizer.
 	signatureAlgorithm = validator.PS256
 	defaultIssuer      = "heimdall"
-	defaultAudience    = "query-svc"
+	defaultAudience    = "lfx-v2-query-service"
 )
 
 var (

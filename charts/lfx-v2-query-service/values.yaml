@@ -33,3 +33,11 @@ heimdall:
   # enabled is a boolean to determine if the heimdall middleware is enabled
   # If disabled, there will be no authorization check on the query routes
   enabled: true
+
+# secret is the configuration for the Kubernetes Secret
+secret:
+  # name is the name of the secret
+  name: lfx-v2-query-service-secrets
+  # pageTokenSecret is the secret used for page token encryption
+  # If not provided, a random 32-character secret will be generated
+  # pageTokenSecret: "your-custom-secret-here"

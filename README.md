@@ -282,8 +282,31 @@ This command generated the basic server structure, which was then customized and
 5. **Run tests**:
 
    ```bash
-   go test ./...
+   make test
+
+   # or run go test to set custom flags
+   go test ./... -v
    ```
+
+6. **Lint the code**
+
+   ```bash
+   # From the root of the directory, run megalinter (https://megalinter.io/latest/mega-linter-runner/) to ensure the code passes the linter checks. The CI/CD has a check that uses megalinter.
+   npx mega-linter-runner .
+   ```
+
+7. **Docker build + K8**
+
+    ```bash
+    # Build the dockerfile (from the root of the repo)
+    docker build -t lfx-v2-query-service:<release_number> .
+
+    # Install the helm chart for the service into the lfx namespace (from the root of the repo)
+    helm install lfx-v2-query-service ./charts/lfx-v2-query-service/ -n lfx
+
+    # Once you have already installed the helm chart and need to just update it, use the following command (from the root of the repo):
+    helm upgrade lfx-v2-query-service ./charts/lfx-v2-query-service/ -n lfx
+    ```
 
 ### Contributing
 
