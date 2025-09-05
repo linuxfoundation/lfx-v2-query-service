@@ -56,6 +56,20 @@ heimdall:
   add_middleware: false
   url: http://lfx-platform-heimdall.lfx.svc.cluster.local:4456
 
+# Rate limiting configuration for org search endpoint
+orgSearch:
+  rateLimit:
+    # enabled is a boolean to determine if rate limiting is enabled for org search
+    enabled: true
+    ## Token Bucket Behavior:
+    # Bucket starts with: 30 tokens (full capacity)
+    # Refill rate: 10 tokens per minute = 1 token every 6 seconds
+    period: 1m
+    # requestsPerMinute defines how many requests per minute are allowed per jwt token
+    requestsPerMinute: 10
+    # burstSize defines the maximum burst capacity (bucket size)
+    burstSize: 30
+
 # secret is the configuration for the Kubernetes Secret
 secret:
   # name is the name of the secret

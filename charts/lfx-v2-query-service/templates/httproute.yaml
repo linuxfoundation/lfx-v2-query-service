@@ -13,17 +13,37 @@ spec:
   hostnames:
   - "lfx-api.{{ .Values.lfx.domain }}"
   rules:
-  # Main application endpoints (with authentication)
+  - matches:
+    - path:
+        type: Exact
+        value: /query/orgs
+    filters:
+    # Organization search endpoint (with rate limiting + authentication)
+    {{- if .Values.orgSearch.rateLimit.enabled }}
+    - type: ExtensionRef
+      extensionRef:
+        group: traefik.io
+        kind: Middleware
+        name: org-search-rate-limit
+    {{- end }}
+    {{- if .Values.heimdall.enabled }}
+    - type: ExtensionRef
+      extensionRef:
+        group: traefik.io
+        kind: Middleware
+        name: heimdall
+    {{- end }}
+    backendRefs:
+    - name: lfx-v2-query-service
+      port: {{ .Values.service.port }}
+  # Main application endpoints (with authentication only)
   - matches:
     - path:
         type: Exact
         value: /query
     - path:
         type: PathPrefix
-        value: /query/
-    - path:
-        type: PathPrefix
-        value: /_query/
+        value: /query/resources
     {{- if .Values.heimdall.enabled }}
     filters:
     - type: ExtensionRef
