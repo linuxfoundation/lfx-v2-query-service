@@ -250,8 +250,8 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 			Addresses: []string{config.URL},
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost:   10,
-				ResponseHeaderTimeout: time.Second,
-				DialContext:           (&net.Dialer{Timeout: 3 * time.Second}).DialContext,
+				ResponseHeaderTimeout: 30 * time.Second,
+				DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 			},
 		},
 	})

@@ -250,6 +250,16 @@ paths:
                   example:
                     - governance
                     - security
+                - name: cel_filter
+                  in: query
+                  description: 'CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)'
+                  allowEmptyValue: true
+                  schema:
+                    type: string
+                    description: 'CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)'
+                    example: data.slug == "tlf"
+                    maxLength: 1000
+                  example: data.slug == "tlf"
                 - name: sort
                   in: query
                   description: Sort order for results

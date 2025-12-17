@@ -34,6 +34,7 @@ type ResourceSearcher interface {
 type ResourceSearch struct {
 	resourceSearcher port.ResourceSearcher
 	accessChecker    port.AccessControlChecker
+	resourceFilter   port.ResourceFilter
 }
 
 // QueryResources performs resource search with business logic validation
@@ -78,6 +79,26 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 			"error", err,
 		)
 		return nil, fmt.Errorf("search operation failed: %w", err)
+	}
+
+	// Apply CEL filter if provided (before access control to reduce the number of resources to check)
+	if criteria.CelFilter != nil && *criteria.CelFilter != "" {
+		slog.DebugContext(ctx, "applying CEL filter",
+			"expression", *criteria.CelFilter,
+			"resource_count_before", len(result.Resources),
+		)
+		filteredResources, errFilter := s.resourceFilter.Filter(ctx, result.Resources, *criteria.CelFilter)
+		if errFilter != nil {
+			slog.ErrorContext(ctx, "CEL filter failed",
+				"error", errFilter,
+				"expression", *criteria.CelFilter,
+			)
+			return nil, fmt.Errorf("filter expression failed: %w", errFilter)
+		}
+		result.Resources = filteredResources
+		slog.DebugContext(ctx, "CEL filter applied",
+			"resource_count_after", len(result.Resources),
+		)
 	}
 
 	slog.DebugContext(ctx, "checking access control for resources",
@@ -350,9 +371,10 @@ func (s *ResourceSearch) IsReady(ctx context.Context) error {
 }
 
 // NewResourceSearch creates a new ResourceSearch instance
-func NewResourceSearch(resourceSearcher port.ResourceSearcher, accessChecker port.AccessControlChecker) ResourceSearcher {
+func NewResourceSearch(resourceSearcher port.ResourceSearcher, accessChecker port.AccessControlChecker, resourceFilter port.ResourceFilter) ResourceSearcher {
 	return &ResourceSearch{
 		resourceSearcher: resourceSearcher,
 		accessChecker:    accessChecker,
+		resourceFilter:   resourceFilter,
 	}
 }
