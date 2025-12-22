@@ -18,7 +18,7 @@ import (
 
 // BuildQueryResourcesPayload builds the payload for the query-svc
 // query-resources endpoint from CLI flags.
-func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
+func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesFilters string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
 	var err error
 	var version string
 	{
@@ -76,6 +76,15 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 			}
 		}
 	}
+	var filters []string
+	{
+		if querySvcQueryResourcesFilters != "" {
+			err = json.Unmarshal([]byte(querySvcQueryResourcesFilters), &filters)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON for filters, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"status:active\",\n      \"priority:high\"\n   ]'")
+			}
+		}
+	}
 	var sort string
 	{
 		if querySvcQueryResourcesSort != "" {
@@ -105,6 +114,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	v.Type = type_
 	v.Tags = tags
 	v.TagsAll = tagsAll
+	v.Filters = filters
 	v.Sort = sort
 	v.PageToken = pageToken
 	v.BearerToken = bearerToken
@@ -114,7 +124,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 
 // BuildQueryResourcesCountPayload builds the payload for the query-svc
 // query-resources-count endpoint from CLI flags.
-func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
+func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
 	var err error
 	var version string
 	{
@@ -168,6 +178,15 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 			}
 		}
 	}
+	var filters []string
+	{
+		if querySvcQueryResourcesCountFilters != "" {
+			err = json.Unmarshal([]byte(querySvcQueryResourcesCountFilters), &filters)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON for filters, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"status:active\",\n      \"priority:high\"\n   ]'")
+			}
+		}
+	}
 	var bearerToken string
 	{
 		bearerToken = querySvcQueryResourcesCountBearerToken
@@ -179,6 +198,7 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 	v.Type = type_
 	v.Tags = tags
 	v.TagsAll = tagsAll
+	v.Filters = filters
 	v.BearerToken = bearerToken
 
 	return v, nil

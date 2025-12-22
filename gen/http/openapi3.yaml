@@ -250,6 +250,22 @@ paths:
                   example:
                     - governance
                     - security
+                - name: filters
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
+                  allowEmptyValue: true
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                        example: Sint commodi.
+                    description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
+                    example:
+                        - status:active
+                        - priority:high
+                  example:
+                    - status:active
+                    - priority:high
                 - name: sort
                   in: query
                   description: Sort order for results
@@ -392,7 +408,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Sint commodi.
+                        example: Labore aperiam libero ipsam et ullam.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -408,7 +424,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Labore aperiam libero ipsam et ullam.
+                        example: Doloribus voluptatem ipsa optio.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -416,6 +432,22 @@ paths:
                   example:
                     - governance
                     - security
+                - name: filters
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
+                  allowEmptyValue: true
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                        example: Nobis corporis aperiam consectetur temporibus voluptatem vitae.
+                    description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
+                    example:
+                        - status:active
+                        - priority:high
+                  example:
+                    - status:active
+                    - priority:high
             responses:
                 "200":
                     description: OK response.

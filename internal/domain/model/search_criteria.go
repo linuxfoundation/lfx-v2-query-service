@@ -3,12 +3,20 @@
 
 package model
 
+// FieldFilter represents a single field:value filter pair
+type FieldFilter struct {
+	Field string
+	Value string
+}
+
 // SearchCriteria encapsulates all possible search parameters
 type SearchCriteria struct {
 	// Tags to filter resources with OR logic (any tag matches)
 	Tags []string
 	// TagsAll to filter resources with AND logic (all tags must match)
 	TagsAll []string
+	// Filters for direct field term clauses (AND logic - all must match)
+	Filters []FieldFilter
 	// Resource name or alias; supports typeahead
 	Name *string
 	// Parent (for navigation; varies by object type)

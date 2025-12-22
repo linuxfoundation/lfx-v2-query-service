@@ -45,6 +45,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			type_       *string
 			tags        []string
 			tagsAll     []string
+			filters     []string
 			sort        string
 			pageToken   *string
 			bearerToken string
@@ -80,6 +81,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		}
 		tags = qp["tags"]
 		tagsAll = qp["tags_all"]
+		filters = qp["filters"]
 		sortRaw := qp.Get("sort")
 		if sortRaw != "" {
 			sort = sortRaw
@@ -100,7 +102,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, sort, pageToken, bearerToken)
+		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, filters, sort, pageToken, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
@@ -192,6 +194,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 			type_       *string
 			tags        []string
 			tagsAll     []string
+			filters     []string
 			bearerToken string
 			err         error
 		)
@@ -222,6 +225,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		}
 		tags = qp["tags"]
 		tagsAll = qp["tags_all"]
+		filters = qp["filters"]
 		bearerToken = r.Header.Get("Authorization")
 		if bearerToken == "" {
 			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
@@ -229,7 +233,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, bearerToken)
+		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, filters, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]

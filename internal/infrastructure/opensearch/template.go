@@ -63,6 +63,15 @@ const queryResourceSource = `{
         }
         {{- end }}
         {{- end }}
+        {{- if .Filters }}
+        {{- range .Filters }},
+        {
+          "term": {
+            {{ .Field | quote }}: {{ .Value | quote }}
+          }
+        }
+        {{- end }}
+        {{- end }}
       ]
       {{- if .Tags }},
       "minimum_should_match": 1,

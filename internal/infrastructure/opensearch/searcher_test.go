@@ -311,6 +311,38 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			expectedError:  false,
 			expectedFields: []string{"size", "20"},
 		},
+		{
+			name: "render query with filters (single field)",
+			criteria: model.SearchCriteria{
+				Filters: []model.FieldFilter{
+					{Field: "data.status", Value: "active"},
+				},
+			},
+			expectedError:  false,
+			expectedFields: []string{"data.status", "active"},
+		},
+		{
+			name: "render query with filters (multiple fields)",
+			criteria: model.SearchCriteria{
+				Filters: []model.FieldFilter{
+					{Field: "data.status", Value: "active"},
+					{Field: "data.priority", Value: "high"},
+				},
+			},
+			expectedError:  false,
+			expectedFields: []string{"data.status", "active", "data.priority", "high"},
+		},
+		{
+			name: "render query with both tags_all and filters",
+			criteria: model.SearchCriteria{
+				TagsAll: []string{"governance"},
+				Filters: []model.FieldFilter{
+					{Field: "data.status", Value: "active"},
+				},
+			},
+			expectedError:  false,
+			expectedFields: []string{"must", "tags", "governance", "data.status", "active"},
+		},
 	}
 
 	assertion := assert.New(t)

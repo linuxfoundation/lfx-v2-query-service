@@ -56,6 +56,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("tags_all", dsl.ArrayOf(dsl.String), "Tags to search with AND logic - matches resources that have all of these tags", func() {
 				dsl.Example([]string{"governance", "security"})
 			})
+			dsl.Attribute("filters", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'", func() {
+				dsl.Example([]string{"status:active", "priority:high"})
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -78,6 +81,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("type")
 			dsl.Param("tags")
 			dsl.Param("tags_all")
+			dsl.Param("filters")
 			dsl.Param("sort")
 			dsl.Param("page_token")
 			dsl.Header("bearer_token:Authorization")
@@ -120,6 +124,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("tags_all", dsl.ArrayOf(dsl.String), "Tags to search with AND logic - matches resources that have all of these tags", func() {
 				dsl.Example([]string{"governance", "security"})
 			})
+			dsl.Attribute("filters", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'", func() {
+				dsl.Example([]string{"status:active", "priority:high"})
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -144,6 +151,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("type")
 			dsl.Param("tags")
 			dsl.Param("tags_all")
+			dsl.Param("filters")
 			dsl.Header("bearer_token:Authorization")
 			dsl.Response(dsl.StatusOK, func() {
 				dsl.Header("cache_control:Cache-Control")

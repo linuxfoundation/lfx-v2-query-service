@@ -5,7 +5,9 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -14,8 +16,37 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
 )
 
+// parseFilters parses filter strings in "field:value" format
+// All fields are automatically prefixed with "data." to filter only within the data object
+func parseFilters(filters []string) ([]model.FieldFilter, error) {
+	if len(filters) == 0 {
+		return nil, nil
+	}
+
+	parsed := make([]model.FieldFilter, 0, len(filters))
+	for _, filter := range filters {
+		parts := strings.SplitN(filter, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid filter format '%s': expected 'field:value'", filter)
+		}
+		fieldName := strings.TrimSpace(parts[0])
+		// Automatically prefix with "data." to ensure filtering only on data fields
+		parsed = append(parsed, model.FieldFilter{
+			Field: "data." + fieldName,
+			Value: strings.TrimSpace(parts[1]),
+		})
+	}
+	return parsed, nil
+}
+
 // payloadToCriteria converts the generated payload to domain search criteria
 func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryResourcesPayload) (model.SearchCriteria, error) {
+	// Parse filters from "field:value" format
+	filters, err := parseFilters(p.Filters)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to parse filters", "error", err)
+		return model.SearchCriteria{}, wrapError(ctx, err)
+	}
 
 	criteria := model.SearchCriteria{
 		Name:         p.Name,
@@ -23,6 +54,7 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		ResourceType: p.Type,
 		Tags:         p.Tags,
 		TagsAll:      p.TagsAll,
+		Filters:      filters,
 		SortBy:       p.Sort,
 		PageToken:    p.PageToken,
 		PageSize:     constants.DefaultPageSize,
@@ -90,9 +122,17 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		PublicOnly: true,
 	}
 
+	// Parse filters from "field:value" format
+	filters, err := parseFilters(payload.Filters)
+	if err != nil {
+		// Log error but continue - filters will be empty
+		slog.Error("failed to parse filters for count", "error", err)
+	}
+
 	// Set the criteria from the payload
 	criteria.Tags = payload.Tags
 	criteria.TagsAll = payload.TagsAll
+	criteria.Filters = filters
 	if payload.Name != nil {
 		criteria.Name = payload.Name
 	}
@@ -119,9 +159,17 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		GroupBy: "access_check_query.keyword",
 	}
 
+	// Parse filters from "field:value" format
+	filters, err := parseFilters(payload.Filters)
+	if err != nil {
+		// Log error but continue - filters will be empty
+		slog.Error("failed to parse filters for aggregation", "error", err)
+	}
+
 	// Set the criteria from the payload
 	criteria.Tags = payload.Tags
 	criteria.TagsAll = payload.TagsAll
+	criteria.Filters = filters
 	if payload.Name != nil {
 		criteria.Name = payload.Name
 	}
