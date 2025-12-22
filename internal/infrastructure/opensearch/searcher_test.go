@@ -279,7 +279,7 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 				TagsAll: []string{"active", "governance"},
 			},
 			expectedError:  false,
-			expectedFields: []string{"must", "active", "governance"},
+			expectedFields: []string{"filter", "active", "governance"},
 		},
 		{
 			name: "render query with both tags and tags_all",
@@ -288,7 +288,7 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 				TagsAll: []string{"active", "governance"},
 			},
 			expectedError:  false,
-			expectedFields: []string{"must", "should", "public", "active", "governance"},
+			expectedFields: []string{"filter", "should", "public", "active", "governance"},
 		},
 		{
 			name: "render query with multiple criteria",

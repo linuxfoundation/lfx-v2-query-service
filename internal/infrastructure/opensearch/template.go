@@ -9,7 +9,7 @@ const queryResourceSource = `{
   {{- end }}
   "query": {
     "bool": {
-      "must": [
+      "filter": [
         {
           "term": {"latest": true}
         }

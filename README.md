@@ -71,6 +71,7 @@ The authentication system provides JWT-based authentication with support for Hei
   - Bypasses JWT validation for local development
 
 **Authentication Configuration:**
+
 - `AUTH_SOURCE`: Choose between "mock" or "jwt" (default: "jwt")
 - `JWKS_URL`: JSON Web Key Set endpoint URL
 - `JWT_AUDIENCE`: Intended audience for JWT tokens
@@ -186,9 +187,9 @@ go run cmd/main.go
 
 **Authentication Configuration:**
 
-- `AUTH_SOURCE`: Choose between "mock" or "jwt" 
+- `AUTH_SOURCE`: Choose between "mock" or "jwt"
 - `JWKS_URL`: JSON Web Key Set endpoint URL
-- `JWT_AUDIENCE`: Intended audience for JWT tokens 
+- `JWT_AUDIENCE`: Intended audience for JWT tokens
 - `JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL`: Mock principal for development (required when AUTH_SOURCE=mock)
 
 **Server Configuration:**
@@ -328,10 +329,12 @@ export ORG_SEARCH_SOURCE=clearbit
 The Clearbit integration supports the following search operations:
 
 **Search by Company Name:**
+
 - Searches for companies using their registered business name
 - Falls back to domain-based search for additional data enrichment
 
 **Search by Domain:**
+
 - More accurate search method using company domain names
 - Provides comprehensive company information
 
@@ -384,7 +387,7 @@ This project uses the [GOA Framework](https://goa.design/) for API generation. Y
 
 #### Installing GOA Framework
 
-Follow the [GOA installation guide](https://goa.design/docs/2-getting-started/1-installation/) to install GOA:
+Follow the [GOA installation guide](https://goa.design/docs/1-goa/quickstart/) to install GOA:
 
 ```bash
 go install goa.design/goa/v3/cmd/goa@latest
