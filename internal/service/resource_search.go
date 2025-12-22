@@ -81,7 +81,10 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		return nil, fmt.Errorf("search operation failed: %w", err)
 	}
 
-	// Apply CEL filter if provided (before access control to reduce the number of resources to check)
+	// Apply CEL filter if provided (before access control to reduce the number of resources to check).
+	// Note: applying this filter before access control and pagination can change the effective result set
+	// seen by the caller, which may cause pagination tokens (based on the unfiltered set) to skip or miss
+	// resources when the CEL expression significantly reduces the results.
 	if criteria.CelFilter != nil && *criteria.CelFilter != "" {
 		slog.DebugContext(ctx, "applying CEL filter",
 			"expression", *criteria.CelFilter,

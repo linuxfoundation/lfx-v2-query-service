@@ -314,6 +314,12 @@ func TestCELFilter_CacheExpiration(t *testing.T) {
 	_, err := filter.getOrCompileProgram(expression)
 	assertion.NoError(err)
 
+	// Verify it's in cache
+	filter.programCache.mu.RLock()
+	cacheSize := len(filter.programCache.cache)
+	filter.programCache.mu.RUnlock()
+	assertion.Equal(1, cacheSize, "expected 1 cached entry")
+
 	// Manually expire the cache entry
 	filter.programCache.mu.Lock()
 	entry := filter.programCache.cache[expression]
@@ -322,6 +328,12 @@ func TestCELFilter_CacheExpiration(t *testing.T) {
 
 	// Should return nil for expired entry
 	assertion.Nil(filter.programCache.get(expression))
+
+	// Verify expired entry was removed from cache
+	filter.programCache.mu.RLock()
+	cacheSize = len(filter.programCache.cache)
+	filter.programCache.mu.RUnlock()
+	assertion.Equal(0, cacheSize, "expected expired entry to be removed from cache")
 }
 
 func TestCELFilter_ComplexExpressions(t *testing.T) {

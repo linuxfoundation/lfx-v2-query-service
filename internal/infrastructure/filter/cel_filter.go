@@ -47,6 +47,11 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
+// isExpired checks if the cache entry has expired
+func (ce *cacheEntry) isExpired() bool {
+	return time.Now().After(ce.expiresAt)
+}
+
 // NewCELFilter creates a new CEL-based resource filter
 func NewCELFilter(logger *slog.Logger) (*CELFilter, error) {
 	// Create CEL environment with safe variable exposure
@@ -154,13 +159,23 @@ func (f *CELFilter) evaluateResource(ctx context.Context, prg cel.Program, resou
 }
 
 // getOrCompileProgram retrieves a cached program or compiles a new one
+// Uses double-checked locking to prevent race conditions
 func (f *CELFilter) getOrCompileProgram(expression string) (cel.Program, error) {
-	// Try to get from cache first
+	// First check: try to get from cache without write lock (fast path)
 	if prg := f.programCache.get(expression); prg != nil {
 		return prg, nil
 	}
 
-	// Compile new program
+	// Acquire write lock for compilation
+	f.programCache.mu.Lock()
+	defer f.programCache.mu.Unlock()
+
+	// Second check: another goroutine might have compiled it while we waited for the lock
+	if entry, exists := f.programCache.cache[expression]; exists && !entry.isExpired() {
+		return entry.program, nil
+	}
+
+	// Compile new program (only one goroutine reaches here per expression)
 	ast, issues := f.env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("compilation error: %w", issues.Err())
@@ -177,35 +192,45 @@ func (f *CELFilter) getOrCompileProgram(expression string) (cel.Program, error) 
 		return nil, fmt.Errorf("program creation error: %w", err)
 	}
 
-	// Cache the program
-	f.programCache.put(expression, prg)
+	// Cache the program (already holding write lock)
+	f.programCache.putLocked(expression, prg)
 
 	return prg, nil
 }
 
 // get retrieves a program from cache if not expired
+// Removes expired entries immediately when detected
 func (pc *programCache) get(expression string) cel.Program {
+	// First attempt: fast path with read lock
 	pc.mu.RLock()
-	defer pc.mu.RUnlock()
-
 	entry, exists := pc.cache[expression]
 	if !exists {
+		pc.mu.RUnlock()
 		return nil
 	}
 
-	// Check if expired
-	if time.Now().After(entry.expiresAt) {
+	// Check if expired (still under read lock)
+	if entry.isExpired() {
+		pc.mu.RUnlock()
+
+		// Upgrade to write lock to delete expired entry
+		pc.mu.Lock()
+		// Double-check it still exists and is still expired
+		if entry, exists := pc.cache[expression]; exists && entry.isExpired() {
+			delete(pc.cache, expression)
+		}
+		pc.mu.Unlock()
+
 		return nil
 	}
 
-	return entry.program
+	program := entry.program
+	pc.mu.RUnlock()
+	return program
 }
 
-// put adds a program to the cache with TTL
-func (pc *programCache) put(expression string, program cel.Program) {
-	pc.mu.Lock()
-	defer pc.mu.Unlock()
-
+// putLocked adds a program to the cache with TTL (must be called with lock held)
+func (pc *programCache) putLocked(expression string, program cel.Program) {
 	// Clean up expired entries if cache is full
 	if len(pc.cache) >= pc.maxSize {
 		pc.cleanupExpiredLocked()
