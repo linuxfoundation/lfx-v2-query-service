@@ -63,6 +63,21 @@ const queryResourceSource = `{
         }
         {{- end }}
         {{- end }}
+        {{- if and .DateField (or .DateFrom .DateTo) }},
+        {
+          "range": {
+            {{ .DateField | quote }}: {
+              {{- if .DateFrom }}
+              "gte": {{ .DateFrom | quote }}
+              {{- end }}
+              {{- if and .DateFrom .DateTo }},{{- end }}
+              {{- if .DateTo }}
+              "lte": {{ .DateTo | quote }}
+              {{- end }}
+            }
+          }
+        }
+        {{- end }}
       ]
       {{- if .Tags }},
       "minimum_should_match": 1,

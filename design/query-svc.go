@@ -56,6 +56,15 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("tags_all", dsl.ArrayOf(dsl.String), "Tags to search with AND logic - matches resources that have all of these tags", func() {
 				dsl.Example([]string{"governance", "security"})
 			})
+			dsl.Attribute("date_field", dsl.String, "Date field to filter on (within data object) - used with date_from and/or date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only (2006-01-02, assumes UTC)", func() {
+				dsl.Example("updated_at")
+			})
+			dsl.Attribute("date_from", dsl.String, "Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses start of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-10")
+			})
+			dsl.Attribute("date_to", dsl.String, "End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-28")
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -78,6 +87,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("type")
 			dsl.Param("tags")
 			dsl.Param("tags_all")
+			dsl.Param("date_field")
+			dsl.Param("date_from")
+			dsl.Param("date_to")
 			dsl.Param("sort")
 			dsl.Param("page_token")
 			dsl.Header("bearer_token:Authorization")
@@ -120,6 +132,15 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("tags_all", dsl.ArrayOf(dsl.String), "Tags to search with AND logic - matches resources that have all of these tags", func() {
 				dsl.Example([]string{"governance", "security"})
 			})
+			dsl.Attribute("date_field", dsl.String, "Date field to filter on (within data object) - used with date_from and/or date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only (2006-01-02, assumes UTC)", func() {
+				dsl.Example("updated_at")
+			})
+			dsl.Attribute("date_from", dsl.String, "Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses start of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-10")
+			})
+			dsl.Attribute("date_to", dsl.String, "End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-28")
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -144,6 +165,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("type")
 			dsl.Param("tags")
 			dsl.Param("tags_all")
+			dsl.Param("date_field")
+			dsl.Param("date_from")
+			dsl.Param("date_to")
 			dsl.Header("bearer_token:Authorization")
 			dsl.Response(dsl.StatusOK, func() {
 				dsl.Header("cache_control:Cache-Control")

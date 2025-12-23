@@ -5,7 +5,9 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -13,6 +15,42 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/global"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
 )
+
+// parseDateFilter parses a date string in ISO 8601 datetime or date-only format
+// and returns it normalized for OpenSearch range queries.
+// Date-only format (YYYY-MM-DD) is converted to:
+// - Start of day (00:00:00 UTC) for date_from
+// - End of day (23:59:59 UTC) for date_to
+func parseDateFilter(dateStr string, isEndDate bool) (string, error) {
+	if dateStr == "" {
+		return "", nil
+	}
+
+	// Try parsing as ISO 8601 datetime first (e.g., 2025-01-10T15:30:00Z)
+	t, err := time.Parse(time.RFC3339, dateStr)
+	if err == nil {
+		// Already in datetime format, return as-is
+		return t.Format(time.RFC3339), nil
+	}
+
+	// Try parsing as date-only (e.g., 2025-01-10)
+	t, err = time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid date format '%s': must be ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only (2006-01-02)", dateStr)
+	}
+
+	// Convert date-only to datetime
+	if isEndDate {
+		// For end dates, use end of day (23:59:59 UTC)
+		// Note: Using 23:59:59 instead of 23:59:59.999 for simplicity and OpenSearch compatibility
+		t = time.Date(t.Year(), t.Month(), t.Day(), 23, 59, 59, 0, time.UTC)
+	} else {
+		// For start dates, use start of day (00:00:00 UTC)
+		t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+	}
+
+	return t.Format(time.RFC3339), nil
+}
 
 // payloadToCriteria converts the generated payload to domain search criteria
 func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryResourcesPayload) (model.SearchCriteria, error) {
@@ -55,6 +93,33 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		)
 	}
 
+	// Handle date filtering parameters
+	if p.DateField != nil {
+		// Auto-prefix with "data." to scope to data object
+		prefixedField := "data." + *p.DateField
+		criteria.DateField = &prefixedField
+
+		// Parse and normalize date_from
+		if p.DateFrom != nil {
+			normalizedFrom, err := parseDateFilter(*p.DateFrom, false)
+			if err != nil {
+				slog.ErrorContext(ctx, "invalid date_from format", "error", err, "date_from", *p.DateFrom)
+				return criteria, wrapError(ctx, err)
+			}
+			criteria.DateFrom = &normalizedFrom
+		}
+
+		// Parse and normalize date_to
+		if p.DateTo != nil {
+			normalizedTo, err := parseDateFilter(*p.DateTo, true)
+			if err != nil {
+				slog.ErrorContext(ctx, "invalid date_to format", "error", err, "date_to", *p.DateTo)
+				return criteria, wrapError(ctx, err)
+			}
+			criteria.DateTo = &normalizedTo
+		}
+	}
+
 	return criteria, nil
 }
 
@@ -80,7 +145,7 @@ func (s *querySvcsrvc) domainResultToResponse(result *model.SearchResult) *query
 	return response
 }
 
-func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResourcesCountPayload) model.SearchCriteria {
+func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	// Parameters used for /<index>/_count search.
 	criteria := model.SearchCriteria{
 		GroupBySize: constants.DefaultBucketSize,
@@ -103,10 +168,35 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		criteria.ParentRef = payload.Parent
 	}
 
-	return criteria
+	// Handle date filtering parameters
+	if payload.DateField != nil {
+		// Auto-prefix with "data." to scope to data object
+		prefixedField := "data." + *payload.DateField
+		criteria.DateField = &prefixedField
+
+		// Parse and normalize date_from
+		if payload.DateFrom != nil {
+			normalizedFrom, err := parseDateFilter(*payload.DateFrom, false)
+			if err != nil {
+				return criteria, fmt.Errorf("invalid date_from: %w", err)
+			}
+			criteria.DateFrom = &normalizedFrom
+		}
+
+		// Parse and normalize date_to
+		if payload.DateTo != nil {
+			normalizedTo, err := parseDateFilter(*payload.DateTo, true)
+			if err != nil {
+				return criteria, fmt.Errorf("invalid date_to: %w", err)
+			}
+			criteria.DateTo = &normalizedTo
+		}
+	}
+
+	return criteria, nil
 }
 
-func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.QueryResourcesCountPayload) model.SearchCriteria {
+func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	// Parameters used for the "group by" aggregated /<index>/_search search.
 	criteria := model.SearchCriteria{
 		GroupBySize: constants.DefaultBucketSize,
@@ -132,7 +222,32 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		criteria.ParentRef = payload.Parent
 	}
 
-	return criteria
+	// Handle date filtering parameters
+	if payload.DateField != nil {
+		// Auto-prefix with "data." to scope to data object
+		prefixedField := "data." + *payload.DateField
+		criteria.DateField = &prefixedField
+
+		// Parse and normalize date_from
+		if payload.DateFrom != nil {
+			normalizedFrom, err := parseDateFilter(*payload.DateFrom, false)
+			if err != nil {
+				return criteria, fmt.Errorf("invalid date_from: %w", err)
+			}
+			criteria.DateFrom = &normalizedFrom
+		}
+
+		// Parse and normalize date_to
+		if payload.DateTo != nil {
+			normalizedTo, err := parseDateFilter(*payload.DateTo, true)
+			if err != nil {
+				return criteria, fmt.Errorf("invalid date_to: %w", err)
+			}
+			criteria.DateTo = &normalizedTo
+		}
+	}
+
+	return criteria, nil
 }
 
 func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *querysvc.QueryResourcesCountResult {

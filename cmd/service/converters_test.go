@@ -590,6 +590,232 @@ func TestDomainOrganizationSuggestionsToResponse(t *testing.T) {
 	}
 }
 
+func TestParseDateFilter(t *testing.T) {
+	tests := []struct {
+		name        string
+		dateStr     string
+		isEndDate   bool
+		expected    string
+		expectError bool
+	}{
+		{
+			name:        "ISO 8601 datetime format (start date)",
+			dateStr:     "2025-01-10T15:30:00Z",
+			isEndDate:   false,
+			expected:    "2025-01-10T15:30:00Z",
+			expectError: false,
+		},
+		{
+			name:        "ISO 8601 datetime format (end date)",
+			dateStr:     "2025-01-28T23:59:59Z",
+			isEndDate:   true,
+			expected:    "2025-01-28T23:59:59Z",
+			expectError: false,
+		},
+		{
+			name:        "date-only format converted to start of day",
+			dateStr:     "2025-01-10",
+			isEndDate:   false,
+			expected:    "2025-01-10T00:00:00Z",
+			expectError: false,
+		},
+		{
+			name:        "date-only format converted to end of day",
+			dateStr:     "2025-01-28",
+			isEndDate:   true,
+			expected:    "2025-01-28T23:59:59Z",
+			expectError: false,
+		},
+		{
+			name:        "empty string returns empty",
+			dateStr:     "",
+			isEndDate:   false,
+			expected:    "",
+			expectError: false,
+		},
+		{
+			name:        "invalid date format",
+			dateStr:     "01/10/2025",
+			isEndDate:   false,
+			expected:    "",
+			expectError: true,
+		},
+		{
+			name:        "invalid date string",
+			dateStr:     "not-a-date",
+			isEndDate:   false,
+			expected:    "",
+			expectError: true,
+		},
+		{
+			name:        "partial datetime (missing timezone)",
+			dateStr:     "2025-01-10T15:30:00",
+			isEndDate:   false,
+			expected:    "",
+			expectError: true,
+		},
+		{
+			name:        "date-only with different year",
+			dateStr:     "2024-12-31",
+			isEndDate:   true,
+			expected:    "2024-12-31T23:59:59Z",
+			expectError: false,
+		},
+		{
+			name:        "ISO 8601 with milliseconds (truncated to seconds)",
+			dateStr:     "2025-01-10T15:30:00.123Z",
+			isEndDate:   false,
+			expected:    "2025-01-10T15:30:00Z",
+			expectError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Execute
+			result, err := parseDateFilter(tc.dateStr, tc.isEndDate)
+
+			// Verify
+			if tc.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid date format")
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expected, result)
+			}
+		})
+	}
+}
+
+func TestPayloadToCriteriaWithDateFilters(t *testing.T) {
+	// Setup service for testing
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	svc := service.(*querySvcsrvc)
+
+	tests := []struct {
+		name          string
+		payload       *querysvc.QueryResourcesPayload
+		expectError   bool
+		checkCriteria func(*testing.T, model.SearchCriteria)
+	}{
+		{
+			name: "date range with ISO 8601 format",
+			payload: &querysvc.QueryResourcesPayload{
+				DateField: stringPtr("updated_at"),
+				DateFrom:  stringPtr("2025-01-10T00:00:00Z"),
+				DateTo:    stringPtr("2025-01-28T23:59:59Z"),
+			},
+			expectError: false,
+			checkCriteria: func(t *testing.T, c model.SearchCriteria) {
+				assert.NotNil(t, c.DateField)
+				assert.Equal(t, "data.updated_at", *c.DateField)
+				assert.NotNil(t, c.DateFrom)
+				assert.Equal(t, "2025-01-10T00:00:00Z", *c.DateFrom)
+				assert.NotNil(t, c.DateTo)
+				assert.Equal(t, "2025-01-28T23:59:59Z", *c.DateTo)
+			},
+		},
+		{
+			name: "date range with date-only format",
+			payload: &querysvc.QueryResourcesPayload{
+				DateField: stringPtr("created_at"),
+				DateFrom:  stringPtr("2025-01-10"),
+				DateTo:    stringPtr("2025-01-28"),
+			},
+			expectError: false,
+			checkCriteria: func(t *testing.T, c model.SearchCriteria) {
+				assert.NotNil(t, c.DateField)
+				assert.Equal(t, "data.created_at", *c.DateField)
+				assert.NotNil(t, c.DateFrom)
+				assert.Equal(t, "2025-01-10T00:00:00Z", *c.DateFrom)
+				assert.NotNil(t, c.DateTo)
+				assert.Equal(t, "2025-01-28T23:59:59Z", *c.DateTo)
+			},
+		},
+		{
+			name: "date range with only date_from",
+			payload: &querysvc.QueryResourcesPayload{
+				DateField: stringPtr("updated_at"),
+				DateFrom:  stringPtr("2025-01-10"),
+			},
+			expectError: false,
+			checkCriteria: func(t *testing.T, c model.SearchCriteria) {
+				assert.NotNil(t, c.DateField)
+				assert.Equal(t, "data.updated_at", *c.DateField)
+				assert.NotNil(t, c.DateFrom)
+				assert.Equal(t, "2025-01-10T00:00:00Z", *c.DateFrom)
+				assert.Nil(t, c.DateTo)
+			},
+		},
+		{
+			name: "date range with only date_to",
+			payload: &querysvc.QueryResourcesPayload{
+				DateField: stringPtr("updated_at"),
+				DateTo:    stringPtr("2025-01-28"),
+			},
+			expectError: false,
+			checkCriteria: func(t *testing.T, c model.SearchCriteria) {
+				assert.NotNil(t, c.DateField)
+				assert.Equal(t, "data.updated_at", *c.DateField)
+				assert.Nil(t, c.DateFrom)
+				assert.NotNil(t, c.DateTo)
+				assert.Equal(t, "2025-01-28T23:59:59Z", *c.DateTo)
+			},
+		},
+		{
+			name: "invalid date_from format",
+			payload: &querysvc.QueryResourcesPayload{
+				DateField: stringPtr("updated_at"),
+				DateFrom:  stringPtr("invalid-date"),
+			},
+			expectError: true,
+		},
+		{
+			name: "invalid date_to format",
+			payload: &querysvc.QueryResourcesPayload{
+				DateField: stringPtr("updated_at"),
+				DateTo:    stringPtr("01/28/2025"),
+			},
+			expectError: true,
+		},
+		{
+			name: "no date filtering (nil date_field)",
+			payload: &querysvc.QueryResourcesPayload{
+				Name: stringPtr("test"),
+			},
+			expectError: false,
+			checkCriteria: func(t *testing.T, c model.SearchCriteria) {
+				assert.Nil(t, c.DateField)
+				assert.Nil(t, c.DateFrom)
+				assert.Nil(t, c.DateTo)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// Execute
+			result, err := svc.payloadToCriteria(ctx, tc.payload)
+
+			// Verify
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				if tc.checkCriteria != nil {
+					tc.checkCriteria(t, result)
+				}
+			}
+		})
+	}
+}
+
 // Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s

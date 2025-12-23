@@ -122,6 +122,16 @@ type QueryResourcesCountPayload struct {
 	Tags []string
 	// Tags to search with AND logic - matches resources that have all of these tags
 	TagsAll []string
+	// Date field to filter on (within data object) - used with date_from and/or
+	// date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only
+	// (2006-01-02, assumes UTC)
+	DateField *string
+	// Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only
+	// uses start of day UTC. Requires date_field.
+	DateFrom *string
+	// End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses
+	// end of day UTC. Requires date_field.
+	DateTo *string
 }
 
 // QueryResourcesCountResult is the result type of the query-svc service
@@ -153,6 +163,16 @@ type QueryResourcesPayload struct {
 	Tags []string
 	// Tags to search with AND logic - matches resources that have all of these tags
 	TagsAll []string
+	// Date field to filter on (within data object) - used with date_from and/or
+	// date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only
+	// (2006-01-02, assumes UTC)
+	DateField *string
+	// Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only
+	// uses start of day UTC. Requires date_field.
+	DateFrom *string
+	// End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses
+	// end of day UTC. Requires date_field.
+	DateTo *string
 	// Sort order for results
 	Sort string
 	// Opaque token for pagination

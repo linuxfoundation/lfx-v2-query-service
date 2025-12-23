@@ -45,6 +45,9 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			type_       *string
 			tags        []string
 			tagsAll     []string
+			dateField   *string
+			dateFrom    *string
+			dateTo      *string
 			sort        string
 			pageToken   *string
 			bearerToken string
@@ -80,6 +83,18 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		}
 		tags = qp["tags"]
 		tagsAll = qp["tags_all"]
+		dateFieldRaw := qp.Get("date_field")
+		if dateFieldRaw != "" {
+			dateField = &dateFieldRaw
+		}
+		dateFromRaw := qp.Get("date_from")
+		if dateFromRaw != "" {
+			dateFrom = &dateFromRaw
+		}
+		dateToRaw := qp.Get("date_to")
+		if dateToRaw != "" {
+			dateTo = &dateToRaw
+		}
 		sortRaw := qp.Get("sort")
 		if sortRaw != "" {
 			sort = sortRaw
@@ -100,7 +115,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, sort, pageToken, bearerToken)
+		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, sort, pageToken, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
@@ -192,6 +207,9 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 			type_       *string
 			tags        []string
 			tagsAll     []string
+			dateField   *string
+			dateFrom    *string
+			dateTo      *string
 			bearerToken string
 			err         error
 		)
@@ -222,6 +240,18 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		}
 		tags = qp["tags"]
 		tagsAll = qp["tags_all"]
+		dateFieldRaw := qp.Get("date_field")
+		if dateFieldRaw != "" {
+			dateField = &dateFieldRaw
+		}
+		dateFromRaw := qp.Get("date_from")
+		if dateFromRaw != "" {
+			dateFrom = &dateFromRaw
+		}
+		dateToRaw := qp.Get("date_to")
+		if dateToRaw != "" {
+			dateTo = &dateToRaw
+		}
 		bearerToken = r.Header.Get("Authorization")
 		if bearerToken == "" {
 			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
@@ -229,7 +259,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, bearerToken)
+		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
