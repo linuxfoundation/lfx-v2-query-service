@@ -30,6 +30,9 @@ func parseFilters(filters []string) ([]model.FieldFilter, error) {
 			return nil, fmt.Errorf("invalid filter format '%s': expected 'field:value'", filter)
 		}
 		fieldName := strings.TrimSpace(parts[0])
+		if fieldName == "" {
+			return nil, fmt.Errorf("invalid filter format '%s': field name cannot be empty", filter)
+		}
 		// Automatically prefix with "data." to ensure filtering only on data fields
 		parsed = append(parsed, model.FieldFilter{
 			Field: "data." + fieldName,
@@ -112,7 +115,7 @@ func (s *querySvcsrvc) domainResultToResponse(result *model.SearchResult) *query
 	return response
 }
 
-func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResourcesCountPayload) model.SearchCriteria {
+func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	// Parameters used for /<index>/_count search.
 	criteria := model.SearchCriteria{
 		GroupBySize: constants.DefaultBucketSize,
@@ -125,8 +128,7 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 	// Parse filters from "field:value" format
 	filters, err := parseFilters(payload.Filters)
 	if err != nil {
-		// Log error but continue - filters will be empty
-		slog.Error("failed to parse filters for count", "error", err)
+		return criteria, fmt.Errorf("invalid filters: %w", err)
 	}
 
 	// Set the criteria from the payload
@@ -143,10 +145,10 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		criteria.ParentRef = payload.Parent
 	}
 
-	return criteria
+	return criteria, nil
 }
 
-func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.QueryResourcesCountPayload) model.SearchCriteria {
+func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	// Parameters used for the "group by" aggregated /<index>/_search search.
 	criteria := model.SearchCriteria{
 		GroupBySize: constants.DefaultBucketSize,
@@ -162,8 +164,7 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 	// Parse filters from "field:value" format
 	filters, err := parseFilters(payload.Filters)
 	if err != nil {
-		// Log error but continue - filters will be empty
-		slog.Error("failed to parse filters for aggregation", "error", err)
+		return criteria, fmt.Errorf("invalid filters: %w", err)
 	}
 
 	// Set the criteria from the payload
@@ -180,7 +181,7 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		criteria.ParentRef = payload.Parent
 	}
 
-	return criteria
+	return criteria, nil
 }
 
 func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *querysvc.QueryResourcesCountResult {

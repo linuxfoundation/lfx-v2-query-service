@@ -639,6 +639,20 @@ func TestParseFilters(t *testing.T) {
 			expectedError:  false,
 		},
 		{
+			name:           "invalid filter format (empty field name)",
+			filters:        []string{":value"},
+			expected:       nil,
+			expectedError:  true,
+			errorSubstring: "field name cannot be empty",
+		},
+		{
+			name:           "invalid filter format (whitespace-only field name)",
+			filters:        []string{"  :value"},
+			expected:       nil,
+			expectedError:  true,
+			errorSubstring: "field name cannot be empty",
+		},
+		{
 			name:          "empty filters array",
 			filters:       []string{},
 			expected:      nil,
