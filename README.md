@@ -71,6 +71,7 @@ The authentication system provides JWT-based authentication with support for Hei
   - Bypasses JWT validation for local development
 
 **Authentication Configuration:**
+
 - `AUTH_SOURCE`: Choose between "mock" or "jwt" (default: "jwt")
 - `JWKS_URL`: JSON Web Key Set endpoint URL
 - `JWT_AUDIENCE`: Intended audience for JWT tokens
@@ -186,9 +187,9 @@ go run cmd/main.go
 
 **Authentication Configuration:**
 
-- `AUTH_SOURCE`: Choose between "mock" or "jwt" 
+- `AUTH_SOURCE`: Choose between "mock" or "jwt"
 - `JWKS_URL`: JSON Web Key Set endpoint URL
-- `JWT_AUDIENCE`: Intended audience for JWT tokens 
+- `JWT_AUDIENCE`: Intended audience for JWT tokens
 - `JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL`: Mock principal for development (required when AUTH_SOURCE=mock)
 
 **Server Configuration:**
@@ -213,7 +214,11 @@ Authorization: Bearer <jwt_token>
 - `name`: Resource name or alias (supports typeahead search)
 - `type`: Resource type to filter by
 - `parent`: Parent resource for hierarchical queries
-- `tags`: Array of tags to filter by
+- `tags`: Array of tags to filter by (OR logic - matches resources with any of these tags)
+- `tags_all`: Array of tags to filter by (AND logic - matches resources that have all of these tags)
+- `date_field`: Date field to filter on (within data object) - used with date_from and/or date_to
+- `date_from`: Start date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses start of day UTC
+- `date_to`: End date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses end of day UTC
 - `sort`: Sort order (name_asc, name_desc, updated_asc, updated_desc)
 - `page_token`: Pagination token
 - `v`: API version (required)
@@ -237,6 +242,45 @@ Authorization: Bearer <jwt_token>
   "cache_control": "public, max-age=300"
 }
 ```
+
+**Date Range Filtering Examples:**
+
+Filter resources updated between two dates (date-only format):
+
+```bash
+GET /query/resources?v=1&date_field=updated_at&date_from=2025-01-10&date_to=2025-01-28
+Authorization: Bearer <jwt_token>
+```
+
+Filter resources with precise datetime filtering (ISO 8601 format):
+
+```bash
+GET /query/resources?v=1&date_field=created_at&date_from=2025-01-10T15:30:00Z&date_to=2025-01-28T18:45:00Z
+Authorization: Bearer <jwt_token>
+```
+
+Filter resources created after a specific date (open-ended range):
+
+```bash
+GET /query/resources?v=1&date_field=created_at&date_from=2025-01-01
+Authorization: Bearer <jwt_token>
+```
+
+Combine date filtering with other parameters:
+
+```bash
+GET /query/resources?v=1&type=project&tags=active&date_field=updated_at&date_from=2025-01-01&date_to=2025-03-31
+Authorization: Bearer <jwt_token>
+```
+
+**Date Format Notes:**
+
+- **ISO 8601 datetime format**: `2025-01-10T15:30:00Z` (time is used as provided)
+- **Date-only format**: `2025-01-10` (automatically converted to start/end of day UTC)
+  - For `date_from`: Converts to `2025-01-10T00:00:00Z` (start of day)
+  - For `date_to`: Converts to `2025-01-10T23:59:59Z` (end of day)
+- All dates are inclusive (uses `gte` and `lte` operators)
+- The `date_field` parameter is automatically prefixed with `"data."` to scope to the resource's data object
 
 #### Organization Search API
 
@@ -328,10 +372,12 @@ export ORG_SEARCH_SOURCE=clearbit
 The Clearbit integration supports the following search operations:
 
 **Search by Company Name:**
+
 - Searches for companies using their registered business name
 - Falls back to domain-based search for additional data enrichment
 
 **Search by Domain:**
+
 - More accurate search method using company domain names
 - Provides comprehensive company information
 
@@ -384,7 +430,7 @@ This project uses the [GOA Framework](https://goa.design/) for API generation. Y
 
 #### Installing GOA Framework
 
-Follow the [GOA installation guide](https://goa.design/docs/2-getting-started/1-installation/) to install GOA:
+Follow the [GOA installation guide](https://goa.design/docs/1-goa/quickstart/) to install GOA:
 
 ```bash
 go install goa.design/goa/v3/cmd/goa@latest

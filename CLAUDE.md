@@ -110,3 +110,46 @@ Environment variables control implementation selection:
 - Unit tests use mock implementations
 - Integration tests can switch between real and mock implementations
 - Test files follow `*_test.go` pattern alongside implementation files
+
+## API Features
+
+### Date Range Filtering
+
+The query service supports filtering resources by date ranges on fields within the `data` object.
+
+**Query Parameters:**
+
+- `date_field` (string, optional): Date field to filter on (automatically prefixed with `"data."`)
+- `date_from` (string, optional): Start date (inclusive, gte operator)
+- `date_to` (string, optional): End date (inclusive, lte operator)
+
+**Supported Date Formats:**
+
+1. **ISO 8601 datetime**: `2025-01-10T15:30:00Z` (time used as provided)
+2. **Date-only**: `2025-01-10` (converted to start/end of day UTC)
+   - `date_from` → `2025-01-10T00:00:00Z` (start of day)
+   - `date_to` → `2025-01-10T23:59:59Z` (end of day)
+
+**Examples:**
+
+```bash
+# Date range with date-only format
+GET /query/resources?v=1&date_field=updated_at&date_from=2025-01-10&date_to=2025-01-28
+
+# Date range with ISO 8601 format
+GET /query/resources?v=1&date_field=created_at&date_from=2025-01-10T15:30:00Z&date_to=2025-01-28T18:45:00Z
+
+# Open-ended range (only start date)
+GET /query/resources?v=1&date_field=created_at&date_from=2025-01-01
+
+# Combined with other filters
+GET /query/resources?v=1&type=project&tags=active&date_field=updated_at&date_from=2025-01-01&date_to=2025-03-31
+```
+
+**Implementation Details:**
+
+- Date parsing logic: `cmd/service/converters.go` (`parseDateFilter()` function)
+- Domain model: `internal/domain/model/search_criteria.go` (DateField, DateFrom, DateTo)
+- OpenSearch query: `internal/infrastructure/opensearch/template.go` (range query with gte/lte)
+- API design: `design/query-svc.go` (Goa design specification)
+- Test coverage: `cmd/service/converters_test.go` (17 comprehensive test cases)
