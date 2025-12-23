@@ -93,6 +93,13 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		)
 	}
 
+	// Validate date filtering parameters
+	if (p.DateFrom != nil || p.DateTo != nil) && p.DateField == nil {
+		err := fmt.Errorf("date_field is required when using date_from or date_to")
+		slog.ErrorContext(ctx, "invalid date filter parameters", "error", err)
+		return criteria, wrapError(ctx, err)
+	}
+
 	// Handle date filtering parameters
 	if p.DateField != nil {
 		// Auto-prefix with "data." to scope to data object
@@ -168,6 +175,11 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		criteria.ParentRef = payload.Parent
 	}
 
+	// Validate date filtering parameters
+	if (payload.DateFrom != nil || payload.DateTo != nil) && payload.DateField == nil {
+		return criteria, fmt.Errorf("date_field is required when using date_from or date_to")
+	}
+
 	// Handle date filtering parameters
 	if payload.DateField != nil {
 		// Auto-prefix with "data." to scope to data object
@@ -220,6 +232,11 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 	}
 	if payload.Parent != nil {
 		criteria.ParentRef = payload.Parent
+	}
+
+	// Validate date filtering parameters
+	if (payload.DateFrom != nil || payload.DateTo != nil) && payload.DateField == nil {
+		return criteria, fmt.Errorf("date_field is required when using date_from or date_to")
 	}
 
 	// Handle date filtering parameters

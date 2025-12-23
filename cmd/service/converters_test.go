@@ -794,6 +794,28 @@ func TestPayloadToCriteriaWithDateFilters(t *testing.T) {
 				assert.Nil(t, c.DateTo)
 			},
 		},
+		{
+			name: "date_from without date_field (should error)",
+			payload: &querysvc.QueryResourcesPayload{
+				DateFrom: stringPtr("2025-01-10"),
+			},
+			expectError: true,
+		},
+		{
+			name: "date_to without date_field (should error)",
+			payload: &querysvc.QueryResourcesPayload{
+				DateTo: stringPtr("2025-01-28"),
+			},
+			expectError: true,
+		},
+		{
+			name: "date_from and date_to without date_field (should error)",
+			payload: &querysvc.QueryResourcesPayload{
+				DateFrom: stringPtr("2025-01-10"),
+				DateTo:   stringPtr("2025-01-28"),
+			},
+			expectError: true,
+		},
 	}
 
 	for _, tc := range tests {
