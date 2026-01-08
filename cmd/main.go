@@ -17,6 +17,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/cmd/service"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	logging "github.com/linuxfoundation/lfx-v2-query-service/pkg/log"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/utils"
 	"goa.design/clue/debug"
 )
 
@@ -48,6 +49,21 @@ func main() {
 	flag.Parse()
 
 	ctx := context.Background()
+
+	// Set up OpenTelemetry SDK.
+	otelConfig := utils.OTelConfigFromEnv()
+	otelShutdown, err := utils.SetupOTelSDKWithConfig(ctx, otelConfig)
+	if err != nil {
+		slog.ErrorContext(ctx, "error setting up OpenTelemetry SDK", "error", err)
+		os.Exit(1)
+	}
+	// Handle shutdown properly so nothing leaks.
+	defer func() {
+		if shutdownErr := otelShutdown(context.Background()); shutdownErr != nil {
+			slog.ErrorContext(ctx, "error shutting down OpenTelemetry SDK", "error", shutdownErr)
+		}
+	}()
+
 	slog.InfoContext(ctx, "Starting query service",
 		"bind", *bind,
 		"http-port", *port,

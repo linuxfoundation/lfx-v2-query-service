@@ -15,6 +15,7 @@ import (
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/middleware"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"goa.design/clue/debug"
 	goahttp "goa.design/goa/v3/http"
 )
@@ -74,6 +75,8 @@ func handleHTTPServer(ctx context.Context, host string, querySvcEndpoints *query
 		// Log query and response bodies if debug logs are enabled.
 		handler = debug.HTTP()(handler)
 	}
+	// Wrap the handler with OpenTelemetry instrumentation
+	handler = otelhttp.NewHandler(handler, "query-service")
 
 	// Start HTTP server using default configuration, change the code to
 	// configure the server as required by your service.

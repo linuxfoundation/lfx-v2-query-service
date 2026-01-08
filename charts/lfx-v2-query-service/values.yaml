@@ -33,6 +33,21 @@ app:
     ## In case of mock, please set the ORG_SEARCH_SOURCE to mock.
     CLEARBIT_CREDENTIAL:
       value: null
+  # extraEnv allows injecting additional environment variables before OTEL configuration.
+  # Supports both simple values and Kubernetes field references.
+  extraEnv: []
+  # otel is the configuration for OpenTelemetry tracing
+  otel:
+    serviceName: ""
+    serviceVersion: ""
+    protocol: "grpc"
+    endpoint: ""
+    insecure: "false"
+    tracesExporter: "none"
+    tracesSampleRatio: "1.0"
+    metricsExporter: "none"
+    logsExporter: "none"
+    propagators: "tracecontext,baggage,jaeger"
 
 # traefik is the configuration for Traefik Gateway API routing
 traefik:
