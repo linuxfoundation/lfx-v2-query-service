@@ -110,3 +110,76 @@ Environment variables control implementation selection:
 - Unit tests use mock implementations
 - Integration tests can switch between real and mock implementations
 - Test files follow `*_test.go` pattern alongside implementation files
+
+## CEL Filter Feature
+
+The service supports Common Expression Language (CEL) filtering for post-query resource filtering.
+
+### Overview
+
+CEL filtering allows API consumers to filter resources on arbitrary data fields using a safe, non-Turing complete expression language. The filter is applied after the OpenSearch query but before access control checks.
+
+### Implementation Details
+
+**Location**: `internal/infrastructure/filter/cel_filter.go`
+
+**Key Components**:
+- **ResourceFilter Interface** (`internal/domain/port/filter.go`): Domain interface for filtering
+- **CELFilter Implementation**: Uses `google/cel-go` library for expression evaluation
+- **Expression Caching**: LRU cache with TTL for compiled CEL programs
+- **Security Features**: Max expression length (1000 chars), evaluation timeout (100ms per resource)
+
+**Integration Point**: `internal/service/resource_search.go` (lines 84-102)
+- CEL filter applied after OpenSearch query
+- Filters resources before access control checks
+- Reduces number of access control checks needed
+
+### Available Variables in CEL Expressions
+
+- `data` (map): Resource data object
+- `resource_type` (string): Resource type
+- `id` (string): Resource ID
+
+Note: `type` is a reserved word in CEL, so we use `resource_type` instead.
+
+### Example Usage
+
+```go
+// API call
+GET /query/resources?type=project&cel_filter=data.slug == "tlf"
+
+// Expression is evaluated against each resource after OpenSearch query
+// Only matching resources proceed to access control checks
+```
+
+### Adding CEL Filter Tests
+
+When writing tests that involve resource search:
+
+```go
+// Use MockResourceFilter for testing
+mockFilter := mock.NewMockResourceFilter()
+
+// Pass to service constructor
+service := service.NewResourceSearch(mockSearcher, mockAccessChecker, mockFilter)
+```
+
+### Common CEL Operations
+
+- Equality: `data.status == "active"`
+- Comparison: `data.priority > 5`
+- Boolean logic: `data.status == "active" && data.priority > 5`
+- String operations: `data.name.contains("LF")`
+- List membership: `data.category in ["security", "networking"]`
+- Field existence: `has(data.archived)`
+
+### Performance Considerations
+
+- Compiled CEL programs are cached (100 max entries, 5-minute TTL)
+- Each resource evaluation has 100ms timeout
+- Post-query filtering means pagination may return fewer results than page size
+- For best performance, use specific OpenSearch criteria first, then CEL for refinement
+
+### Important Limitations
+
+**Pagination**: CEL filters apply only to results from each OpenSearch page. If the target resource is not in the first page of OpenSearch results, it won't be found even if it matches the CEL filter. Always use specific primary search criteria (`type`, `name`, `parent`) to narrow OpenSearch results first.

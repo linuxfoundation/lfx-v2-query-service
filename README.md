@@ -71,6 +71,7 @@ The authentication system provides JWT-based authentication with support for Hei
   - Bypasses JWT validation for local development
 
 **Authentication Configuration:**
+
 - `AUTH_SOURCE`: Choose between "mock" or "jwt" (default: "jwt")
 - `JWKS_URL`: JSON Web Key Set endpoint URL
 - `JWT_AUDIENCE`: Intended audience for JWT tokens
@@ -186,9 +187,9 @@ go run cmd/main.go
 
 **Authentication Configuration:**
 
-- `AUTH_SOURCE`: Choose between "mock" or "jwt" 
+- `AUTH_SOURCE`: Choose between "mock" or "jwt"
 - `JWKS_URL`: JSON Web Key Set endpoint URL
-- `JWT_AUDIENCE`: Intended audience for JWT tokens 
+- `JWT_AUDIENCE`: Intended audience for JWT tokens
 - `JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL`: Mock principal for development (required when AUTH_SOURCE=mock)
 
 **Server Configuration:**
@@ -213,7 +214,9 @@ Authorization: Bearer <jwt_token>
 - `name`: Resource name or alias (supports typeahead search)
 - `type`: Resource type to filter by
 - `parent`: Parent resource for hierarchical queries
-- `tags`: Array of tags to filter by
+- `tags`: Array of tags to filter by (OR logic)
+- `tags_all`: Array of tags where all must match (AND logic)
+- `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](#cel-filter) section)
 - `sort`: Sort order (name_asc, name_desc, updated_asc, updated_desc)
 - `page_token`: Pagination token
 - `v`: API version (required)
@@ -235,6 +238,119 @@ Authorization: Bearer <jwt_token>
   ],
   "page_token": "offset_50",
   "cache_control": "public, max-age=300"
+}
+```
+
+#### CEL Filter
+
+The `cel_filter` query parameter enables advanced filtering of search results using Common Expression Language (CEL). CEL is a non-Turing complete expression language designed for safe, fast evaluation of expressions in performance-critical applications.
+
+**Why CEL Filter?**
+
+CEL filtering was added to provide flexible, dynamic filtering capabilities on arbitrary resource data fields without modifying the OpenSearch query structure. This allows API consumers to:
+
+- Filter on any field within the resource data
+- Combine multiple conditions with boolean logic
+- Perform complex comparisons beyond simple equality checks
+- Apply filters without requiring backend code changes
+
+**What is CEL?**
+
+CEL (Common Expression Language) is an open-source expression language developed by Google. It provides:
+
+- **Safety**: Non-Turing complete, no side effects, no infinite loops
+- **Performance**: Linear time evaluation with compilation and caching
+- **Portability**: Language-agnostic with implementations in multiple languages
+- **Security**: Execution timeouts and resource constraints
+
+Learn more: [CEL Specification](https://github.com/google/cel-spec) | [CEL-Go Documentation](https://github.com/google/cel-go)
+
+**How It Works**
+
+CEL filters are applied **after** the OpenSearch query executes but **before** access control checks. This means:
+
+1. OpenSearch returns initial results based on primary search criteria (`type`, `name`, `parent`, `tags`)
+2. CEL filter evaluates each resource and removes non-matching items
+3. Access control checks are performed only on filtered results (improved performance)
+4. Final results are returned to the client
+
+**Available Variables**
+
+CEL expressions have access to the following variables for each resource:
+
+- `data` (map): The resource's data object containing all custom fields
+- `resource_type` (string): The type of the resource (e.g., "project", "committee")
+- `id` (string): The unique identifier of the resource
+
+**Security Constraints**
+
+- **Maximum expression length**: 1000 characters
+- **Evaluation timeout**: 100ms per resource
+- **Expression caching**: Compiled programs cached with LRU and 5-minute TTL
+- **No external access**: Cannot make network calls or access filesystem
+
+**Usage Examples**
+
+Filter projects by slug:
+```
+GET /query/resources?type=project&cel_filter=data.slug == "tlf"&v=1
+```
+
+Filter by status and priority:
+```
+GET /query/resources?type=project&cel_filter=data.status == "active" && data.priority > 5&v=1
+```
+
+Filter by resource type:
+```
+GET /query/resources?parent=org:123&cel_filter=resource_type == "committee"&v=1
+```
+
+Complex boolean logic:
+```
+GET /query/resources?type=project&cel_filter=data.status == "active" || (data.priority > 8 && data.category == "security")&v=1
+```
+
+String operations:
+```
+GET /query/resources?type=project&cel_filter=data.name.contains("LF") && data.description.startsWith("Open")&v=1
+```
+
+Check field existence:
+```
+GET /query/resources?type=project&cel_filter=has(data.archived) && data.archived == false&v=1
+```
+
+List membership:
+```
+GET /query/resources?type=project&cel_filter=data.category in ["security", "networking", "storage"]&v=1
+```
+
+Nested field access:
+```
+GET /query/resources?type=project&cel_filter=data.metadata.owner == "admin" && data.metadata.region == "us-west"&v=1
+```
+
+**Supported Operators**
+
+- **Comparison**: `==`, `!=`, `<`, `<=`, `>`, `>=`
+- **Logical**: `&&` (AND), `||` (OR), `!` (NOT)
+- **Arithmetic**: `+`, `-`, `*`, `/`, `%`
+- **String**: `contains()`, `startsWith()`, `endsWith()`, `matches()` (regex)
+- **Membership**: `in`
+- **Field check**: `has()`
+
+**Important Limitations**
+
+⚠️ **Pagination Consideration**: CEL filters are applied to the results from each OpenSearch page. If you're looking for a specific resource that matches your CEL filter but it's not in the first page of OpenSearch results, it may not be found. For best results when using CEL filters, use more specific primary search parameters (`type`, `name`, `parent`, `tags`) to narrow down the OpenSearch results first.
+
+**Error Handling**
+
+Invalid CEL expressions return a 400 Bad Request with details:
+
+```json
+{
+  "error": "filter expression failed: ERROR: <input>:1:6: Syntax error: mismatched input 'invalid' expecting {'[', '{', '(', '.', '-', '!', 'true', 'false', 'null', NUM_FLOAT, NUM_INT, NUM_UINT, STRING, BYTES, IDENTIFIER}"
 }
 ```
 
@@ -328,10 +444,12 @@ export ORG_SEARCH_SOURCE=clearbit
 The Clearbit integration supports the following search operations:
 
 **Search by Company Name:**
+
 - Searches for companies using their registered business name
 - Falls back to domain-based search for additional data enrichment
 
 **Search by Domain:**
+
 - More accurate search method using company domain names
 - Provides comprehensive company information
 
@@ -384,7 +502,7 @@ This project uses the [GOA Framework](https://goa.design/) for API generation. Y
 
 #### Installing GOA Framework
 
-Follow the [GOA installation guide](https://goa.design/docs/2-getting-started/1-installation/) to install GOA:
+Follow the [GOA installation guide](https://goa.design/docs/1-goa/quickstart/) to install GOA:
 
 ```bash
 go install goa.design/goa/v3/cmd/goa@latest

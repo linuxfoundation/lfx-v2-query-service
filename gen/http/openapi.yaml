@@ -181,6 +181,12 @@ paths:
                   items:
                     type: string
                   collectionFormat: multi
+                - name: cel_filter
+                  in: query
+                  description: 'CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)'
+                  required: false
+                  type: string
+                  maxLength: 1000
                 - name: sort
                   in: query
                   description: Sort order for results

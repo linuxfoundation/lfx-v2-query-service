@@ -59,13 +59,14 @@ func main() {
 	accessControlChecker := service.AccessControlCheckerImpl(ctx)
 	organizationSearcher := service.OrganizationSearcherImpl(ctx)
 	authService := service.AuthServiceImpl(ctx)
+	resourceFilter := service.ResourceFilterImpl(ctx)
 
 	// Initialize the services.
 	var (
 		querySvcSvc querysvc.Service
 	)
 	{
-		querySvcSvc = service.NewQuerySvc(resourceSearcher, accessControlChecker, organizationSearcher, authService)
+		querySvcSvc = service.NewQuerySvc(resourceSearcher, accessControlChecker, resourceFilter, organizationSearcher, authService)
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services

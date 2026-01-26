@@ -56,6 +56,10 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("tags_all", dsl.ArrayOf(dsl.String), "Tags to search with AND logic - matches resources that have all of these tags", func() {
 				dsl.Example([]string{"governance", "security"})
 			})
+			dsl.Attribute("cel_filter", dsl.String, "CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)", func() {
+				dsl.Example(`data.slug == "tlf"`)
+				dsl.MaxLength(1000)
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -78,6 +82,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("type")
 			dsl.Param("tags")
 			dsl.Param("tags_all")
+			dsl.Param("cel_filter")
 			dsl.Param("sort")
 			dsl.Param("page_token")
 			dsl.Header("bearer_token:Authorization")

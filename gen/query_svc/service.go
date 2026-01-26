@@ -153,6 +153,9 @@ type QueryResourcesPayload struct {
 	Tags []string
 	// Tags to search with AND logic - matches resources that have all of these tags
 	TagsAll []string
+	// CEL expression to filter results on resource data fields. Available
+	// variables: data (map), resource_type (string), id (string)
+	CelFilter *string
 	// Sort order for results
 	Sort string
 	// Opaque token for pagination

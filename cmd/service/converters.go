@@ -23,6 +23,7 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		ResourceType: p.Type,
 		Tags:         p.Tags,
 		TagsAll:      p.TagsAll,
+		CelFilter:    p.CelFilter,
 		SortBy:       p.Sort,
 		PageToken:    p.PageToken,
 		PageSize:     constants.DefaultPageSize,

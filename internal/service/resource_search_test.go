@@ -151,7 +151,7 @@ func TestResourceSearchQueryResources(t *testing.T) {
 			tc.setupMocks(mockSearcher, mockAccessChecker)
 
 			// Create service
-			service, ok := NewResourceSearch(mockSearcher, mockAccessChecker).(*ResourceSearch)
+			service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
 			if !ok {
 				t.Fatal("failed to create ResourceSearch service")
 			}
@@ -655,7 +655,7 @@ func TestNewResourceSearch(t *testing.T) {
 			searcher, accessChecker := tc.setupMocks()
 
 			// Execute
-			result := NewResourceSearch(searcher, accessChecker)
+			result := NewResourceSearch(searcher, accessChecker, mock.NewMockResourceFilter())
 
 			// Verify
 			if tc.expectNonNil {
@@ -681,7 +681,7 @@ func TestResourceSearchQueryResourcesEdgeCases(t *testing.T) {
 		// Setup
 		mockSearcher := mock.NewMockResourceSearcher()
 		mockAccessChecker := mock.NewMockAccessControlChecker()
-		service, ok := NewResourceSearch(mockSearcher, mockAccessChecker).(*ResourceSearch)
+		service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
 		if !ok {
 			t.Fatal("failed to create ResourceSearch service")
 		}
@@ -727,7 +727,7 @@ func TestResourceSearchQueryResourcesEdgeCases(t *testing.T) {
 		// Setup
 		mockSearcher := mock.NewMockResourceSearcher()
 		mockAccessChecker := mock.NewMockAccessControlChecker()
-		service, ok := NewResourceSearch(mockSearcher, mockAccessChecker).(*ResourceSearch)
+		service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
 		if !ok {
 			t.Fatal("failed to create ResourceSearch service")
 		}
@@ -894,7 +894,7 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 			tc.setupMocks(resourceSearcher, accessChecker)
 
 			// Create service
-			service := NewResourceSearch(resourceSearcher, accessChecker)
+			service := NewResourceSearch(resourceSearcher, accessChecker, mock.NewMockResourceFilter())
 
 			// Create context with principal
 			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, tc.principal)

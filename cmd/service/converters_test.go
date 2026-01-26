@@ -20,7 +20,7 @@ func TestPayloadToCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	// Setup environment variable for page token secret
@@ -165,7 +165,7 @@ func TestDomainResultToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -290,7 +290,7 @@ func TestPayloadToOrganizationCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -357,7 +357,7 @@ func TestDomainOrganizationToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -437,7 +437,7 @@ func TestPayloadToOrganizationSuggestionCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -493,7 +493,7 @@ func TestDomainOrganizationSuggestionsToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
