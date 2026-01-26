@@ -70,6 +70,9 @@ func EncodeQueryResourcesRequest(encoder func(*http.Request) goahttp.Encoder) fu
 		for _, value := range p.Filters {
 			values.Add("filters", value)
 		}
+		if p.CelFilter != nil {
+			values.Add("cel_filter", *p.CelFilter)
+		}
 		values.Add("sort", p.Sort)
 		if p.PageToken != nil {
 			values.Add("page_token", *p.PageToken)

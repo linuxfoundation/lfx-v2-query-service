@@ -26,6 +26,8 @@ GOLANGCI_LINT_VERSION := v2.2.2
 LINT_TIMEOUT := 10m
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
 
+GOA_VERSION := v3.22.6
+
 ##@ Development
 
 .PHONY: setup-dev
@@ -43,7 +45,7 @@ setup: ## Setup development environment
 .PHONY: deps
 deps: ## Install dependencies
 	@echo "Installing dependencies..."
-	go install goa.design/goa/v3/cmd/goa@latest
+	go install goa.design/goa/v3/cmd/goa@$(GOA_VERSION)
 
 .PHONY: apigen
 apigen: deps #@ Generate API code using Goa

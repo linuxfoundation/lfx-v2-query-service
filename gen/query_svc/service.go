@@ -161,6 +161,9 @@ type QueryResourcesPayload struct {
 	// 'field:value' (e.g., 'status:active'). Fields are automatically prefixed
 	// with 'data.'
 	Filters []string
+	// CEL expression to filter results on resource data fields. Available
+	// variables: data (map), resource_type (string), id (string)
+	CelFilter *string
 	// Sort order for results
 	Sort string
 	// Opaque token for pagination

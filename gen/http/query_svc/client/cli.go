@@ -18,7 +18,7 @@ import (
 
 // BuildQueryResourcesPayload builds the payload for the query-svc
 // query-resources endpoint from CLI flags.
-func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesFilters string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
+func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesFilters string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
 	var err error
 	var version string
 	{
@@ -85,6 +85,18 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 			}
 		}
 	}
+	var celFilter *string
+	{
+		if querySvcQueryResourcesCelFilter != "" {
+			celFilter = &querySvcQueryResourcesCelFilter
+			if utf8.RuneCountInString(*celFilter) > 1000 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("cel_filter", *celFilter, utf8.RuneCountInString(*celFilter), 1000, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var sort string
 	{
 		if querySvcQueryResourcesSort != "" {
@@ -115,6 +127,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	v.Tags = tags
 	v.TagsAll = tagsAll
 	v.Filters = filters
+	v.CelFilter = celFilter
 	v.Sort = sort
 	v.PageToken = pageToken
 	v.BearerToken = bearerToken

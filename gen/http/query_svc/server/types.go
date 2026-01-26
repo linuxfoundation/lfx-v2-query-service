@@ -385,7 +385,7 @@ func NewReadyzNotReadyResponseBody(res *goa.ServiceError) *ReadyzNotReadyRespons
 
 // NewQueryResourcesPayload builds a query-svc service query-resources endpoint
 // payload.
-func NewQueryResourcesPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, filters []string, sort string, pageToken *string, bearerToken string) *querysvc.QueryResourcesPayload {
+func NewQueryResourcesPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, filters []string, celFilter *string, sort string, pageToken *string, bearerToken string) *querysvc.QueryResourcesPayload {
 	v := &querysvc.QueryResourcesPayload{}
 	v.Version = version
 	v.Name = name
@@ -394,6 +394,7 @@ func NewQueryResourcesPayload(version string, name *string, parent *string, type
 	v.Tags = tags
 	v.TagsAll = tagsAll
 	v.Filters = filters
+	v.CelFilter = celFilter
 	v.Sort = sort
 	v.PageToken = pageToken
 	v.BearerToken = bearerToken

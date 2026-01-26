@@ -59,6 +59,10 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("filters", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'", func() {
 				dsl.Example([]string{"status:active", "priority:high"})
 			})
+			dsl.Attribute("cel_filter", dsl.String, "CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)", func() {
+				dsl.Example(`data.slug == "tlf"`)
+				dsl.MaxLength(1000)
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -82,6 +86,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("tags")
 			dsl.Param("tags_all")
 			dsl.Param("filters")
+			dsl.Param("cel_filter")
 			dsl.Param("sort")
 			dsl.Param("page_token")
 			dsl.Header("bearer_token:Authorization")

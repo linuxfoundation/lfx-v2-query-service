@@ -14,6 +14,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/auth"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/clearbit"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/filter"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/nats"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/opensearch"
@@ -241,4 +242,16 @@ func OrganizationSearcherImpl(ctx context.Context) port.OrganizationSearcher {
 	}
 
 	return organizationSearcher
+}
+
+// ResourceFilterImpl injects the resource filter implementation
+func ResourceFilterImpl(ctx context.Context) port.ResourceFilter {
+	slog.InfoContext(ctx, "initializing CEL resource filter")
+
+	celFilter, err := filter.NewCELFilter()
+	if err != nil {
+		log.Fatalf("failed to initialize CEL filter: %v", err)
+	}
+
+	return celFilter
 }

@@ -17,6 +17,10 @@ type SearchCriteria struct {
 	TagsAll []string
 	// Filters for direct field term clauses (AND logic - all must match)
 	Filters []FieldFilter
+	// CelFilter is a CEL expression for post-processing filter on resource data
+	// Example: data.slug == "tlf" || data.status == "active" && data.priority > 5
+	// Available variables: data (map), resource_type (string), id (string)
+	CelFilter *string
 	// Resource name or alias; supports typeahead
 	Name *string
 	// Parent (for navigation; varies by object type)
