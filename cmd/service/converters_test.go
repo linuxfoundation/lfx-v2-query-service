@@ -20,7 +20,7 @@ func TestPayloadToCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	// Setup environment variable for page token secret
@@ -165,7 +165,7 @@ func TestDomainResultToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -290,7 +290,7 @@ func TestPayloadToOrganizationCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -357,7 +357,7 @@ func TestDomainOrganizationToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -437,7 +437,7 @@ func TestPayloadToOrganizationSuggestionCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -493,7 +493,7 @@ func TestDomainOrganizationSuggestionsToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {
@@ -687,13 +687,112 @@ func TestParseDateFilter(t *testing.T) {
 	}
 }
 
+func TestParseFilters(t *testing.T) {
+	tests := []struct {
+		name           string
+		filters        []string
+		expected       []model.FieldFilter
+		expectedError  bool
+		errorSubstring string
+	}{
+		{
+			name:          "valid single filter - auto-prefixed with data",
+			filters:       []string{"status:active"},
+			expected:      []model.FieldFilter{{Field: "data.status", Value: "active"}},
+			expectedError: false,
+		},
+		{
+			name:    "valid multiple filters - auto-prefixed with data",
+			filters: []string{"status:active", "priority:high"},
+			expected: []model.FieldFilter{
+				{Field: "data.status", Value: "active"},
+				{Field: "data.priority", Value: "high"},
+			},
+			expectedError: false,
+		},
+		{
+			name:          "filter with spaces (trimmed and auto-prefixed)",
+			filters:       []string{" status : active "},
+			expected:      []model.FieldFilter{{Field: "data.status", Value: "active"}},
+			expectedError: false,
+		},
+		{
+			name:          "filter with colon in value",
+			filters:       []string{"url:https://example.com"},
+			expected:      []model.FieldFilter{{Field: "data.url", Value: "https://example.com"}},
+			expectedError: false,
+		},
+		{
+			name:           "invalid filter format (no colon)",
+			filters:        []string{"invalid"},
+			expected:       nil,
+			expectedError:  true,
+			errorSubstring: "invalid filter format",
+		},
+		{
+			name:          "invalid filter format (empty after colon)",
+			filters:       []string{"status:"},
+			expected:      []model.FieldFilter{{Field: "data.status", Value: ""}},
+			expectedError: false,
+		},
+		{
+			name:           "invalid filter format (empty field name)",
+			filters:        []string{":value"},
+			expected:       nil,
+			expectedError:  true,
+			errorSubstring: "field name cannot be empty",
+		},
+		{
+			name:           "invalid filter format (whitespace-only field name)",
+			filters:        []string{"  :value"},
+			expected:       nil,
+			expectedError:  true,
+			errorSubstring: "field name cannot be empty",
+		},
+		{
+			name:          "empty filters array",
+			filters:       []string{},
+			expected:      nil,
+			expectedError: false,
+		},
+		{
+			name:          "nil filters",
+			filters:       nil,
+			expected:      nil,
+			expectedError: false,
+		},
+		{
+			name:          "nested field name (auto-prefixed)",
+			filters:       []string{"project.id:123"},
+			expected:      []model.FieldFilter{{Field: "data.project.id", Value: "123"}},
+			expectedError: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := parseFilters(tc.filters)
+
+			if tc.expectedError {
+				assert.Error(t, err)
+				if tc.errorSubstring != "" {
+					assert.Contains(t, err.Error(), tc.errorSubstring)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expected, result)
+			}
+		})
+	}
+}
+
 func TestPayloadToCriteriaWithDateFilters(t *testing.T) {
 	// Setup service for testing
 	mockResourceSearcher := mock.NewMockResourceSearcher()
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
 	svc := service.(*querySvcsrvc)
 
 	tests := []struct {

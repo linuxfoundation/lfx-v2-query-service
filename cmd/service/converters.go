@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+	"strings"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -52,8 +53,40 @@ func parseDateFilter(dateStr string, isEndDate bool) (string, error) {
 	return t.Format(time.RFC3339), nil
 }
 
+// parseFilters parses filter strings in "field:value" format
+// All fields are automatically prefixed with "data." to filter only within the data object
+func parseFilters(filters []string) ([]model.FieldFilter, error) {
+	if len(filters) == 0 {
+		return nil, nil
+	}
+
+	parsed := make([]model.FieldFilter, 0, len(filters))
+	for _, filter := range filters {
+		parts := strings.SplitN(filter, ":", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid filter format '%s': expected 'field:value'", filter)
+		}
+		fieldName := strings.TrimSpace(parts[0])
+		if fieldName == "" {
+			return nil, fmt.Errorf("invalid filter format '%s': field name cannot be empty", filter)
+		}
+		// Automatically prefix with "data." to ensure filtering only on data fields
+		parsed = append(parsed, model.FieldFilter{
+			Field: "data." + fieldName,
+			Value: strings.TrimSpace(parts[1]),
+		})
+	}
+	return parsed, nil
+}
+
 // payloadToCriteria converts the generated payload to domain search criteria
 func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryResourcesPayload) (model.SearchCriteria, error) {
+	// Parse filters from "field:value" format
+	filters, err := parseFilters(p.Filters)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to parse filters", "error", err)
+		return model.SearchCriteria{}, wrapError(ctx, err)
+	}
 
 	criteria := model.SearchCriteria{
 		Name:         p.Name,
@@ -61,6 +94,8 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		ResourceType: p.Type,
 		Tags:         p.Tags,
 		TagsAll:      p.TagsAll,
+		Filters:      filters,
+		CelFilter:    p.CelFilter,
 		SortBy:       p.Sort,
 		PageToken:    p.PageToken,
 		PageSize:     constants.DefaultPageSize,
@@ -162,9 +197,16 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		PublicOnly: true,
 	}
 
+	// Parse filters from "field:value" format
+	filters, err := parseFilters(payload.Filters)
+	if err != nil {
+		return criteria, fmt.Errorf("invalid filters: %w", err)
+	}
+
 	// Set the criteria from the payload
 	criteria.Tags = payload.Tags
 	criteria.TagsAll = payload.TagsAll
+	criteria.Filters = filters
 	if payload.Name != nil {
 		criteria.Name = payload.Name
 	}
@@ -221,9 +263,16 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		GroupBy: "access_check_query.keyword",
 	}
 
+	// Parse filters from "field:value" format
+	filters, err := parseFilters(payload.Filters)
+	if err != nil {
+		return criteria, fmt.Errorf("invalid filters: %w", err)
+	}
+
 	// Set the criteria from the payload
 	criteria.Tags = payload.Tags
 	criteria.TagsAll = payload.TagsAll
+	criteria.Filters = filters
 	if payload.Name != nil {
 		criteria.Name = payload.Name
 	}

@@ -76,6 +76,12 @@ func EncodeQueryResourcesRequest(encoder func(*http.Request) goahttp.Encoder) fu
 		if p.DateTo != nil {
 			values.Add("date_to", *p.DateTo)
 		}
+		for _, value := range p.Filters {
+			values.Add("filters", value)
+		}
+		if p.CelFilter != nil {
+			values.Add("cel_filter", *p.CelFilter)
+		}
 		values.Add("sort", p.Sort)
 		if p.PageToken != nil {
 			values.Add("page_token", *p.PageToken)
@@ -236,6 +242,9 @@ func EncodeQueryResourcesCountRequest(encoder func(*http.Request) goahttp.Encode
 		}
 		if p.DateTo != nil {
 			values.Add("date_to", *p.DateTo)
+		}
+		for _, value := range p.Filters {
+			values.Add("filters", value)
 		}
 		req.URL.RawQuery = values.Encode()
 		return nil

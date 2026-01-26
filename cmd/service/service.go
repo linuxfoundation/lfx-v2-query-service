@@ -160,10 +160,11 @@ func (s *querySvcsrvc) Livez(ctx context.Context) (res []byte, err error) {
 // NewQuerySvc returns the query-svc service implementation.
 func NewQuerySvc(resourceSearcher port.ResourceSearcher,
 	accessControlChecker port.AccessControlChecker,
+	resourceFilter port.ResourceFilter,
 	organizationSearcher port.OrganizationSearcher,
 	auth port.Authenticator,
 ) querysvc.Service {
-	resourceService := service.NewResourceSearch(resourceSearcher, accessControlChecker)
+	resourceService := service.NewResourceSearch(resourceSearcher, accessControlChecker, resourceFilter)
 	organizationService := service.NewOrganizationSearch(organizationSearcher)
 	return &querySvcsrvc{
 		resourceService:     resourceService,

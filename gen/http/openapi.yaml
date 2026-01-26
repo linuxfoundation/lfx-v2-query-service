@@ -196,6 +196,20 @@ paths:
                   description: 'End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.'
                   required: false
                   type: string
+                - name: filters
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: cel_filter
+                  in: query
+                  description: 'CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)'
+                  required: false
+                  type: string
+                  maxLength: 1000
                 - name: sort
                   in: query
                   description: Sort order for results
@@ -312,6 +326,14 @@ paths:
                   description: 'End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.'
                   required: false
                   type: string
+                - name: filters
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
                 - name: Authorization
                   in: header
                   description: JWT token issued by Heimdall

@@ -48,6 +48,8 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			dateField   *string
 			dateFrom    *string
 			dateTo      *string
+			filters     []string
+			celFilter   *string
 			sort        string
 			pageToken   *string
 			bearerToken string
@@ -95,6 +97,16 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if dateToRaw != "" {
 			dateTo = &dateToRaw
 		}
+		filters = qp["filters"]
+		celFilterRaw := qp.Get("cel_filter")
+		if celFilterRaw != "" {
+			celFilter = &celFilterRaw
+		}
+		if celFilter != nil {
+			if utf8.RuneCountInString(*celFilter) > 1000 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("cel_filter", *celFilter, utf8.RuneCountInString(*celFilter), 1000, false))
+			}
+		}
 		sortRaw := qp.Get("sort")
 		if sortRaw != "" {
 			sort = sortRaw
@@ -115,7 +127,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, sort, pageToken, bearerToken)
+		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, celFilter, sort, pageToken, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
@@ -210,6 +222,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 			dateField   *string
 			dateFrom    *string
 			dateTo      *string
+			filters     []string
 			bearerToken string
 			err         error
 		)
@@ -252,6 +265,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		if dateToRaw != "" {
 			dateTo = &dateToRaw
 		}
+		filters = qp["filters"]
 		bearerToken = r.Header.Get("Authorization")
 		if bearerToken == "" {
 			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
@@ -259,7 +273,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, bearerToken)
+		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
