@@ -56,6 +56,15 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("tags_all", dsl.ArrayOf(dsl.String), "Tags to search with AND logic - matches resources that have all of these tags", func() {
 				dsl.Example([]string{"governance", "security"})
 			})
+			dsl.Attribute("date_field", dsl.String, "Date field to filter on (within data object) - used with date_from and/or date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only (2006-01-02, assumes UTC)", func() {
+				dsl.Example("updated_at")
+			})
+			dsl.Attribute("date_from", dsl.String, "Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses start of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-10")
+			})
+			dsl.Attribute("date_to", dsl.String, "End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-28")
+			})
 			dsl.Attribute("filters", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'", func() {
 				dsl.Example([]string{"status:active", "priority:high"})
 			})
@@ -85,6 +94,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("type")
 			dsl.Param("tags")
 			dsl.Param("tags_all")
+			dsl.Param("date_field")
+			dsl.Param("date_from")
+			dsl.Param("date_to")
 			dsl.Param("filters")
 			dsl.Param("cel_filter")
 			dsl.Param("sort")
@@ -129,6 +141,15 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("tags_all", dsl.ArrayOf(dsl.String), "Tags to search with AND logic - matches resources that have all of these tags", func() {
 				dsl.Example([]string{"governance", "security"})
 			})
+			dsl.Attribute("date_field", dsl.String, "Date field to filter on (within data object) - used with date_from and/or date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only (2006-01-02, assumes UTC)", func() {
+				dsl.Example("updated_at")
+			})
+			dsl.Attribute("date_from", dsl.String, "Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses start of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-10")
+			})
+			dsl.Attribute("date_to", dsl.String, "End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.", func() {
+				dsl.Example("2025-01-28")
+			})
 			dsl.Attribute("filters", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'", func() {
 				dsl.Example([]string{"status:active", "priority:high"})
 			})
@@ -156,6 +177,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("type")
 			dsl.Param("tags")
 			dsl.Param("tags_all")
+			dsl.Param("date_field")
+			dsl.Param("date_from")
+			dsl.Param("date_to")
 			dsl.Param("filters")
 			dsl.Header("bearer_token:Authorization")
 			dsl.Response(dsl.StatusOK, func() {

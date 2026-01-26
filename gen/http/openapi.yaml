@@ -181,6 +181,21 @@ paths:
                   items:
                     type: string
                   collectionFormat: multi
+                - name: date_field
+                  in: query
+                  description: Date field to filter on (within data object) - used with date_from and/or date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only (2006-01-02, assumes UTC)
+                  required: false
+                  type: string
+                - name: date_from
+                  in: query
+                  description: 'Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses start of day UTC. Requires date_field.'
+                  required: false
+                  type: string
+                - name: date_to
+                  in: query
+                  description: 'End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.'
+                  required: false
+                  type: string
                 - name: filters
                   in: query
                   description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
@@ -296,6 +311,21 @@ paths:
                   items:
                     type: string
                   collectionFormat: multi
+                - name: date_field
+                  in: query
+                  description: Date field to filter on (within data object) - used with date_from and/or date_to. Supports ISO 8601 datetime (2006-01-02T15:04:05Z) or date-only (2006-01-02, assumes UTC)
+                  required: false
+                  type: string
+                - name: date_from
+                  in: query
+                  description: 'Start date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses start of day UTC. Requires date_field.'
+                  required: false
+                  type: string
+                - name: date_to
+                  in: query
+                  description: 'End date (inclusive). Format: ISO 8601 datetime or date-only. Date-only uses end of day UTC. Requires date_field.'
+                  required: false
+                  type: string
                 - name: filters
                   in: query
                   description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''

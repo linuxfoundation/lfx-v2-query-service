@@ -67,6 +67,15 @@ func EncodeQueryResourcesRequest(encoder func(*http.Request) goahttp.Encoder) fu
 		for _, value := range p.TagsAll {
 			values.Add("tags_all", value)
 		}
+		if p.DateField != nil {
+			values.Add("date_field", *p.DateField)
+		}
+		if p.DateFrom != nil {
+			values.Add("date_from", *p.DateFrom)
+		}
+		if p.DateTo != nil {
+			values.Add("date_to", *p.DateTo)
+		}
 		for _, value := range p.Filters {
 			values.Add("filters", value)
 		}
@@ -224,6 +233,15 @@ func EncodeQueryResourcesCountRequest(encoder func(*http.Request) goahttp.Encode
 		}
 		for _, value := range p.TagsAll {
 			values.Add("tags_all", value)
+		}
+		if p.DateField != nil {
+			values.Add("date_field", *p.DateField)
+		}
+		if p.DateFrom != nil {
+			values.Add("date_from", *p.DateFrom)
+		}
+		if p.DateTo != nil {
+			values.Add("date_to", *p.DateTo)
 		}
 		for _, value := range p.Filters {
 			values.Add("filters", value)

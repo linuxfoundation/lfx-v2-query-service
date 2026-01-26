@@ -18,7 +18,7 @@ import (
 
 // BuildQueryResourcesPayload builds the payload for the query-svc
 // query-resources endpoint from CLI flags.
-func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesFilters string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
+func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
 	var err error
 	var version string
 	{
@@ -76,6 +76,24 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 			}
 		}
 	}
+	var dateField *string
+	{
+		if querySvcQueryResourcesDateField != "" {
+			dateField = &querySvcQueryResourcesDateField
+		}
+	}
+	var dateFrom *string
+	{
+		if querySvcQueryResourcesDateFrom != "" {
+			dateFrom = &querySvcQueryResourcesDateFrom
+		}
+	}
+	var dateTo *string
+	{
+		if querySvcQueryResourcesDateTo != "" {
+			dateTo = &querySvcQueryResourcesDateTo
+		}
+	}
 	var filters []string
 	{
 		if querySvcQueryResourcesFilters != "" {
@@ -126,6 +144,9 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	v.Type = type_
 	v.Tags = tags
 	v.TagsAll = tagsAll
+	v.DateField = dateField
+	v.DateFrom = dateFrom
+	v.DateTo = dateTo
 	v.Filters = filters
 	v.CelFilter = celFilter
 	v.Sort = sort
@@ -137,7 +158,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 
 // BuildQueryResourcesCountPayload builds the payload for the query-svc
 // query-resources-count endpoint from CLI flags.
-func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
+func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
 	var err error
 	var version string
 	{
@@ -191,6 +212,24 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 			}
 		}
 	}
+	var dateField *string
+	{
+		if querySvcQueryResourcesCountDateField != "" {
+			dateField = &querySvcQueryResourcesCountDateField
+		}
+	}
+	var dateFrom *string
+	{
+		if querySvcQueryResourcesCountDateFrom != "" {
+			dateFrom = &querySvcQueryResourcesCountDateFrom
+		}
+	}
+	var dateTo *string
+	{
+		if querySvcQueryResourcesCountDateTo != "" {
+			dateTo = &querySvcQueryResourcesCountDateTo
+		}
+	}
 	var filters []string
 	{
 		if querySvcQueryResourcesCountFilters != "" {
@@ -211,6 +250,9 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 	v.Type = type_
 	v.Tags = tags
 	v.TagsAll = tagsAll
+	v.DateField = dateField
+	v.DateFrom = dateFrom
+	v.DateTo = dateTo
 	v.Filters = filters
 	v.BearerToken = bearerToken
 

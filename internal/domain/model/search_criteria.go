@@ -47,6 +47,12 @@ type SearchCriteria struct {
 	GroupBy string
 	// GroupBySize indicates the size of the group by
 	GroupBySize int
+	// DateField is the field to filter by date range (auto-prefixed with "data.")
+	DateField *string
+	// DateFrom is the start date for range filter (inclusive, ISO 8601 or date-only)
+	DateFrom *string
+	// DateTo is the end date for range filter (inclusive, ISO 8601 or date-only)
+	DateTo *string
 }
 
 // SearchResult contains the results of a resource search
