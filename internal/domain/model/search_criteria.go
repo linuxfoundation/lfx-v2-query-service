@@ -3,12 +3,20 @@
 
 package model
 
+// FieldFilter represents a single field:value filter pair
+type FieldFilter struct {
+	Field string
+	Value string
+}
+
 // SearchCriteria encapsulates all possible search parameters
 type SearchCriteria struct {
 	// Tags to filter resources with OR logic (any tag matches)
 	Tags []string
 	// TagsAll to filter resources with AND logic (all tags must match)
 	TagsAll []string
+	// Filters for direct field term clauses (AND logic - all must match)
+	Filters []FieldFilter
 	// CelFilter is a CEL expression for post-processing filter on resource data
 	// Example: data.slug == "tlf" || data.status == "active" && data.priority > 5
 	// Available variables: data (map), resource_type (string), id (string)

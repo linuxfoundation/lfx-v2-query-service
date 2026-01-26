@@ -122,6 +122,10 @@ type QueryResourcesCountPayload struct {
 	Tags []string
 	// Tags to search with AND logic - matches resources that have all of these tags
 	TagsAll []string
+	// Direct field filters with term clauses on data fields - format:
+	// 'field:value' (e.g., 'status:active'). Fields are automatically prefixed
+	// with 'data.'
+	Filters []string
 }
 
 // QueryResourcesCountResult is the result type of the query-svc service
@@ -153,6 +157,10 @@ type QueryResourcesPayload struct {
 	Tags []string
 	// Tags to search with AND logic - matches resources that have all of these tags
 	TagsAll []string
+	// Direct field filters with term clauses on data fields - format:
+	// 'field:value' (e.g., 'status:active'). Fields are automatically prefixed
+	// with 'data.'
+	Filters []string
 	// CEL expression to filter results on resource data fields. Available
 	// variables: data (map), resource_type (string), id (string)
 	CelFilter *string

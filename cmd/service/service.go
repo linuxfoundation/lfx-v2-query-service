@@ -76,8 +76,14 @@ func (s *querySvcsrvc) QueryResourcesCount(ctx context.Context, p *querysvc.Quer
 	)
 
 	// Convert payload to domain criteria
-	countCriteria := s.payloadToCountPublicCriteria(p)
-	aggregationCriteria := s.payloadToCountAggregationCriteria(p)
+	countCriteria, errCountCriteria := s.payloadToCountPublicCriteria(p)
+	if errCountCriteria != nil {
+		return nil, wrapError(ctx, errCountCriteria)
+	}
+	aggregationCriteria, errAggCriteria := s.payloadToCountAggregationCriteria(p)
+	if errAggCriteria != nil {
+		return nil, wrapError(ctx, errAggCriteria)
+	}
 
 	// Execute search using the service layer
 	result, errQueryResources := s.resourceService.QueryResourcesCount(ctx, countCriteria, aggregationCriteria)
