@@ -248,7 +248,7 @@ func OrganizationSearcherImpl(ctx context.Context) port.OrganizationSearcher {
 func ResourceFilterImpl(ctx context.Context) port.ResourceFilter {
 	slog.InfoContext(ctx, "initializing CEL resource filter")
 
-	celFilter, err := filter.NewCELFilter(slog.Default())
+	celFilter, err := filter.NewCELFilter()
 	if err != nil {
 		log.Fatalf("failed to initialize CEL filter: %v", err)
 	}

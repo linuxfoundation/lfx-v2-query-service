@@ -5,7 +5,6 @@ package filter
 
 import (
 	"context"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -16,7 +15,7 @@ import (
 func TestNewCELFilter(t *testing.T) {
 	assertion := assert.New(t)
 
-	filter, err := NewCELFilter(slog.Default())
+	filter, err := NewCELFilter()
 
 	assertion.NoError(err)
 	assertion.NotNil(filter)
@@ -26,7 +25,7 @@ func TestNewCELFilter(t *testing.T) {
 
 func TestCELFilter_Filter_EmptyExpression(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project 1"}},
@@ -42,7 +41,7 @@ func TestCELFilter_Filter_EmptyExpression(t *testing.T) {
 
 func TestCELFilter_Filter_SimpleEquality(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"slug": "tlf", "status": "active"}},
@@ -60,7 +59,7 @@ func TestCELFilter_Filter_SimpleEquality(t *testing.T) {
 
 func TestCELFilter_Filter_MultipleConditions(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"status": "active", "priority": 10}},
@@ -77,7 +76,7 @@ func TestCELFilter_Filter_MultipleConditions(t *testing.T) {
 
 func TestCELFilter_Filter_TypeVariable(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -95,7 +94,7 @@ func TestCELFilter_Filter_TypeVariable(t *testing.T) {
 
 func TestCELFilter_Filter_IDVariable(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "123", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -111,7 +110,7 @@ func TestCELFilter_Filter_IDVariable(t *testing.T) {
 
 func TestCELFilter_Filter_StringOperations(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Linux Foundation"}},
@@ -158,7 +157,7 @@ func TestCELFilter_Filter_NumericComparisons(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assertion := assert.New(t)
-			filter, _ := NewCELFilter(slog.Default())
+			filter, _ := NewCELFilter()
 
 			resources := []model.Resource{
 				{ID: "1", Type: "project", Data: map[string]any{"count": 100}},
@@ -176,7 +175,7 @@ func TestCELFilter_Filter_NumericComparisons(t *testing.T) {
 
 func TestCELFilter_Filter_NestedFields(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{
@@ -196,7 +195,7 @@ func TestCELFilter_Filter_NestedFields(t *testing.T) {
 
 func TestCELFilter_Filter_InvalidExpression(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -211,7 +210,7 @@ func TestCELFilter_Filter_InvalidExpression(t *testing.T) {
 
 func TestCELFilter_Filter_NonBooleanExpression(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -227,7 +226,7 @@ func TestCELFilter_Filter_NonBooleanExpression(t *testing.T) {
 
 func TestCELFilter_Filter_ExpressionTooLong(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -248,7 +247,7 @@ func TestCELFilter_Filter_ExpressionTooLong(t *testing.T) {
 
 func TestCELFilter_Filter_MissingField(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -265,7 +264,7 @@ func TestCELFilter_Filter_MissingField(t *testing.T) {
 
 func TestCELFilter_Filter_ContextCancellation(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -282,7 +281,7 @@ func TestCELFilter_Filter_ContextCancellation(t *testing.T) {
 
 func TestCELFilter_ProgramCaching(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	resources := []model.Resource{
 		{ID: "1", Type: "project", Data: map[string]any{"name": "Project"}},
@@ -306,7 +305,7 @@ func TestCELFilter_ProgramCaching(t *testing.T) {
 
 func TestCELFilter_CacheExpiration(t *testing.T) {
 	assertion := assert.New(t)
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 
 	expression := `data.name == "Project"`
 
@@ -381,7 +380,7 @@ func TestCELFilter_ComplexExpressions(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assertion := assert.New(t)
-			filter, _ := NewCELFilter(slog.Default())
+			filter, _ := NewCELFilter()
 
 			result, err := filter.Filter(context.Background(), tc.resources, tc.expression)
 
@@ -404,7 +403,7 @@ func TestProgramCache_CleanupExpired(t *testing.T) {
 	}
 
 	// Add entries with different expiration times
-	filter, _ := NewCELFilter(slog.Default())
+	filter, _ := NewCELFilter()
 	prg1, _ := filter.env.Program(nil) // Dummy program
 
 	cache.cache["expired1"] = &cacheEntry{

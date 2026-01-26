@@ -32,7 +32,6 @@ const (
 type CELFilter struct {
 	env          *cel.Env
 	programCache *programCache
-	logger       *slog.Logger
 }
 
 // programCache stores compiled CEL programs with TTL
@@ -53,7 +52,7 @@ func (ce *cacheEntry) isExpired() bool {
 }
 
 // NewCELFilter creates a new CEL-based resource filter
-func NewCELFilter(logger *slog.Logger) (*CELFilter, error) {
+func NewCELFilter() (*CELFilter, error) {
 	// Create CEL environment with safe variable exposure
 	env, err := cel.NewEnv(
 		cel.Variable("data", cel.MapType(cel.StringType, cel.DynType)),
@@ -64,17 +63,12 @@ func NewCELFilter(logger *slog.Logger) (*CELFilter, error) {
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	if logger == nil {
-		logger = slog.Default()
-	}
-
 	return &CELFilter{
 		env: env,
 		programCache: &programCache{
 			cache:   make(map[string]*cacheEntry),
 			maxSize: MaxCacheSize,
 		},
-		logger: logger,
 	}, nil
 }
 
@@ -108,7 +102,7 @@ func (f *CELFilter) Filter(ctx context.Context, resources []model.Resource, expr
 		match, err := f.evaluateResource(ctx, prg, resource)
 		if err != nil {
 			// Log evaluation error but continue (lenient mode)
-			f.logger.Warn("failed to evaluate resource against filter",
+			slog.WarnContext(ctx, "failed to evaluate resource against filter",
 				"resource_id", resource.ID,
 				"resource_type", resource.Type,
 				"error", err,
@@ -121,7 +115,7 @@ func (f *CELFilter) Filter(ctx context.Context, resources []model.Resource, expr
 		}
 	}
 
-	f.logger.Debug("CEL filter applied",
+	slog.DebugContext(ctx, "CEL filter applied",
 		"expression", expression,
 		"input_count", len(resources),
 		"output_count", len(filtered),
