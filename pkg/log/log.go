@@ -14,12 +14,20 @@ import (
 
 type ctxKey string
 
+// Public constants
+const (
+	ErrKey = "error"
+)
+
+// Private constants
 const (
 	slogFields      ctxKey = "slog_fields"
 	logLevelDefault        = slog.LevelDebug
 
+	// Log levels
 	debug = "debug"
 	warn  = "warn"
+	err   = "error"
 	info  = "info"
 )
 
@@ -56,49 +64,29 @@ func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 }
 
 // InitStructureLogConfig sets the structured log behavior
-func InitStructureLogConfig() {
-
+func InitStructureLogConfig() slog.Handler {
 	logOptions := &slog.HandlerOptions{}
 	var h slog.Handler
 
-	configurations := map[string]func(){
-		"options-logLevel": func() {
-			logLevel := os.Getenv("LOG_LEVEL")
-			slog.Info("log config",
-				"logLevel", logLevel,
-			)
-			switch logLevel {
-			case debug:
-				logOptions.Level = slog.LevelDebug
-			case warn:
-				logOptions.Level = slog.LevelWarn
-			case info:
-				logOptions.Level = slog.LevelInfo
-			default:
-				logOptions.Level = logLevelDefault
-			}
-		},
-		"options-addSource": func() {
-
-			addSourceBool := false
-
-			addSource := os.Getenv("LOG_ADD_SOURCE")
-			if addSource == "true" || addSource == "false" {
-				addSourceBool = addSource == "true"
-			}
-			slog.Info("log config",
-				"LOG_ADD_SOURCE", addSourceBool,
-			)
-			logOptions.AddSource = addSourceBool
-		},
+	// Configure log level
+	logLevel := os.Getenv("LOG_LEVEL")
+	switch logLevel {
+	case debug:
+		logOptions.Level = slog.LevelDebug
+	case warn:
+		logOptions.Level = slog.LevelWarn
+	case err:
+		logOptions.Level = slog.LevelError
+	case info:
+		logOptions.Level = slog.LevelInfo
+	default:
+		logOptions.Level = logLevelDefault
 	}
 
-	for name, f := range configurations {
-		slog.Info("setting logging configuration",
-			"name", name,
-		)
-		f()
-	}
+	// Configure source information
+	addSource := os.Getenv("LOG_ADD_SOURCE")
+	logOptions.AddSource = addSource == "true" || addSource == "t" || addSource == "1"
+
 	h = slog.NewJSONHandler(os.Stdout, logOptions)
 	log.SetFlags(log.Llongfile)
 
@@ -108,4 +96,11 @@ func InitStructureLogConfig() {
 	// Wrap with contextHandler to support context-based attributes
 	logger := contextHandler{otelHandler}
 	slog.SetDefault(slog.New(logger))
+
+	slog.Info("log config",
+		"logLevel", logOptions.Level,
+		"addSource", logOptions.AddSource,
+	)
+
+	return h
 }
