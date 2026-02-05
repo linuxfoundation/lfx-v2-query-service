@@ -21,6 +21,7 @@ import (
 
 	"github.com/opensearch-project/opensearch-go/v4"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var queryResourceTemplate = template.Must(
@@ -248,11 +249,11 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 	opensearchClient, errpensearchClient := opensearchapi.NewClient(opensearchapi.Config{
 		Client: opensearch.Config{
 			Addresses: []string{config.URL},
-			Transport: &http.Transport{
+			Transport: otelhttp.NewTransport(&http.Transport{
 				MaxIdleConnsPerHost:   10,
 				ResponseHeaderTimeout: 30 * time.Second,
 				DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-			},
+			}),
 		},
 	})
 	if errpensearchClient != nil {
@@ -267,7 +268,8 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 		client: &httpClient{
 			baseURL: config.URL,
 			httpClient: &http.Client{
-				Timeout: 30 * time.Second,
+				Timeout:   30 * time.Second,
+				Transport: otelhttp.NewTransport(http.DefaultTransport),
 			},
 			client: opensearchClient,
 		},
