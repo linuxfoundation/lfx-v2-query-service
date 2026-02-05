@@ -14,11 +14,6 @@ import (
 
 type ctxKey string
 
-// Public constants
-const (
-	ErrKey = "error"
-)
-
 // Private constants
 const (
 	slogFields      ctxKey = "slog_fields"
@@ -64,9 +59,8 @@ func AppendCtx(parent context.Context, attr slog.Attr) context.Context {
 }
 
 // InitStructureLogConfig sets the structured log behavior
-func InitStructureLogConfig() slog.Handler {
+func InitStructureLogConfig() {
 	logOptions := &slog.HandlerOptions{}
-	var h slog.Handler
 
 	// Configure log level
 	logLevel := os.Getenv("LOG_LEVEL")
@@ -87,7 +81,7 @@ func InitStructureLogConfig() slog.Handler {
 	addSource := os.Getenv("LOG_ADD_SOURCE")
 	logOptions.AddSource = addSource == "true" || addSource == "t" || addSource == "1"
 
-	h = slog.NewJSONHandler(os.Stdout, logOptions)
+	h := slog.NewJSONHandler(os.Stdout, logOptions)
 	log.SetFlags(log.Llongfile)
 
 	// Wrap with slog-otel handler to add trace_id and span_id from context
@@ -102,5 +96,4 @@ func InitStructureLogConfig() slog.Handler {
 		"addSource", logOptions.AddSource,
 	)
 
-	return h
 }

@@ -16,7 +16,7 @@ import (
 
 	"github.com/linuxfoundation/lfx-v2-query-service/cmd/service"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
-	logging "github.com/linuxfoundation/lfx-v2-query-service/pkg/log"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/log"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/utils"
 	"goa.design/clue/debug"
 )
@@ -38,7 +38,7 @@ const (
 
 func init() {
 	// slog is the standard library logger, we use it to log errors and
-	logging.InitStructureLogConfig()
+	log.InitStructureLogConfig()
 }
 
 func main() {
@@ -66,7 +66,7 @@ func main() {
 	}
 	otelShutdown, err := utils.SetupOTelSDKWithConfig(ctx, otelConfig)
 	if err != nil {
-		slog.ErrorContext(ctx, "error setting up OpenTelemetry SDK", logging.ErrKey, err)
+		slog.ErrorContext(ctx, "error setting up OpenTelemetry SDK", "error", err)
 		os.Exit(1)
 	}
 	// Handle shutdown properly so nothing leaks.
@@ -74,7 +74,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), gracefulShutdownSeconds*time.Second)
 		defer cancel()
 		if shutdownErr := otelShutdown(ctx); shutdownErr != nil {
-			slog.ErrorContext(ctx, "error shutting down OpenTelemetry SDK", logging.ErrKey, shutdownErr)
+			slog.ErrorContext(ctx, "error shutting down OpenTelemetry SDK", "error", shutdownErr)
 		}
 	}()
 
