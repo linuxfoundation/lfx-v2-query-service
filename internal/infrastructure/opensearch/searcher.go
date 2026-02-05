@@ -267,11 +267,7 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 	return &OpenSearchSearcher{
 		client: &httpClient{
 			baseURL: config.URL,
-			httpClient: &http.Client{
-				Timeout:   30 * time.Second,
-				Transport: otelhttp.NewTransport(http.DefaultTransport),
-			},
-			client: opensearchClient,
+			client:  opensearchClient,
 		},
 		index: config.Index,
 	}, nil
