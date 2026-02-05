@@ -39,6 +39,7 @@ app:
   # otel is the configuration for OpenTelemetry tracing
   otel:
     serviceName: ""
+    # serviceVersion defaults to the build-time Version variable (set via ldflags) when empty
     serviceVersion: ""
     protocol: "grpc"
     endpoint: ""
