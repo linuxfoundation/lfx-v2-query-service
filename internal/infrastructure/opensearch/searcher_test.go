@@ -731,7 +731,7 @@ func TestOpenSearchSearcherIntegration(t *testing.T) {
 
 func TestOpenSearchSearcherQueryResourcesCount(t *testing.T) {
 	tests := []struct {
-		name                    string
+		name                   string
 		countCriteria          model.SearchCriteria
 		aggregationCriteria    model.SearchCriteria
 		publicOnly             bool
@@ -860,7 +860,6 @@ func TestOpenSearchSearcherQueryResourcesCount(t *testing.T) {
 		})
 	}
 }
-
 
 // Helper function to create string pointers
 func stringPtr(s string) *string {

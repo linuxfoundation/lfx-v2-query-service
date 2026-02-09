@@ -19,9 +19,8 @@ import (
 )
 
 type httpClient struct {
-	baseURL    string
-	httpClient *http.Client
-	client     *opensearchapi.Client
+	baseURL string
+	client  *opensearchapi.Client
 }
 
 func (c *httpClient) Search(ctx context.Context, index string, query []byte) (*SearchResponse, error) {
