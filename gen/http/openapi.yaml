@@ -226,6 +226,14 @@ paths:
                   description: Opaque token for pagination
                   required: false
                   type: string
+                - name: page_size
+                  in: query
+                  description: Number of results per page
+                  required: false
+                  type: integer
+                  default: 50
+                  maximum: 1000
+                  minimum: 1
                 - name: Authorization
                   in: header
                   description: Token

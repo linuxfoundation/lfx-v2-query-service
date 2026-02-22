@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/global"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
@@ -23,7 +22,7 @@ type httpClient struct {
 	client  *opensearchapi.Client
 }
 
-func (c *httpClient) Search(ctx context.Context, index string, query []byte) (*SearchResponse, error) {
+func (c *httpClient) Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error) {
 
 	slog.DebugContext(ctx, "executing opensearch search",
 		"index", index,
@@ -73,7 +72,7 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte) (*S
 	}
 
 	// if the number of hits returned equals the page size, there may be more results.
-	if len(searchResponse.Hits.Hits) == constants.DefaultPageSize {
+	if pageSize > 0 && len(searchResponse.Hits.Hits) == pageSize {
 		searchAfter := searchResponse.Hits.Hits[len(searchResponse.Hits.Hits)-1].Sort
 		pageToken, errEncodePageToken := paging.EncodePageToken(searchAfter, global.PageTokenSecret(ctx))
 		if errEncodePageToken != nil {

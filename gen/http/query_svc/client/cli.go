@@ -10,6 +10,7 @@ package client
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"unicode/utf8"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
@@ -18,7 +19,7 @@ import (
 
 // BuildQueryResourcesPayload builds the payload for the query-svc
 // query-resources endpoint from CLI flags.
-func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
+func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesPageSize string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
 	var err error
 	var version string
 	{
@@ -133,6 +134,26 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 			pageToken = &querySvcQueryResourcesPageToken
 		}
 	}
+	var pageSize int
+	{
+		if querySvcQueryResourcesPageSize != "" {
+			var v int64
+			v, err = strconv.ParseInt(querySvcQueryResourcesPageSize, 10, strconv.IntSize)
+			pageSize = int(v)
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for pageSize, must be INT")
+			}
+			if pageSize < 1 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 1, true))
+			}
+			if pageSize > 1000 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 1000, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var bearerToken string
 	{
 		bearerToken = querySvcQueryResourcesBearerToken
@@ -151,6 +172,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	v.CelFilter = celFilter
 	v.Sort = sort
 	v.PageToken = pageToken
+	v.PageSize = pageSize
 	v.BearerToken = bearerToken
 
 	return v, nil

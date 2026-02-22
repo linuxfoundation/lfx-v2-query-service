@@ -40,7 +40,7 @@ type OpenSearchSearcher struct {
 // OpenSearchClientRetriever defines the interface for OpenSearch operations
 // This allows for easy mocking and testing
 type OpenSearchClientRetriever interface {
-	Search(ctx context.Context, index string, query []byte) (*SearchResponse, error)
+	Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error)
 	Count(ctx context.Context, index string, query []byte) (*CountResponse, error)
 	AggregationSearch(ctx context.Context, index string, query []byte) (*AggregationResponse, error)
 	IsReady(ctx context.Context) error
@@ -59,7 +59,7 @@ func (os *OpenSearchSearcher) QueryResources(ctx context.Context, criteria model
 	}
 
 	// Execute the search
-	response, err := os.client.Search(ctx, os.index, query)
+	response, err := os.client.Search(ctx, os.index, query, criteria.PageSize)
 	if err != nil {
 		return nil, fmt.Errorf("opensearch search failed: %w", err)
 	}
