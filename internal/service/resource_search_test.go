@@ -913,9 +913,6 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 
 				if tc.expectedCacheControl {
 					assertion.NotNil(result.CacheControl)
-				} else {
-					// For non-anonymous users, CacheControl might be nil
-					// This depends on implementation
 				}
 			}
 		})

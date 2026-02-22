@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type testContextKey string
+
 func TestWrapError(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -225,7 +227,7 @@ func TestWrapError_ContextHandling(t *testing.T) {
 		},
 		{
 			name: "context with value",
-			ctx:  context.WithValue(context.Background(), "key", "value"),
+			ctx:  context.WithValue(context.Background(), testContextKey("key"), "value"),
 			err:  pkgerrors.NewNotFound("test", nil),
 		},
 		{

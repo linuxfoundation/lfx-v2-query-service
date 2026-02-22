@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type testContextKey string
+
 func TestEncodePageToken(t *testing.T) {
 	// Create a test secret key (32 bytes)
 	secretKey := [32]byte{}
@@ -370,7 +372,7 @@ func TestDecodePageToken_ContextHandling(t *testing.T) {
 		},
 		{
 			name: "context with value",
-			ctx:  context.WithValue(context.Background(), "key", "value"),
+			ctx:  context.WithValue(context.Background(), testContextKey("key"), "value"),
 		},
 		{
 			name: "cancelled context",
