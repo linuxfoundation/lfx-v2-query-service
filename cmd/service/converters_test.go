@@ -35,9 +35,10 @@ func TestPayloadToCriteria(t *testing.T) {
 		{
 			name: "basic payload conversion",
 			payload: &querysvc.QueryResourcesPayload{
-				Name: stringPtr("test-project"),
-				Type: stringPtr("project"),
-				Tags: []string{"active", "governance"},
+				Name:     stringPtr("test-project"),
+				Type:     stringPtr("project"),
+				Tags:     []string{"active", "governance"},
+				PageSize: constants.DefaultPageSize,
 			},
 			expectedCriteria: model.SearchCriteria{
 				Name:         stringPtr("test-project"),
@@ -50,8 +51,9 @@ func TestPayloadToCriteria(t *testing.T) {
 		{
 			name: "payload with parent",
 			payload: &querysvc.QueryResourcesPayload{
-				Parent: stringPtr("parent-id"),
-				Name:   stringPtr("child-resource"),
+				Parent:   stringPtr("parent-id"),
+				Name:     stringPtr("child-resource"),
+				PageSize: constants.DefaultPageSize,
 			},
 			expectedCriteria: model.SearchCriteria{
 				Name:     stringPtr("child-resource"),
@@ -63,8 +65,9 @@ func TestPayloadToCriteria(t *testing.T) {
 		{
 			name: "payload with sorting - name_asc",
 			payload: &querysvc.QueryResourcesPayload{
-				Name: stringPtr("test"),
-				Sort: "name_asc",
+				Name:     stringPtr("test"),
+				Sort:     "name_asc",
+				PageSize: constants.DefaultPageSize,
 			},
 			expectedCriteria: model.SearchCriteria{
 				Name:      stringPtr("test"),
@@ -77,8 +80,9 @@ func TestPayloadToCriteria(t *testing.T) {
 		{
 			name: "payload with sorting - name_desc",
 			payload: &querysvc.QueryResourcesPayload{
-				Name: stringPtr("test"),
-				Sort: "name_desc",
+				Name:     stringPtr("test"),
+				Sort:     "name_desc",
+				PageSize: constants.DefaultPageSize,
 			},
 			expectedCriteria: model.SearchCriteria{
 				Name:      stringPtr("test"),
@@ -91,8 +95,9 @@ func TestPayloadToCriteria(t *testing.T) {
 		{
 			name: "payload with sorting - updated_asc",
 			payload: &querysvc.QueryResourcesPayload{
-				Name: stringPtr("test"),
-				Sort: "updated_asc",
+				Name:     stringPtr("test"),
+				Sort:     "updated_asc",
+				PageSize: constants.DefaultPageSize,
 			},
 			expectedCriteria: model.SearchCriteria{
 				Name:      stringPtr("test"),
@@ -105,8 +110,9 @@ func TestPayloadToCriteria(t *testing.T) {
 		{
 			name: "payload with sorting - updated_desc",
 			payload: &querysvc.QueryResourcesPayload{
-				Name: stringPtr("test"),
-				Sort: "updated_desc",
+				Name:     stringPtr("test"),
+				Sort:     "updated_desc",
+				PageSize: constants.DefaultPageSize,
 			},
 			expectedCriteria: model.SearchCriteria{
 				Name:      stringPtr("test"),
@@ -117,17 +123,32 @@ func TestPayloadToCriteria(t *testing.T) {
 			expectedError: false,
 		},
 		{
+			name: "payload with explicit page_size",
+			payload: &querysvc.QueryResourcesPayload{
+				Name:     stringPtr("test"),
+				PageSize: 20,
+			},
+			expectedCriteria: model.SearchCriteria{
+				Name:     stringPtr("test"),
+				PageSize: 20,
+			},
+			expectedError: false,
+		},
+		{
 			name: "payload with invalid page token",
 			payload: &querysvc.QueryResourcesPayload{
 				Name:      stringPtr("test"),
 				PageToken: stringPtr("invalid-token"),
+				PageSize:  constants.DefaultPageSize,
 			},
 			expectedCriteria: model.SearchCriteria{}, // Will be empty due to error
 			expectedError:    true,
 		},
 		{
-			name:    "empty payload",
-			payload: &querysvc.QueryResourcesPayload{},
+			name: "empty payload",
+			payload: &querysvc.QueryResourcesPayload{
+				PageSize: constants.DefaultPageSize,
+			},
 			expectedCriteria: model.SearchCriteria{
 				PageSize: constants.DefaultPageSize,
 			},

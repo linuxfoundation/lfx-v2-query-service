@@ -37,7 +37,7 @@ func UsageExamples() string {
    ]' --date-field "updated_at" --date-from "2025-01-10" --date-to "2025-01-28" --filters '[
       "status:active",
       "priority:high"
-   ]' --cel-filter "data.slug == \"tlf\"" --sort "updated_desc" --page-token "****" --bearer-token "eyJhbGci..."` + "\n" +
+   ]' --cel-filter "data.slug == \"tlf\"" --sort "updated_desc" --page-token "****" --page-size 20 --bearer-token "eyJhbGci..."` + "\n" +
 		""
 }
 
@@ -67,6 +67,7 @@ func ParseEndpoint(
 		querySvcQueryResourcesCelFilterFlag   = querySvcQueryResourcesFlags.String("cel-filter", "", "")
 		querySvcQueryResourcesSortFlag        = querySvcQueryResourcesFlags.String("sort", "name_asc", "")
 		querySvcQueryResourcesPageTokenFlag   = querySvcQueryResourcesFlags.String("page-token", "", "")
+		querySvcQueryResourcesPageSizeFlag    = querySvcQueryResourcesFlags.String("page-size", "50", "")
 		querySvcQueryResourcesBearerTokenFlag = querySvcQueryResourcesFlags.String("bearer-token", "REQUIRED", "")
 
 		querySvcQueryResourcesCountFlags           = flag.NewFlagSet("query-resources-count", flag.ExitOnError)
@@ -184,7 +185,7 @@ func ParseEndpoint(
 			switch epn {
 			case "query-resources":
 				endpoint = c.QueryResources()
-				data, err = querysvcc.BuildQueryResourcesPayload(*querySvcQueryResourcesVersionFlag, *querySvcQueryResourcesNameFlag, *querySvcQueryResourcesParentFlag, *querySvcQueryResourcesTypeFlag, *querySvcQueryResourcesTagsFlag, *querySvcQueryResourcesTagsAllFlag, *querySvcQueryResourcesDateFieldFlag, *querySvcQueryResourcesDateFromFlag, *querySvcQueryResourcesDateToFlag, *querySvcQueryResourcesFiltersFlag, *querySvcQueryResourcesCelFilterFlag, *querySvcQueryResourcesSortFlag, *querySvcQueryResourcesPageTokenFlag, *querySvcQueryResourcesBearerTokenFlag)
+				data, err = querysvcc.BuildQueryResourcesPayload(*querySvcQueryResourcesVersionFlag, *querySvcQueryResourcesNameFlag, *querySvcQueryResourcesParentFlag, *querySvcQueryResourcesTypeFlag, *querySvcQueryResourcesTagsFlag, *querySvcQueryResourcesTagsAllFlag, *querySvcQueryResourcesDateFieldFlag, *querySvcQueryResourcesDateFromFlag, *querySvcQueryResourcesDateToFlag, *querySvcQueryResourcesFiltersFlag, *querySvcQueryResourcesCelFilterFlag, *querySvcQueryResourcesSortFlag, *querySvcQueryResourcesPageTokenFlag, *querySvcQueryResourcesPageSizeFlag, *querySvcQueryResourcesBearerTokenFlag)
 			case "query-resources-count":
 				endpoint = c.QueryResourcesCount()
 				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountBearerTokenFlag)
@@ -228,7 +229,7 @@ Additional help:
 `, os.Args[0])
 }
 func querySvcQueryResourcesUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -cel-filter STRING -sort STRING -page-token STRING -bearer-token STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -cel-filter STRING -sort STRING -page-token STRING -page-size INT -bearer-token STRING
 
 Locate resources by their type or parent, or use typeahead search to query resources by a display name or similar alias.
     -version STRING: 
@@ -244,6 +245,7 @@ Locate resources by their type or parent, or use typeahead search to query resou
     -cel-filter STRING: 
     -sort STRING: 
     -page-token STRING: 
+    -page-size INT: 
     -bearer-token STRING: 
 
 Example:
@@ -256,7 +258,7 @@ Example:
    ]' --date-field "updated_at" --date-from "2025-01-10" --date-to "2025-01-28" --filters '[
       "status:active",
       "priority:high"
-   ]' --cel-filter "data.slug == \"tlf\"" --sort "updated_desc" --page-token "****" --bearer-token "eyJhbGci..."
+   ]' --cel-filter "data.slug == \"tlf\"" --sort "updated_desc" --page-token "****" --page-size 20 --bearer-token "eyJhbGci..."
 `, os.Args[0])
 }
 

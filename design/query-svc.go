@@ -101,6 +101,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("cel_filter")
 			dsl.Param("sort")
 			dsl.Param("page_token")
+			dsl.Param("page_size")
 			dsl.Header("bearer_token:Authorization")
 			dsl.Response(dsl.StatusOK, func() {
 				dsl.Header("cache_control:Cache-Control")

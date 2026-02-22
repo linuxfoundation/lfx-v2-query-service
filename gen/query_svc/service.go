@@ -188,6 +188,8 @@ type QueryResourcesPayload struct {
 	Sort string
 	// Opaque token for pagination
 	PageToken *string
+	// Number of results per page
+	PageSize int
 }
 
 // QueryResourcesResult is the result type of the query-svc service
