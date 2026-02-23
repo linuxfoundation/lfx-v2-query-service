@@ -22,13 +22,15 @@ type MockOpenSearchClient struct {
 	countError          error
 	aggregationResponse *AggregationResponse
 	aggregationError    error
+	lastPageSize        int
 }
 
 func NewMockOpenSearchClient() *MockOpenSearchClient {
 	return &MockOpenSearchClient{}
 }
 
-func (m *MockOpenSearchClient) Search(ctx context.Context, index string, query []byte) (*SearchResponse, error) {
+func (m *MockOpenSearchClient) Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error) {
+	m.lastPageSize = pageSize
 	if m.searchError != nil {
 		return nil, m.searchError
 	}
@@ -729,9 +731,61 @@ func TestOpenSearchSearcherIntegration(t *testing.T) {
 	})
 }
 
+func TestQueryResourcesPassesPageSizeToClient(t *testing.T) {
+	tests := []struct {
+		name             string
+		pageSize         int
+		expectedPageSize int
+	}{
+		{
+			name:             "default page size",
+			pageSize:         50,
+			expectedPageSize: 50,
+		},
+		{
+			name:             "custom page size",
+			pageSize:         20,
+			expectedPageSize: 20,
+		},
+		{
+			name:             "max page size",
+			pageSize:         1000,
+			expectedPageSize: 1000,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertion := assert.New(t)
+
+			mockClient := NewMockOpenSearchClient()
+			mockClient.SetSearchResponse(&SearchResponse{
+				Hits: Hits{
+					Total: Total{Value: 0},
+					Hits:  []Hit{},
+				},
+			})
+
+			searcher := &OpenSearchSearcher{
+				client: mockClient,
+				index:  "test-index",
+			}
+
+			ctx := context.Background()
+			criteria := model.SearchCriteria{
+				PageSize: tc.pageSize,
+			}
+
+			_, err := searcher.QueryResources(ctx, criteria)
+			assertion.NoError(err)
+			assertion.Equal(tc.expectedPageSize, mockClient.lastPageSize)
+		})
+	}
+}
+
 func TestOpenSearchSearcherQueryResourcesCount(t *testing.T) {
 	tests := []struct {
-		name                    string
+		name                   string
 		countCriteria          model.SearchCriteria
 		aggregationCriteria    model.SearchCriteria
 		publicOnly             bool
@@ -860,7 +914,6 @@ func TestOpenSearchSearcherQueryResourcesCount(t *testing.T) {
 		})
 	}
 }
-
 
 // Helper function to create string pointers
 func stringPtr(s string) *string {

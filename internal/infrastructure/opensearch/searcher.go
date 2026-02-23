@@ -21,6 +21,7 @@ import (
 
 	"github.com/opensearch-project/opensearch-go/v4"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var queryResourceTemplate = template.Must(
@@ -39,7 +40,7 @@ type OpenSearchSearcher struct {
 // OpenSearchClientRetriever defines the interface for OpenSearch operations
 // This allows for easy mocking and testing
 type OpenSearchClientRetriever interface {
-	Search(ctx context.Context, index string, query []byte) (*SearchResponse, error)
+	Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error)
 	Count(ctx context.Context, index string, query []byte) (*CountResponse, error)
 	AggregationSearch(ctx context.Context, index string, query []byte) (*AggregationResponse, error)
 	IsReady(ctx context.Context) error
@@ -58,7 +59,7 @@ func (os *OpenSearchSearcher) QueryResources(ctx context.Context, criteria model
 	}
 
 	// Execute the search
-	response, err := os.client.Search(ctx, os.index, query)
+	response, err := os.client.Search(ctx, os.index, query, criteria.PageSize)
 	if err != nil {
 		return nil, fmt.Errorf("opensearch search failed: %w", err)
 	}
@@ -248,11 +249,11 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 	opensearchClient, errpensearchClient := opensearchapi.NewClient(opensearchapi.Config{
 		Client: opensearch.Config{
 			Addresses: []string{config.URL},
-			Transport: &http.Transport{
+			Transport: otelhttp.NewTransport(&http.Transport{
 				MaxIdleConnsPerHost:   10,
 				ResponseHeaderTimeout: 30 * time.Second,
 				DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-			},
+			}),
 		},
 	})
 	if errpensearchClient != nil {
@@ -266,10 +267,7 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 	return &OpenSearchSearcher{
 		client: &httpClient{
 			baseURL: config.URL,
-			httpClient: &http.Client{
-				Timeout: 30 * time.Second,
-			},
-			client: opensearchClient,
+			client:  opensearchClient,
 		},
 		index: config.Index,
 	}, nil

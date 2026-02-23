@@ -111,8 +111,35 @@ Environment variables control implementation selection:
 - Integration tests can switch between real and mock implementations
 - Test files follow `*_test.go` pattern alongside implementation files
 
-<<<<<<< HEAD
 ## API Features
+
+### Page Size
+
+The `query-resources` endpoint supports a `page_size` query parameter to control how many documents are returned per page.
+
+**Query Parameter:**
+
+- `page_size` (int, optional): Number of results per page (min: 1, max: 1000, default: 50)
+
+**Examples:**
+
+```bash
+# Custom page size
+GET /query/resources?v=1&type=project&page_size=20
+
+# Combined with other filters
+GET /query/resources?v=1&type=project&tags=active&date_field=updated_at&date_from=2025-01-01&page_size=100
+```
+
+**Interaction with post-query filters:** `cel_filter` and access control checks are applied after OpenSearch returns results, so a page may return fewer than `page_size` results.
+
+**Implementation Details:**
+
+- Goa design: `design/types.go` (`Sortable` type), `design/query-svc.go` (HTTP param)
+- Converter: `cmd/service/converters.go` (`payloadToCriteria()` passes `p.PageSize` to criteria)
+- Domain model: `internal/domain/model/search_criteria.go` (`PageSize` field)
+- OpenSearch pagination: `internal/infrastructure/opensearch/client.go` (page token generated when `len(hits) == pageSize`)
+- Constants: `pkg/constants/query.go` (`DefaultPageSize`, `MaxPageSize`)
 
 ### Date Range Filtering
 
@@ -154,16 +181,12 @@ GET /query/resources?v=1&type=project&tags=active&date_field=updated_at&date_fro
 - OpenSearch query: `internal/infrastructure/opensearch/template.go` (range query with gte/lte)
 - API design: `design/query-svc.go` (Goa design specification)
 - Test coverage: `cmd/service/converters_test.go` (17 comprehensive test cases)
-=======
-## CEL Filter Feature
+
+### CEL Filter
 
 The service supports Common Expression Language (CEL) filtering for post-query resource filtering.
 
-### Overview
-
 CEL filtering allows API consumers to filter resources on arbitrary data fields using a safe, non-Turing complete expression language. The filter is applied after the OpenSearch query but before access control checks.
-
-### Implementation Details
 
 **Location**: `internal/infrastructure/filter/cel_filter.go`
 
@@ -178,7 +201,7 @@ CEL filtering allows API consumers to filter resources on arbitrary data fields 
 - Filters resources before access control checks
 - Reduces number of access control checks needed
 
-### Available Variables in CEL Expressions
+**Available Variables in CEL Expressions:**
 
 - `data` (map): Resource data object
 - `resource_type` (string): Resource type
@@ -186,29 +209,13 @@ CEL filtering allows API consumers to filter resources on arbitrary data fields 
 
 Note: `type` is a reserved word in CEL, so we use `resource_type` instead.
 
-### Example Usage
+**Example Usage:**
 
-```go
-// API call
+```bash
 GET /query/resources?type=project&cel_filter=data.slug == "tlf"
-
-// Expression is evaluated against each resource after OpenSearch query
-// Only matching resources proceed to access control checks
 ```
 
-### Adding CEL Filter Tests
-
-When writing tests that involve resource search:
-
-```go
-// Use MockResourceFilter for testing
-mockFilter := mock.NewMockResourceFilter()
-
-// Pass to service constructor
-service := service.NewResourceSearch(mockSearcher, mockAccessChecker, mockFilter)
-```
-
-### Common CEL Operations
+**Common CEL Operations:**
 
 - Equality: `data.status == "active"`
 - Comparison: `data.priority > 5`
@@ -217,14 +224,13 @@ service := service.NewResourceSearch(mockSearcher, mockAccessChecker, mockFilter
 - List membership: `data.category in ["security", "networking"]`
 - Field existence: `has(data.archived)`
 
-### Performance Considerations
+**Performance Considerations:**
 
 - Compiled CEL programs are cached (100 max entries, 5-minute TTL)
 - Each resource evaluation has 100ms timeout
 - Post-query filtering means pagination may return fewer results than page size
 - For best performance, use specific OpenSearch criteria first, then CEL for refinement
 
-### Important Limitations
+**Important Limitations:**
 
-**Pagination**: CEL filters apply only to results from each OpenSearch page. If the target resource is not in the first page of OpenSearch results, it won't be found even if it matches the CEL filter. Always use specific primary search criteria (`type`, `name`, `parent`) to narrow OpenSearch results first.
->>>>>>> 3e45fc4d33aba656a5abe1c3df0d3f2bd0fd6be7
+CEL filters apply only to results from each OpenSearch page. If the target resource is not in the first page of OpenSearch results, it won't be found even if it matches the CEL filter. Always use specific primary search criteria (`type`, `name`, `parent`) to narrow OpenSearch results first.

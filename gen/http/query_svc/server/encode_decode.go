@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -52,6 +53,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			celFilter   *string
 			sort        string
 			pageToken   *string
+			pageSize    int
 			bearerToken string
 			err         error
 		)
@@ -120,6 +122,24 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if pageTokenRaw != "" {
 			pageToken = &pageTokenRaw
 		}
+		{
+			pageSizeRaw := qp.Get("page_size")
+			if pageSizeRaw == "" {
+				pageSize = 50
+			} else {
+				v, err2 := strconv.ParseInt(pageSizeRaw, 10, strconv.IntSize)
+				if err2 != nil {
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("page_size", pageSizeRaw, "integer"))
+				}
+				pageSize = int(v)
+			}
+		}
+		if pageSize < 1 {
+			err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 1, true))
+		}
+		if pageSize > 1000 {
+			err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 1000, false))
+		}
 		bearerToken = r.Header.Get("Authorization")
 		if bearerToken == "" {
 			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
@@ -127,7 +147,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, celFilter, sort, pageToken, bearerToken)
+		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, celFilter, sort, pageToken, pageSize, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]

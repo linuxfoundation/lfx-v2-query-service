@@ -98,7 +98,7 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		CelFilter:    p.CelFilter,
 		SortBy:       p.Sort,
 		PageToken:    p.PageToken,
-		PageSize:     constants.DefaultPageSize,
+		PageSize:     p.PageSize,
 	}
 	switch p.Sort {
 	case "name_asc":
@@ -214,7 +214,7 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		criteria.ResourceType = payload.Type
 	}
 	if payload.Parent != nil {
-		criteria.ParentRef = payload.Parent
+		criteria.Parent = payload.Parent
 	}
 
 	// Validate date filtering parameters
@@ -280,7 +280,7 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		criteria.ResourceType = payload.Type
 	}
 	if payload.Parent != nil {
-		criteria.ParentRef = payload.Parent
+		criteria.Parent = payload.Parent
 	}
 
 	// Validate date filtering parameters

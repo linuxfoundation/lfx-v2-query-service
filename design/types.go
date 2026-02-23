@@ -28,6 +28,12 @@ var Sortable = dsl.Type("Sortable", func() {
 	dsl.Attribute("page_token", dsl.String, "Opaque token for pagination", func() {
 		dsl.Example("****")
 	})
+	dsl.Attribute("page_size", dsl.Int, "Number of results per page", func() {
+		dsl.Minimum(1)
+		dsl.Maximum(1000)
+		dsl.Default(50)
+		dsl.Example(20)
+	})
 })
 
 var Resource = dsl.Type("Resource", func() {

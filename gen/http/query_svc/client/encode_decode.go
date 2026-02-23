@@ -10,6 +10,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -86,6 +87,7 @@ func EncodeQueryResourcesRequest(encoder func(*http.Request) goahttp.Encoder) fu
 		if p.PageToken != nil {
 			values.Add("page_token", *p.PageToken)
 		}
+		values.Add("page_size", fmt.Sprintf("%v", p.PageSize))
 		req.URL.RawQuery = values.Encode()
 		return nil
 	}
