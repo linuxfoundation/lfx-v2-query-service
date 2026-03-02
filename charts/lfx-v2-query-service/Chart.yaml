@@ -5,5 +5,7 @@ apiVersion: v2
 name: lfx-v2-query-service
 description: LFX Platform V2 Query Service chart
 type: application
-version: 0.4.12
+# This version should not be incremented, as it is dynamically replaced with the release version during the chart build
+# job.
+version: 0.0.1
 appVersion: "latest"
