@@ -3,6 +3,10 @@
 ---
 replicaCount: 3
 
+podAnnotations: {}
+
+podLabels: {}
+
 # Override from CLI/CI: --set image.tag=<git-sha>, etc.
 image:
   repository: ghcr.io/linuxfoundation/lfx-v2-query-service/cmd
