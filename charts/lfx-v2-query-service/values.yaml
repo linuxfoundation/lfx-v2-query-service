@@ -15,6 +15,13 @@ podAnnotations: {}
 #   environment: production
 podLabels: {}
 
+# podDisruptionBudget configures a PodDisruptionBudget for the deployment.
+# Only one of minAvailable or maxUnavailable may be set (not both).
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+
 # Override from CLI/CI: --set image.tag=<git-sha>, etc.
 image:
   repository: ghcr.io/linuxfoundation/lfx-v2-query-service/cmd
