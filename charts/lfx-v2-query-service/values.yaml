@@ -3,6 +3,8 @@
 ---
 replicaCount: 3
 
+# podDisruptionBudget configures a PodDisruptionBudget for the deployment.
+# Only one of minAvailable or maxUnavailable may be set (not both).
 podDisruptionBudget:
   enabled: false
   # minAvailable: 1
