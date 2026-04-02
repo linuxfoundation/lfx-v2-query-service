@@ -121,6 +121,10 @@ make docker-run
 
 ## Usage
 
+### Queryable Resource Types
+
+All resource types searchable via this service are listed in [`docs/resource-catalog.md`](docs/resource-catalog.md), organized by the service that indexes them. Each entry links to that service's indexer contract — the authoritative reference for its data schemas, tags, access control config, and parent references.
+
 ### Running Locally
 
 #### With Mock Implementation (Default for Development)
@@ -214,17 +218,12 @@ Authorization: Bearer <jwt_token>
 - `name`: Resource name or alias (supports typeahead search)
 - `type`: Resource type to filter by
 - `parent`: Parent resource for hierarchical queries
-<<<<<<< HEAD
 - `tags`: Array of tags to filter by (OR logic - matches resources with any of these tags)
 - `tags_all`: Array of tags to filter by (AND logic - matches resources that have all of these tags)
+- `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](#cel-filter) section)
 - `date_field`: Date field to filter on (within data object) - used with date_from and/or date_to
 - `date_from`: Start date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses start of day UTC
 - `date_to`: End date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses end of day UTC
-=======
-- `tags`: Array of tags to filter by (OR logic)
-- `tags_all`: Array of tags where all must match (AND logic)
-- `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](#cel-filter) section)
->>>>>>> 3e45fc4d33aba656a5abe1c3df0d3f2bd0fd6be7
 - `sort`: Sort order (name_asc, name_desc, updated_asc, updated_desc)
 - `page_token`: Pagination token
 - `v`: API version (required)
@@ -249,7 +248,6 @@ Authorization: Bearer <jwt_token>
 }
 ```
 
-<<<<<<< HEAD
 **Date Range Filtering Examples:**
 
 Filter resources updated between two dates (date-only format):
@@ -288,7 +286,7 @@ Authorization: Bearer <jwt_token>
   - For `date_to`: Converts to `2025-01-10T23:59:59Z` (end of day)
 - All dates are inclusive (uses `gte` and `lte` operators)
 - The `date_field` parameter is automatically prefixed with `"data."` to scope to the resource's data object
-=======
+
 #### CEL Filter
 
 The `cel_filter` query parameter enables advanced filtering of search results using Common Expression Language (CEL). CEL is a non-Turing complete expression language designed for safe, fast evaluation of expressions in performance-critical applications.
@@ -401,7 +399,6 @@ Invalid CEL expressions return a 400 Bad Request with details:
   "error": "filter expression failed: ERROR: <input>:1:6: Syntax error: mismatched input 'invalid' expecting {'[', '{', '(', '.', '-', '!', 'true', 'false', 'null', NUM_FLOAT, NUM_INT, NUM_UINT, STRING, BYTES, IDENTIFIER}"
 }
 ```
->>>>>>> 3e45fc4d33aba656a5abe1c3df0d3f2bd0fd6be7
 
 #### Organization Search API
 
