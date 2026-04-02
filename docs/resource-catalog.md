@@ -42,7 +42,7 @@ GET /query/resources?v=1&type=committee_member&tags=committee_uid:<committee_uid
 ### Find voting members of a committee
 
 ```bash
-GET /query/resources?v=1&type=committee_member&tags=committee_uid:<committee_uid>&tags=voting_status:Voting Rep
+GET /query/resources?v=1&type=committee_member&tags_all=committee_uid:<committee_uid>&tags_all=voting_status:Voting Rep
 ```
 
 ### Find child committees of a parent committee
