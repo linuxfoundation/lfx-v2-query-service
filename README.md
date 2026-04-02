@@ -121,6 +121,10 @@ make docker-run
 
 ## Usage
 
+### Queryable Resource Types
+
+All resource types searchable via this service are listed in [`docs/resource-catalog.md`](docs/resource-catalog.md), organized by the service that indexes them. Each entry links to that service's indexer contract — the authoritative reference for its data schemas, tags, access control config, and parent references.
+
 ### Running Locally
 
 #### With Mock Implementation (Default for Development)
