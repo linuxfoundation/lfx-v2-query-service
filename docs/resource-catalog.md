@@ -70,7 +70,7 @@ GET /query/resources?v=1&type=committee_member&tags=organization_name:<org_name>
 GET /query/resources?v=1&type=committee&tags=project_uid:<project_uid>&cel_filter=data.category=="TSC"&&data.public==true
 ```
 
-### Find all projects (by slug)
+### Find a project by slug
 
 ```bash
 GET /query/resources?v=1&type=project&tags=project_slug:<slug>
