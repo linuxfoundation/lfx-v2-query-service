@@ -87,6 +87,15 @@ const queryResourceSource = `{
         }
         {{- end }}
         {{- end }}
+        {{- if .FiltersAll }}
+        {{- range .FiltersAll }},
+        {
+          "term": {
+            {{ .Field | quote }}: {{ .Value | quote }}
+          }
+        }
+        {{- end }}
+        {{- end }}
         {{- if .FiltersOr }},
         {
           "bool": {

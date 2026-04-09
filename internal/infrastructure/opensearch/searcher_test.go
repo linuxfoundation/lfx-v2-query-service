@@ -346,6 +346,27 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			expectedFields: []string{"must", "tags", "governance", "data.status", "active"},
 		},
 		{
+			name: "render query with filters_all (single filter)",
+			criteria: model.SearchCriteria{
+				FiltersAll: []model.FieldFilter{
+					{Field: "data.status", Value: "active"},
+				},
+			},
+			expectedError:  false,
+			expectedFields: []string{"must", "data.status", "active"},
+		},
+		{
+			name: "render query with filters_all (multiple filters)",
+			criteria: model.SearchCriteria{
+				FiltersAll: []model.FieldFilter{
+					{Field: "data.status", Value: "active"},
+					{Field: "data.priority", Value: "high"},
+				},
+			},
+			expectedError:  false,
+			expectedFields: []string{"must", "data.status", "active", "data.priority", "high"},
+		},
+		{
 			name: "render query with filters_or (single filter)",
 			criteria: model.SearchCriteria{
 				FiltersOr: []model.FieldFilter{

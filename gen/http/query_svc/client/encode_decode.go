@@ -80,6 +80,9 @@ func EncodeQueryResourcesRequest(encoder func(*http.Request) goahttp.Encoder) fu
 		for _, value := range p.Filters {
 			values.Add("filters", value)
 		}
+		for _, value := range p.FiltersAll {
+			values.Add("filters_all", value)
+		}
 		for _, value := range p.FiltersOr {
 			values.Add("filters_or", value)
 		}
@@ -250,6 +253,9 @@ func EncodeQueryResourcesCountRequest(encoder func(*http.Request) goahttp.Encode
 		}
 		for _, value := range p.Filters {
 			values.Add("filters", value)
+		}
+		for _, value := range p.FiltersAll {
+			values.Add("filters_all", value)
 		}
 		for _, value := range p.FiltersOr {
 			values.Add("filters_or", value)

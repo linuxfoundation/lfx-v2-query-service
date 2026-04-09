@@ -37,6 +37,9 @@ func UsageExamples() string {
    ]' --date-field "updated_at" --date-from "2025-01-10" --date-to "2025-01-28" --filters '[
       "status:active",
       "priority:high"
+   ]' --filters-all '[
+      "status:active",
+      "priority:high"
    ]' --filters-or '[
       "mailing_list_id:abc",
       "mailing_list_id:xyz"
@@ -67,6 +70,7 @@ func ParseEndpoint(
 		querySvcQueryResourcesDateFromFlag    = querySvcQueryResourcesFlags.String("date-from", "", "")
 		querySvcQueryResourcesDateToFlag      = querySvcQueryResourcesFlags.String("date-to", "", "")
 		querySvcQueryResourcesFiltersFlag     = querySvcQueryResourcesFlags.String("filters", "", "")
+		querySvcQueryResourcesFiltersAllFlag  = querySvcQueryResourcesFlags.String("filters-all", "", "")
 		querySvcQueryResourcesFiltersOrFlag   = querySvcQueryResourcesFlags.String("filters-or", "", "")
 		querySvcQueryResourcesCelFilterFlag   = querySvcQueryResourcesFlags.String("cel-filter", "", "")
 		querySvcQueryResourcesSortFlag        = querySvcQueryResourcesFlags.String("sort", "name_asc", "")
@@ -85,6 +89,7 @@ func ParseEndpoint(
 		querySvcQueryResourcesCountDateFromFlag    = querySvcQueryResourcesCountFlags.String("date-from", "", "")
 		querySvcQueryResourcesCountDateToFlag      = querySvcQueryResourcesCountFlags.String("date-to", "", "")
 		querySvcQueryResourcesCountFiltersFlag     = querySvcQueryResourcesCountFlags.String("filters", "", "")
+		querySvcQueryResourcesCountFiltersAllFlag  = querySvcQueryResourcesCountFlags.String("filters-all", "", "")
 		querySvcQueryResourcesCountFiltersOrFlag   = querySvcQueryResourcesCountFlags.String("filters-or", "", "")
 		querySvcQueryResourcesCountBearerTokenFlag = querySvcQueryResourcesCountFlags.String("bearer-token", "REQUIRED", "")
 
@@ -190,10 +195,10 @@ func ParseEndpoint(
 			switch epn {
 			case "query-resources":
 				endpoint = c.QueryResources()
-				data, err = querysvcc.BuildQueryResourcesPayload(*querySvcQueryResourcesVersionFlag, *querySvcQueryResourcesNameFlag, *querySvcQueryResourcesParentFlag, *querySvcQueryResourcesTypeFlag, *querySvcQueryResourcesTagsFlag, *querySvcQueryResourcesTagsAllFlag, *querySvcQueryResourcesDateFieldFlag, *querySvcQueryResourcesDateFromFlag, *querySvcQueryResourcesDateToFlag, *querySvcQueryResourcesFiltersFlag, *querySvcQueryResourcesFiltersOrFlag, *querySvcQueryResourcesCelFilterFlag, *querySvcQueryResourcesSortFlag, *querySvcQueryResourcesPageTokenFlag, *querySvcQueryResourcesPageSizeFlag, *querySvcQueryResourcesBearerTokenFlag)
+				data, err = querysvcc.BuildQueryResourcesPayload(*querySvcQueryResourcesVersionFlag, *querySvcQueryResourcesNameFlag, *querySvcQueryResourcesParentFlag, *querySvcQueryResourcesTypeFlag, *querySvcQueryResourcesTagsFlag, *querySvcQueryResourcesTagsAllFlag, *querySvcQueryResourcesDateFieldFlag, *querySvcQueryResourcesDateFromFlag, *querySvcQueryResourcesDateToFlag, *querySvcQueryResourcesFiltersFlag, *querySvcQueryResourcesFiltersAllFlag, *querySvcQueryResourcesFiltersOrFlag, *querySvcQueryResourcesCelFilterFlag, *querySvcQueryResourcesSortFlag, *querySvcQueryResourcesPageTokenFlag, *querySvcQueryResourcesPageSizeFlag, *querySvcQueryResourcesBearerTokenFlag)
 			case "query-resources-count":
 				endpoint = c.QueryResourcesCount()
-				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountFiltersOrFlag, *querySvcQueryResourcesCountBearerTokenFlag)
+				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountFiltersAllFlag, *querySvcQueryResourcesCountFiltersOrFlag, *querySvcQueryResourcesCountBearerTokenFlag)
 			case "query-orgs":
 				endpoint = c.QueryOrgs()
 				data, err = querysvcc.BuildQueryOrgsPayload(*querySvcQueryOrgsVersionFlag, *querySvcQueryOrgsNameFlag, *querySvcQueryOrgsDomainFlag, *querySvcQueryOrgsBearerTokenFlag)
@@ -234,7 +239,7 @@ Additional help:
 `, os.Args[0])
 }
 func querySvcQueryResourcesUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -filters-or JSON -cel-filter STRING -sort STRING -page-token STRING -page-size INT -bearer-token STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -filters-all JSON -filters-or JSON -cel-filter STRING -sort STRING -page-token STRING -page-size INT -bearer-token STRING
 
 Locate resources by their type or parent, or use typeahead search to query resources by a display name or similar alias.
     -version STRING: 
@@ -247,6 +252,7 @@ Locate resources by their type or parent, or use typeahead search to query resou
     -date-from STRING: 
     -date-to STRING: 
     -filters JSON: 
+    -filters-all JSON: 
     -filters-or JSON: 
     -cel-filter STRING: 
     -sort STRING: 
@@ -264,6 +270,9 @@ Example:
    ]' --date-field "updated_at" --date-from "2025-01-10" --date-to "2025-01-28" --filters '[
       "status:active",
       "priority:high"
+   ]' --filters-all '[
+      "status:active",
+      "priority:high"
    ]' --filters-or '[
       "mailing_list_id:abc",
       "mailing_list_id:xyz"
@@ -272,7 +281,7 @@ Example:
 }
 
 func querySvcQueryResourcesCountUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources-count -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -filters-or JSON -bearer-token STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources-count -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -filters-all JSON -filters-or JSON -bearer-token STRING
 
 Count matching resources by query.
     -version STRING: 
@@ -285,6 +294,7 @@ Count matching resources by query.
     -date-from STRING: 
     -date-to STRING: 
     -filters JSON: 
+    -filters-all JSON: 
     -filters-or JSON: 
     -bearer-token STRING: 
 
@@ -296,6 +306,9 @@ Example:
       "governance",
       "security"
    ]' --date-field "updated_at" --date-from "2025-01-10" --date-to "2025-01-28" --filters '[
+      "status:active",
+      "priority:high"
+   ]' --filters-all '[
       "status:active",
       "priority:high"
    ]' --filters-or '[

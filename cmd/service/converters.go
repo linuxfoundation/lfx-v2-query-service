@@ -88,6 +88,12 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		return model.SearchCriteria{}, wrapError(ctx, err)
 	}
 
+	filtersAll, err := parseFilters(p.FiltersAll)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to parse filters_all", "error", err)
+		return model.SearchCriteria{}, wrapError(ctx, err)
+	}
+
 	filtersOr, err := parseFilters(p.FiltersOr)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to parse filters_or", "error", err)
@@ -101,6 +107,7 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		Tags:         p.Tags,
 		TagsAll:      p.TagsAll,
 		Filters:      filters,
+		FiltersAll:   filtersAll,
 		FiltersOr:    filtersOr,
 		CelFilter:    p.CelFilter,
 		SortBy:       p.Sort,
@@ -210,6 +217,11 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		return criteria, fmt.Errorf("invalid filters: %w", err)
 	}
 
+	filtersAll, err := parseFilters(payload.FiltersAll)
+	if err != nil {
+		return criteria, fmt.Errorf("invalid filters_all: %w", err)
+	}
+
 	filtersOr, err := parseFilters(payload.FiltersOr)
 	if err != nil {
 		return criteria, fmt.Errorf("invalid filters_or: %w", err)
@@ -219,6 +231,7 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 	criteria.Tags = payload.Tags
 	criteria.TagsAll = payload.TagsAll
 	criteria.Filters = filters
+	criteria.FiltersAll = filtersAll
 	criteria.FiltersOr = filtersOr
 	if payload.Name != nil {
 		criteria.Name = payload.Name
@@ -282,6 +295,11 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		return criteria, fmt.Errorf("invalid filters: %w", err)
 	}
 
+	filtersAll, err := parseFilters(payload.FiltersAll)
+	if err != nil {
+		return criteria, fmt.Errorf("invalid filters_all: %w", err)
+	}
+
 	filtersOr, err := parseFilters(payload.FiltersOr)
 	if err != nil {
 		return criteria, fmt.Errorf("invalid filters_or: %w", err)
@@ -291,6 +309,7 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 	criteria.Tags = payload.Tags
 	criteria.TagsAll = payload.TagsAll
 	criteria.Filters = filters
+	criteria.FiltersAll = filtersAll
 	criteria.FiltersOr = filtersOr
 	if payload.Name != nil {
 		criteria.Name = payload.Name

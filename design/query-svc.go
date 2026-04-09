@@ -68,6 +68,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("filters", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'", func() {
 				dsl.Example([]string{"status:active", "priority:high"})
 			})
+			dsl.Attribute("filters_all", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields using AND logic - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'. Matches resources that satisfy all of the provided filters.", func() {
+				dsl.Example([]string{"status:active", "priority:high"})
+			})
 			dsl.Attribute("filters_or", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields using OR logic - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'. Matches resources that satisfy at least one of the provided filters.", func() {
 				dsl.Example([]string{"mailing_list_id:abc", "mailing_list_id:xyz"})
 			})
@@ -101,6 +104,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("date_from")
 			dsl.Param("date_to")
 			dsl.Param("filters")
+			dsl.Param("filters_all")
 			dsl.Param("filters_or")
 			dsl.Param("cel_filter")
 			dsl.Param("sort")
@@ -158,6 +162,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("filters", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'", func() {
 				dsl.Example([]string{"status:active", "priority:high"})
 			})
+			dsl.Attribute("filters_all", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields using AND logic - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'. Matches resources that satisfy all of the provided filters.", func() {
+				dsl.Example([]string{"status:active", "priority:high"})
+			})
 			dsl.Attribute("filters_or", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields using OR logic - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'. Matches resources that satisfy at least one of the provided filters.", func() {
 				dsl.Example([]string{"mailing_list_id:abc", "mailing_list_id:xyz"})
 			})
@@ -189,6 +196,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("date_from")
 			dsl.Param("date_to")
 			dsl.Param("filters")
+			dsl.Param("filters_all")
 			dsl.Param("filters_or")
 			dsl.Header("bearer_token:Authorization")
 			dsl.Response(dsl.StatusOK, func() {

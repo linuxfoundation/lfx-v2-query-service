@@ -17,6 +17,8 @@ type SearchCriteria struct {
 	TagsAll []string
 	// Filters for direct field term clauses (AND logic - all must match)
 	Filters []FieldFilter
+	// FiltersAll for direct field term clauses (AND logic - all must match); preferred over Filters for clarity
+	FiltersAll []FieldFilter
 	// FiltersOr for direct field term clauses (OR logic - at least one must match)
 	FiltersOr []FieldFilter
 	// CelFilter is a CEL expression for post-processing filter on resource data

@@ -136,6 +136,11 @@ type QueryResourcesCountPayload struct {
 	// 'field:value' (e.g., 'status:active'). Fields are automatically prefixed
 	// with 'data.'
 	Filters []string
+	// Direct field filters with term clauses on data fields using AND logic -
+	// format: 'field:value' (e.g., 'status:active'). Fields are automatically
+	// prefixed with 'data.'. Matches resources that satisfy all of the provided
+	// filters.
+	FiltersAll []string
 	// Direct field filters with term clauses on data fields using OR logic -
 	// format: 'field:value' (e.g., 'status:active'). Fields are automatically
 	// prefixed with 'data.'. Matches resources that satisfy at least one of the
@@ -186,6 +191,11 @@ type QueryResourcesPayload struct {
 	// 'field:value' (e.g., 'status:active'). Fields are automatically prefixed
 	// with 'data.'
 	Filters []string
+	// Direct field filters with term clauses on data fields using AND logic -
+	// format: 'field:value' (e.g., 'status:active'). Fields are automatically
+	// prefixed with 'data.'. Matches resources that satisfy all of the provided
+	// filters.
+	FiltersAll []string
 	// Direct field filters with term clauses on data fields using OR logic -
 	// format: 'field:value' (e.g., 'status:active'). Fields are automatically
 	// prefixed with 'data.'. Matches resources that satisfy at least one of the

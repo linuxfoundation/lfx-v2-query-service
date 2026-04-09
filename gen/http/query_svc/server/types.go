@@ -385,7 +385,7 @@ func NewReadyzNotReadyResponseBody(res *goa.ServiceError) *ReadyzNotReadyRespons
 
 // NewQueryResourcesPayload builds a query-svc service query-resources endpoint
 // payload.
-func NewQueryResourcesPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, dateField *string, dateFrom *string, dateTo *string, filters []string, filtersOr []string, celFilter *string, sort string, pageToken *string, pageSize int, bearerToken string) *querysvc.QueryResourcesPayload {
+func NewQueryResourcesPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, dateField *string, dateFrom *string, dateTo *string, filters []string, filtersAll []string, filtersOr []string, celFilter *string, sort string, pageToken *string, pageSize int, bearerToken string) *querysvc.QueryResourcesPayload {
 	v := &querysvc.QueryResourcesPayload{}
 	v.Version = version
 	v.Name = name
@@ -397,6 +397,7 @@ func NewQueryResourcesPayload(version string, name *string, parent *string, type
 	v.DateFrom = dateFrom
 	v.DateTo = dateTo
 	v.Filters = filters
+	v.FiltersAll = filtersAll
 	v.FiltersOr = filtersOr
 	v.CelFilter = celFilter
 	v.Sort = sort
@@ -409,7 +410,7 @@ func NewQueryResourcesPayload(version string, name *string, parent *string, type
 
 // NewQueryResourcesCountPayload builds a query-svc service
 // query-resources-count endpoint payload.
-func NewQueryResourcesCountPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, dateField *string, dateFrom *string, dateTo *string, filters []string, filtersOr []string, bearerToken string) *querysvc.QueryResourcesCountPayload {
+func NewQueryResourcesCountPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, dateField *string, dateFrom *string, dateTo *string, filters []string, filtersAll []string, filtersOr []string, bearerToken string) *querysvc.QueryResourcesCountPayload {
 	v := &querysvc.QueryResourcesCountPayload{}
 	v.Version = version
 	v.Name = name
@@ -421,6 +422,7 @@ func NewQueryResourcesCountPayload(version string, name *string, parent *string,
 	v.DateFrom = dateFrom
 	v.DateTo = dateTo
 	v.Filters = filters
+	v.FiltersAll = filtersAll
 	v.FiltersOr = filtersOr
 	v.BearerToken = bearerToken
 
