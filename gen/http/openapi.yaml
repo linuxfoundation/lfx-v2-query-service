@@ -204,6 +204,14 @@ paths:
                   items:
                     type: string
                   collectionFormat: multi
+                - name: filters_or
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
                 - name: cel_filter
                   in: query
                   description: 'CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)'
@@ -337,6 +345,14 @@ paths:
                 - name: filters
                   in: query
                   description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: filters_or
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
                   required: false
                   type: array
                   items:

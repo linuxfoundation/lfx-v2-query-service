@@ -136,6 +136,11 @@ type QueryResourcesCountPayload struct {
 	// 'field:value' (e.g., 'status:active'). Fields are automatically prefixed
 	// with 'data.'
 	Filters []string
+	// Direct field filters with term clauses on data fields using OR logic -
+	// format: 'field:value' (e.g., 'status:active'). Fields are automatically
+	// prefixed with 'data.'. Matches resources that satisfy at least one of the
+	// provided filters.
+	FiltersOr []string
 }
 
 // QueryResourcesCountResult is the result type of the query-svc service
@@ -181,6 +186,11 @@ type QueryResourcesPayload struct {
 	// 'field:value' (e.g., 'status:active'). Fields are automatically prefixed
 	// with 'data.'
 	Filters []string
+	// Direct field filters with term clauses on data fields using OR logic -
+	// format: 'field:value' (e.g., 'status:active'). Fields are automatically
+	// prefixed with 'data.'. Matches resources that satisfy at least one of the
+	// provided filters.
+	FiltersOr []string
 	// CEL expression to filter results on resource data fields. Available
 	// variables: data (map), resource_type (string), id (string)
 	CelFilter *string

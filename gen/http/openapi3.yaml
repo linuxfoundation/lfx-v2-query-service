@@ -293,6 +293,22 @@ paths:
                   example:
                     - status:active
                     - priority:high
+                - name: filters_or
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
+                  allowEmptyValue: true
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                        example: Labore aperiam libero ipsam et ullam.
+                    description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
+                    example:
+                        - mailing_list_id:abc
+                        - mailing_list_id:xyz
+                  example:
+                    - mailing_list_id:abc
+                    - mailing_list_id:xyz
                 - name: cel_filter
                   in: query
                   description: 'CEL expression to filter results on resource data fields. Available variables: data (map), resource_type (string), id (string)'
@@ -458,7 +474,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Labore aperiam libero ipsam et ullam.
+                        example: Doloribus voluptatem ipsa optio.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -474,7 +490,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Doloribus voluptatem ipsa optio.
+                        example: Nobis corporis aperiam consectetur temporibus voluptatem vitae.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -517,7 +533,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Nobis corporis aperiam consectetur temporibus voluptatem vitae.
+                        example: Dolor culpa aliquam.
                     description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
                     example:
                         - status:active
@@ -525,6 +541,22 @@ paths:
                   example:
                     - status:active
                     - priority:high
+                - name: filters_or
+                  in: query
+                  description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
+                  allowEmptyValue: true
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                        example: Facere dolores numquam consequatur ut est.
+                    description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
+                    example:
+                        - mailing_list_id:abc
+                        - mailing_list_id:xyz
+                  example:
+                    - mailing_list_id:abc
+                    - mailing_list_id:xyz
             responses:
                 "200":
                     description: OK response.

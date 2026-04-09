@@ -87,6 +87,27 @@ const queryResourceSource = `{
         }
         {{- end }}
         {{- end }}
+        {{- if .FiltersOr }},
+        {
+          "bool": {
+            "should": [
+              {{- $first := true -}}
+              {{- range .FiltersOr -}}
+              {{- if $first -}}
+              {{- $first = false -}}
+              {{- else }},
+              {{- end }}
+              {
+                "term": {
+                  {{ .Field | quote }}: {{ .Value | quote }}
+                }
+              }
+              {{- end }}
+            ],
+            "minimum_should_match": 1
+          }
+        }
+        {{- end }}
       ]
       {{- if .Tags }},
       "minimum_should_match": 1,

@@ -19,7 +19,7 @@ import (
 
 // BuildQueryResourcesPayload builds the payload for the query-svc
 // query-resources endpoint from CLI flags.
-func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesPageSize string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
+func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesFiltersOr string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesPageSize string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
 	var err error
 	var version string
 	{
@@ -104,6 +104,15 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 			}
 		}
 	}
+	var filtersOr []string
+	{
+		if querySvcQueryResourcesFiltersOr != "" {
+			err = json.Unmarshal([]byte(querySvcQueryResourcesFiltersOr), &filtersOr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON for filtersOr, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"mailing_list_id:abc\",\n      \"mailing_list_id:xyz\"\n   ]'")
+			}
+		}
+	}
 	var celFilter *string
 	{
 		if querySvcQueryResourcesCelFilter != "" {
@@ -169,6 +178,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	v.DateFrom = dateFrom
 	v.DateTo = dateTo
 	v.Filters = filters
+	v.FiltersOr = filtersOr
 	v.CelFilter = celFilter
 	v.Sort = sort
 	v.PageToken = pageToken
@@ -180,7 +190,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 
 // BuildQueryResourcesCountPayload builds the payload for the query-svc
 // query-resources-count endpoint from CLI flags.
-func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
+func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountFiltersOr string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
 	var err error
 	var version string
 	{
@@ -261,6 +271,15 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 			}
 		}
 	}
+	var filtersOr []string
+	{
+		if querySvcQueryResourcesCountFiltersOr != "" {
+			err = json.Unmarshal([]byte(querySvcQueryResourcesCountFiltersOr), &filtersOr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON for filtersOr, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"mailing_list_id:abc\",\n      \"mailing_list_id:xyz\"\n   ]'")
+			}
+		}
+	}
 	var bearerToken string
 	{
 		bearerToken = querySvcQueryResourcesCountBearerToken
@@ -276,6 +295,7 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 	v.DateFrom = dateFrom
 	v.DateTo = dateTo
 	v.Filters = filters
+	v.FiltersOr = filtersOr
 	v.BearerToken = bearerToken
 
 	return v, nil
