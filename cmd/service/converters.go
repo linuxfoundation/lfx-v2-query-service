@@ -53,6 +53,24 @@ func parseDateFilter(dateStr string, isEndDate bool) (string, error) {
 	return t.Format(time.RFC3339), nil
 }
 
+// parseFilterSets parses the three filter params (filters, filters_all, filters_or) in one call.
+// Returns an error that already includes the param name for context.
+func parseFilterSets(filters, filtersAll, filtersOr []string) ([]model.FieldFilter, []model.FieldFilter, []model.FieldFilter, error) {
+	f, err := parseFilters(filters)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("invalid filters: %w", err)
+	}
+	fa, err := parseFilters(filtersAll)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("invalid filters_all: %w", err)
+	}
+	fo, err := parseFilters(filtersOr)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("invalid filters_or: %w", err)
+	}
+	return f, fa, fo, nil
+}
+
 // parseFilters parses filter strings in "field:value" format
 // All fields are automatically prefixed with "data." to filter only within the data object
 func parseFilters(filters []string) ([]model.FieldFilter, error) {
@@ -81,22 +99,9 @@ func parseFilters(filters []string) ([]model.FieldFilter, error) {
 
 // payloadToCriteria converts the generated payload to domain search criteria
 func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryResourcesPayload) (model.SearchCriteria, error) {
-	// Parse filters from "field:value" format
-	filters, err := parseFilters(p.Filters)
+	filters, filtersAll, filtersOr, err := parseFilterSets(p.Filters, p.FiltersAll, p.FiltersOr)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to parse filters", "error", err)
-		return model.SearchCriteria{}, wrapError(ctx, err)
-	}
-
-	filtersAll, err := parseFilters(p.FiltersAll)
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to parse filters_all", "error", err)
-		return model.SearchCriteria{}, wrapError(ctx, err)
-	}
-
-	filtersOr, err := parseFilters(p.FiltersOr)
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to parse filters_or", "error", err)
 		return model.SearchCriteria{}, wrapError(ctx, err)
 	}
 
@@ -211,20 +216,9 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		PublicOnly: true,
 	}
 
-	// Parse filters from "field:value" format
-	filters, err := parseFilters(payload.Filters)
+	filters, filtersAll, filtersOr, err := parseFilterSets(payload.Filters, payload.FiltersAll, payload.FiltersOr)
 	if err != nil {
-		return criteria, fmt.Errorf("invalid filters: %w", err)
-	}
-
-	filtersAll, err := parseFilters(payload.FiltersAll)
-	if err != nil {
-		return criteria, fmt.Errorf("invalid filters_all: %w", err)
-	}
-
-	filtersOr, err := parseFilters(payload.FiltersOr)
-	if err != nil {
-		return criteria, fmt.Errorf("invalid filters_or: %w", err)
+		return criteria, err
 	}
 
 	// Set the criteria from the payload
@@ -289,20 +283,9 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		GroupBy: "access_check_query.keyword",
 	}
 
-	// Parse filters from "field:value" format
-	filters, err := parseFilters(payload.Filters)
+	filters, filtersAll, filtersOr, err := parseFilterSets(payload.Filters, payload.FiltersAll, payload.FiltersOr)
 	if err != nil {
-		return criteria, fmt.Errorf("invalid filters: %w", err)
-	}
-
-	filtersAll, err := parseFilters(payload.FiltersAll)
-	if err != nil {
-		return criteria, fmt.Errorf("invalid filters_all: %w", err)
-	}
-
-	filtersOr, err := parseFilters(payload.FiltersOr)
-	if err != nil {
-		return criteria, fmt.Errorf("invalid filters_or: %w", err)
+		return criteria, err
 	}
 
 	// Set the criteria from the payload
