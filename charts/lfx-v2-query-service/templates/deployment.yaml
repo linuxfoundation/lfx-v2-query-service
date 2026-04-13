@@ -13,7 +13,6 @@ spec:
   selector:
     matchLabels:
       app: lfx-v2-query-service
-      app.kubernetes.io/name: {{ .Chart.Name }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
