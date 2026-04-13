@@ -50,6 +50,8 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			dateFrom    *string
 			dateTo      *string
 			filters     []string
+			filtersAll  []string
+			filtersOr   []string
 			celFilter   *string
 			sort        string
 			pageToken   *string
@@ -100,6 +102,8 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			dateTo = &dateToRaw
 		}
 		filters = qp["filters"]
+		filtersAll = qp["filters_all"]
+		filtersOr = qp["filters_or"]
 		celFilterRaw := qp.Get("cel_filter")
 		if celFilterRaw != "" {
 			celFilter = &celFilterRaw
@@ -147,7 +151,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, celFilter, sort, pageToken, pageSize, bearerToken)
+		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, celFilter, sort, pageToken, pageSize, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
@@ -243,6 +247,8 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 			dateFrom    *string
 			dateTo      *string
 			filters     []string
+			filtersAll  []string
+			filtersOr   []string
 			bearerToken string
 			err         error
 		)
@@ -286,6 +292,8 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 			dateTo = &dateToRaw
 		}
 		filters = qp["filters"]
+		filtersAll = qp["filters_all"]
+		filtersOr = qp["filters_or"]
 		bearerToken = r.Header.Get("Authorization")
 		if bearerToken == "" {
 			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
@@ -293,7 +301,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, bearerToken)
+		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
