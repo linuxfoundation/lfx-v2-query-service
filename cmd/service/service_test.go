@@ -136,7 +136,7 @@ func TestQuerySvcsrvc_QueryResources(t *testing.T) {
 				// No setup needed as we expect error during token parsing
 			},
 			expectedError:     true,
-			expectedErrorType: &querysvc.InternalServerError{}, // Changed to match actual behavior
+			expectedErrorType: &querysvc.BadRequestError{},
 		},
 	}
 
