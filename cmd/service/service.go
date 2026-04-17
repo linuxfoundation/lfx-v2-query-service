@@ -52,7 +52,7 @@ func (s *querySvcsrvc) QueryResources(ctx context.Context, p *querysvc.QueryReso
 	criteria, errCriteria := s.payloadToCriteria(ctx, p)
 	if errCriteria != nil {
 		slog.ErrorContext(ctx, "failed to convert payload to criteria", "error", errCriteria)
-		return nil, wrapError(ctx, errCriteria)
+		return nil, errCriteria
 	}
 
 	// Execute search using the service layer
