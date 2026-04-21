@@ -115,6 +115,7 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		FiltersAll:   filtersAll,
 		FiltersOr:    filtersOr,
 		CelFilter:    p.CelFilter,
+		FilterGrants: p.FilterGrants,
 		SortBy:       p.Sort,
 		PageToken:    p.PageToken,
 		PageSize:     p.PageSize,

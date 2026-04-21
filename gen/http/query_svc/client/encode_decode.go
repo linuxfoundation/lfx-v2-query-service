@@ -89,6 +89,9 @@ func EncodeQueryResourcesRequest(encoder func(*http.Request) goahttp.Encoder) fu
 		if p.CelFilter != nil {
 			values.Add("cel_filter", *p.CelFilter)
 		}
+		if p.FilterGrants != nil {
+			values.Add("filter_grants", *p.FilterGrants)
+		}
 		values.Add("sort", p.Sort)
 		if p.PageToken != nil {
 			values.Add("page_token", *p.PageToken)

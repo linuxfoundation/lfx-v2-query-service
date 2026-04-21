@@ -78,6 +78,10 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Example(`data.slug == "tlf"`)
 				dsl.MaxLength(1000)
 			})
+			dsl.Attribute("filter_grants", dsl.String, "Filter results to only resources the authenticated user has direct FGA grants on. Requires type. Use 'direct' to filter by direct grants.", func() {
+				dsl.Enum("direct")
+				dsl.Example("direct")
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -107,6 +111,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("filters_all")
 			dsl.Param("filters_or")
 			dsl.Param("cel_filter")
+			dsl.Param("filter_grants")
 			dsl.Param("sort")
 			dsl.Param("page_token")
 			dsl.Param("page_size")

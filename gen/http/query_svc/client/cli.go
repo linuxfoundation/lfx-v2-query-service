@@ -19,7 +19,7 @@ import (
 
 // BuildQueryResourcesPayload builds the payload for the query-svc
 // query-resources endpoint from CLI flags.
-func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesFiltersAll string, querySvcQueryResourcesFiltersOr string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesPageSize string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
+func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesFiltersAll string, querySvcQueryResourcesFiltersOr string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesFilterGrants string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesPageSize string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
 	var err error
 	var version string
 	{
@@ -134,6 +134,18 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 			}
 		}
 	}
+	var filterGrants *string
+	{
+		if querySvcQueryResourcesFilterGrants != "" {
+			filterGrants = &querySvcQueryResourcesFilterGrants
+			if !(*filterGrants == "direct") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("filter_grants", *filterGrants, []any{"direct"}))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var sort string
 	{
 		if querySvcQueryResourcesSort != "" {
@@ -190,6 +202,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	v.FiltersAll = filtersAll
 	v.FiltersOr = filtersOr
 	v.CelFilter = celFilter
+	v.FilterGrants = filterGrants
 	v.Sort = sort
 	v.PageToken = pageToken
 	v.PageSize = pageSize

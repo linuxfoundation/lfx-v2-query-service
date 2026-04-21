@@ -6,6 +6,7 @@ package nats
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -27,6 +28,7 @@ type NATSClient struct {
 // This allows for easy mocking and testing
 type NATSClientInterface interface {
 	CheckAccess(ctx context.Context, request *AccessCheckNATSRequest) (AccessCheckNATSResponse, error)
+	ReadTuples(ctx context.Context, request *ReadTuplesNATSRequest) (*ReadTuplesNATSResponse, error)
 	Close() error
 	IsReady(ctx context.Context) error
 }
@@ -73,6 +75,49 @@ func (c *NATSClient) CheckAccess(ctx context.Context, request *AccessCheckNATSRe
 	}
 
 	return response, nil
+}
+
+// ReadTuples sends a read_tuples request via NATS and returns the parsed response
+func (c *NATSClient) ReadTuples(ctx context.Context, request *ReadTuplesNATSRequest) (*ReadTuplesNATSResponse, error) {
+	if request == nil {
+		return nil, fmt.Errorf("invalid NATS read_tuples request: request cannot be nil")
+	}
+	if request.User == "" || request.ObjectType == "" {
+		return nil, fmt.Errorf("invalid NATS read_tuples request: user and object_type are required")
+	}
+
+	data, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal read_tuples request: %w", err)
+	}
+
+	timeout := c.timeout
+	if request.Timeout > 0 {
+		timeout = request.Timeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	natsResponse, err := c.conn.RequestWithContext(ctx, constants.ReadTuplesSubject, data)
+	if err != nil {
+		return nil, fmt.Errorf("NATS read_tuples request failed: %w", err)
+	}
+
+	slog.DebugContext(ctx, "received NATS read_tuples response",
+		"subject", constants.ReadTuplesSubject,
+		"message", string(natsResponse.Data),
+	)
+
+	var response ReadTuplesNATSResponse
+	if err := json.Unmarshal(natsResponse.Data, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal read_tuples response: %w", err)
+	}
+
+	if response.Error != "" {
+		return nil, fmt.Errorf("read_tuples error from fga-sync: %s", response.Error)
+	}
+
+	return &response, nil
 }
 
 // Close gracefully closes the NATS connection

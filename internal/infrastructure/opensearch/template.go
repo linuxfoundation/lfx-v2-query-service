@@ -96,6 +96,19 @@ const queryResourceSource = `{
         }
         {{- end }}
         {{- end }}
+        {{- if .ObjectRefs }},
+        {
+          "terms": {
+            "object_ref": [
+              {{- $first := true -}}
+              {{- range .ObjectRefs -}}
+              {{- if $first -}}{{- $first = false -}}{{- else }},{{- end }}
+              {{ . | quote }}
+              {{- end }}
+            ]
+          }
+        }
+        {{- end }}
         {{- if .FiltersOr }},
         {
           "bool": {

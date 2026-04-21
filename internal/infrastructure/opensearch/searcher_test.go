@@ -401,6 +401,32 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			expectedError:  false,
 			expectedFields: []string{"must", "data.status", "active", "should", "minimum_should_match", "data.mailing_list_id", "abc", "xyz"},
 		},
+		{
+			name: "render query with object_refs (filter_grants pre-filter)",
+			criteria: model.SearchCriteria{
+				ResourceType: stringPtr("v1_past_meeting"),
+				ObjectRefs:   []string{"v1_past_meeting:meeting-1", "v1_past_meeting:meeting-2"},
+			},
+			expectedError:  false,
+			expectedFields: []string{"terms", "object_ref", "v1_past_meeting:meeting-1", "v1_past_meeting:meeting-2"},
+		},
+		{
+			name: "render query with single object_ref",
+			criteria: model.SearchCriteria{
+				ResourceType: stringPtr("v1_past_meeting"),
+				ObjectRefs:   []string{"v1_past_meeting:only-one"},
+			},
+			expectedError:  false,
+			expectedFields: []string{"terms", "object_ref", "v1_past_meeting:only-one"},
+		},
+		{
+			name: "render query without object_refs does not include terms filter",
+			criteria: model.SearchCriteria{
+				ResourceType: stringPtr("v1_past_meeting"),
+			},
+			expectedError:  false,
+			expectedFields: []string{"object_type", "v1_past_meeting"},
+		},
 	}
 
 	assertion := assert.New(t)

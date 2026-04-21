@@ -204,6 +204,9 @@ type QueryResourcesPayload struct {
 	// CEL expression to filter results on resource data fields. Available
 	// variables: data (map), resource_type (string), id (string)
 	CelFilter *string
+	// Filter results to only resources the authenticated user has direct FGA
+	// grants on. Requires type. Use 'direct' to filter by direct grants.
+	FilterGrants *string
 	// Sort order for results
 	Sort string
 	// Opaque token for pagination
