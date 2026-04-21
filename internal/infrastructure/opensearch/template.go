@@ -144,7 +144,8 @@ const queryResourceSource = `{
   "sort": [
     {
       {{ .SortBy | quote }}: {
-        "order": {{ .SortOrder | quote }}
+        "order": {{ .SortOrder | quote }},
+        "missing": "_last"
       }
     },
     {"_id": "asc"}
