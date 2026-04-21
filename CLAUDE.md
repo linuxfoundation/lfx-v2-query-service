@@ -234,3 +234,14 @@ GET /query/resources?type=project&cel_filter=data.slug == "tlf"
 **Important Limitations:**
 
 CEL filters apply only to results from each OpenSearch page. If the target resource is not in the first page of OpenSearch results, it won't be found even if it matches the CEL filter. Always use specific primary search criteria (`type`, `name`, `parent`) to narrow OpenSearch results first.
+
+### Query Clause Limits
+
+OpenSearch enforces a hard limit of **1024 clauses** per query. Exceeding it returns a `400 Bad Request` to the API caller with the message `"query exceeds the OpenSearch maximum clause limit (1024): reduce the number of filter values"`.
+
+- Each `tags`, `tags_all`, `filters`, `filters_all` value is 1 clause.
+- `filters_or` adds 1 wrapping clause plus 1 per value.
+- `type`, `parent`, `name`, and the date range each add 1 clause.
+- Every request adds 1 fixed clause (`latest: true`).
+
+**Error handling implementation**: `internal/infrastructure/opensearch/client.go` — detects `opensearch.StructError` where any `RootCause` entry has `Type == "too_many_nested_clauses"` (OpenSearch wraps it inside a `search_phase_execution_exception`) and converts it to `errors.Validation` so `wrapError()` in `cmd/service/error.go` maps it to HTTP 400.
