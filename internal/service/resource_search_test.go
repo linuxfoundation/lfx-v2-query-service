@@ -1116,6 +1116,17 @@ func TestResourceSearchFilterGrants(t *testing.T) {
 						Public:     true,
 					},
 				})
+				// This resource is the same type but NOT in the tuple refs — it must be excluded.
+				searcher.AddResource(model.Resource{
+					Type: "v1_past_meeting",
+					ID:   "meeting-3",
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:  "v1_past_meeting:meeting-3",
+						ObjectType: "v1_past_meeting",
+						ObjectID:   "meeting-3",
+						Public:     true,
+					},
+				})
 			},
 			expectedError:     false,
 			expectedResources: 2,

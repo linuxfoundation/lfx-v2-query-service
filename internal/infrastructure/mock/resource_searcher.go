@@ -184,6 +184,21 @@ func (m *MockResourceSearcher) QueryResources(ctx context.Context, criteria mode
 		filteredResources = nameFilteredResources
 	}
 
+	// Filter by object refs (pre-filter from FGA grants)
+	if len(criteria.ObjectRefs) > 0 {
+		refSet := make(map[string]struct{}, len(criteria.ObjectRefs))
+		for _, ref := range criteria.ObjectRefs {
+			refSet[ref] = struct{}{}
+		}
+		var refsFiltered []model.Resource
+		for _, resource := range filteredResources {
+			if _, ok := refSet[resource.ObjectRef]; ok {
+				refsFiltered = append(refsFiltered, resource)
+			}
+		}
+		filteredResources = refsFiltered
+	}
+
 	// Filter by tags (OR logic - any tag matches)
 	if len(criteria.Tags) > 0 {
 		var tagFilteredResources []model.Resource

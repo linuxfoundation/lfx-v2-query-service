@@ -95,8 +95,11 @@ func (c *NATSClient) ReadTuples(ctx context.Context, request *ReadTuplesNATSRequ
 	if request.Timeout > 0 {
 		timeout = request.Timeout
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
 
 	natsResponse, err := c.conn.RequestWithContext(ctx, constants.ReadTuplesSubject, data)
 	if err != nil {
