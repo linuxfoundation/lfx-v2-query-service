@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
@@ -278,6 +279,44 @@ func TestWrapError_ComplexErrorChain(t *testing.T) {
 	if badReqErr, ok := result.(*querysvc.BadRequestError); ok {
 		assert.Contains(t, badReqErr.Message, "middle error")
 		assert.Contains(t, badReqErr.Message, "root cause")
+	}
+}
+
+func TestWrapError_FmtWrappedDomainErrors(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name              string
+		inputError        error
+		expectedErrorType interface{}
+	}{
+		{
+			name:              "validation wrapped with fmt.Errorf maps to BadRequestError",
+			inputError:        fmt.Errorf("outer context: %w", pkgerrors.NewValidation("invalid input", nil)),
+			expectedErrorType: &querysvc.BadRequestError{},
+		},
+		{
+			name:              "not found wrapped with fmt.Errorf maps to NotFoundError",
+			inputError:        fmt.Errorf("outer context: %w", pkgerrors.NewNotFound("resource not found", nil)),
+			expectedErrorType: &querysvc.NotFoundError{},
+		},
+		{
+			name:              "service unavailable wrapped with fmt.Errorf maps to ServiceUnavailableError",
+			inputError:        fmt.Errorf("outer context: %w", pkgerrors.NewServiceUnavailable("service down", nil)),
+			expectedErrorType: &querysvc.ServiceUnavailableError{},
+		},
+		{
+			name:              "double-wrapped validation still maps to BadRequestError",
+			inputError:        fmt.Errorf("level2: %w", fmt.Errorf("level1: %w", pkgerrors.NewValidation("deep error", nil))),
+			expectedErrorType: &querysvc.BadRequestError{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := wrapError(ctx, tc.inputError)
+			assert.IsType(t, tc.expectedErrorType, result)
+		})
 	}
 }
 

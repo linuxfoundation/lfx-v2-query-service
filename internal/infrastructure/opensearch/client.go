@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/global"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
+	opensearch "github.com/opensearch-project/opensearch-go/v4"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 )
 
@@ -48,6 +50,10 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 
 	searchResponse, errSearchResponse := c.client.Search(ctx, &searchRequest)
 	if errSearchResponse != nil {
+		var structErr *opensearch.StructError
+		if stderrors.As(errSearchResponse, &structErr) && hasTooManyClauses(structErr) {
+			return nil, errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", errSearchResponse)
+		}
 		return nil, fmt.Errorf("failed to execute search: %w", errSearchResponse)
 	}
 
@@ -98,6 +104,10 @@ func (c *httpClient) AggregationSearch(ctx context.Context, index string, query 
 	// Perform the search.
 	searchResponse, err := c.client.Search(ctx, &searchRequest)
 	if err != nil {
+		var structErr *opensearch.StructError
+		if stderrors.As(err, &structErr) && hasTooManyClauses(structErr) {
+			return nil, errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", err)
+		}
 		return nil, fmt.Errorf("opensearch search failed: %w", err)
 	}
 
@@ -122,6 +132,10 @@ func (c *httpClient) Count(ctx context.Context, index string, query []byte) (*Co
 	}
 	countResponse, err := c.client.Indices.Count(ctx, &countRequest)
 	if err != nil {
+		var structErr *opensearch.StructError
+		if stderrors.As(err, &structErr) && hasTooManyClauses(structErr) {
+			return nil, errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", err)
+		}
 		return nil, fmt.Errorf("opensearch count failed: %w", err)
 	}
 	return &CountResponse{
@@ -154,4 +168,15 @@ func (c *httpClient) IsReady(ctx context.Context) error {
 		return errors.NewServiceUnavailable("opensearch is not ready", fmt.Errorf("status code: %d", resp.StatusCode))
 	}
 	return nil
+}
+
+// hasTooManyClauses checks whether a StructError was caused by too_many_nested_clauses.
+// OpenSearch surfaces this inside a search_phase_execution_exception root_cause.
+func hasTooManyClauses(e *opensearch.StructError) bool {
+	for _, rc := range e.Err.RootCause {
+		if rc.Type == "too_many_nested_clauses" {
+			return true
+		}
+	}
+	return false
 }
