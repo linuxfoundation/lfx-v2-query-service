@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -49,6 +50,55 @@ func (n *NATSAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	)
 
 	return result, nil
+}
+
+// ReadTuples retrieves the object refs that a user has direct FGA relationships to
+func (n *NATSAccessControlChecker) ReadTuples(ctx context.Context, user string, objectType string, timeout time.Duration) ([]string, error) {
+	slog.DebugContext(ctx, "reading FGA tuples",
+		"user", user,
+		"object_type", objectType,
+	)
+
+	response, err := n.client.ReadTuples(ctx, &ReadTuplesNATSRequest{
+		User:       user,
+		ObjectType: objectType,
+		Timeout:    timeout,
+	})
+	if err != nil {
+		slog.ErrorContext(ctx, "NATS read_tuples failed",
+			"error", err,
+			"user", user,
+			"object_type", objectType,
+		)
+		return nil, fmt.Errorf("NATS read_tuples failed: %w", err)
+	}
+	if response == nil {
+		return []string{}, nil
+	}
+
+	// Parse results from "object#relation@user" format, extracting the object ref
+	seen := make(map[string]struct{}, len(response.Results))
+	objectRefs := make([]string, 0, len(response.Results))
+	for _, result := range response.Results {
+		// Extract the object part (everything before the first '#')
+		objectRef, _, found := strings.Cut(result, "#")
+		if !found || objectRef == "" {
+			continue
+		}
+		if _, ok := seen[objectRef]; ok {
+			continue
+		}
+		seen[objectRef] = struct{}{}
+		objectRefs = append(objectRefs, objectRef)
+	}
+
+	slog.DebugContext(ctx, "FGA tuples read",
+		"user", user,
+		"object_type", objectType,
+		"count", len(objectRefs),
+	)
+
+	return objectRefs, nil
 }
 
 // Close gracefully closes the NATS connection

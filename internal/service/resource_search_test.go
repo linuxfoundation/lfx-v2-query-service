@@ -243,6 +243,30 @@ func TestResourceSearchValidateSearchCriteria(t *testing.T) {
 			},
 			expectError: true,
 		},
+		{
+			name: "valid criteria with filter_grants and type",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+				ResourceType: stringPtr("v1_past_meeting"),
+			},
+			expectError: false,
+		},
+		{
+			name: "valid criteria with filter_grants, type, and name",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+				ResourceType: stringPtr("v1_past_meeting"),
+				Name:         stringPtr("standup"),
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid criteria - filter_grants without type",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+			},
+			expectError: true,
+		},
 	}
 
 	assertion := assert.New(t)
@@ -1047,6 +1071,130 @@ func TestResourceCountCheckAccess(t *testing.T) {
 				assertion.NoError(err)
 				assertion.Equal(tc.expectedCount, count)
 			}
+		})
+	}
+}
+
+func TestResourceSearchFilterGrants(t *testing.T) {
+	tests := []struct {
+		name              string
+		criteria          model.SearchCriteria
+		principal         string
+		setupMocks        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
+		expectedError     bool
+		expectedResources int
+	}{
+		{
+			name: "filter_grants=direct returns resources matching grants",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+				ResourceType: stringPtr("v1_past_meeting"),
+			},
+			principal: "jme",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				accessChecker.MockTupleRefs = []string{
+					"v1_past_meeting:meeting-1",
+					"v1_past_meeting:meeting-2",
+				}
+				searcher.AddResource(model.Resource{
+					Type: "v1_past_meeting",
+					ID:   "meeting-1",
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:  "v1_past_meeting:meeting-1",
+						ObjectType: "v1_past_meeting",
+						ObjectID:   "meeting-1",
+						Public:     true,
+					},
+				})
+				searcher.AddResource(model.Resource{
+					Type: "v1_past_meeting",
+					ID:   "meeting-2",
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:  "v1_past_meeting:meeting-2",
+						ObjectType: "v1_past_meeting",
+						ObjectID:   "meeting-2",
+						Public:     true,
+					},
+				})
+				// This resource is the same type but NOT in the tuple refs — it must be excluded.
+				searcher.AddResource(model.Resource{
+					Type: "v1_past_meeting",
+					ID:   "meeting-3",
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:  "v1_past_meeting:meeting-3",
+						ObjectType: "v1_past_meeting",
+						ObjectID:   "meeting-3",
+						Public:     true,
+					},
+				})
+			},
+			expectedError:     false,
+			expectedResources: 2,
+		},
+		{
+			name: "filter_grants=direct with no grants returns empty result",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+				ResourceType: stringPtr("v1_past_meeting"),
+			},
+			principal: "jme",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				accessChecker.MockTupleRefs = []string{}
+			},
+			expectedError:     false,
+			expectedResources: 0,
+		},
+		{
+			name: "filter_grants=direct fails for anonymous user",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+				ResourceType: stringPtr("v1_past_meeting"),
+			},
+			principal: constants.AnonymousPrincipal,
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+			},
+			expectedError:     true,
+			expectedResources: 0,
+		},
+		{
+			name: "filter_grants=direct returns error when ReadTuples fails",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+				ResourceType: stringPtr("v1_past_meeting"),
+			},
+			principal: "jme",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				accessChecker.SimulateTuplesError = true
+			},
+			expectedError:     true,
+			expectedResources: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertion := assert.New(t)
+
+			mockSearcher := mock.NewMockResourceSearcher()
+			mockAccessChecker := mock.NewMockAccessControlChecker()
+			tc.setupMocks(mockSearcher, mockAccessChecker)
+
+			service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
+			if !ok {
+				t.Fatal("failed to create ResourceSearch service")
+			}
+
+			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, tc.principal)
+			result, err := service.QueryResources(ctx, tc.criteria)
+
+			if tc.expectedError {
+				assertion.Error(err)
+				assertion.Nil(result)
+				return
+			}
+			assertion.NoError(err)
+			assertion.NotNil(result)
+			assertion.Equal(tc.expectedResources, len(result.Resources))
 		})
 	}
 }

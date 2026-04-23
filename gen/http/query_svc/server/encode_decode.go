@@ -40,24 +40,25 @@ func EncodeQueryResourcesResponse(encoder func(context.Context, http.ResponseWri
 func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
 	return func(r *http.Request) (any, error) {
 		var (
-			version     string
-			name        *string
-			parent      *string
-			type_       *string
-			tags        []string
-			tagsAll     []string
-			dateField   *string
-			dateFrom    *string
-			dateTo      *string
-			filters     []string
-			filtersAll  []string
-			filtersOr   []string
-			celFilter   *string
-			sort        string
-			pageToken   *string
-			pageSize    int
-			bearerToken string
-			err         error
+			version      string
+			name         *string
+			parent       *string
+			type_        *string
+			tags         []string
+			tagsAll      []string
+			dateField    *string
+			dateFrom     *string
+			dateTo       *string
+			filters      []string
+			filtersAll   []string
+			filtersOr    []string
+			celFilter    *string
+			filterGrants *string
+			sort         string
+			pageToken    *string
+			pageSize     int
+			bearerToken  string
+			err          error
 		)
 		qp := r.URL.Query()
 		version = qp.Get("v")
@@ -113,6 +114,15 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 				err = goa.MergeErrors(err, goa.InvalidLengthError("cel_filter", *celFilter, utf8.RuneCountInString(*celFilter), 1000, false))
 			}
 		}
+		filterGrantsRaw := qp.Get("filter_grants")
+		if filterGrantsRaw != "" {
+			filterGrants = &filterGrantsRaw
+		}
+		if filterGrants != nil {
+			if !(*filterGrants == "direct") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("filter_grants", *filterGrants, []any{"direct"}))
+			}
+		}
 		sortRaw := qp.Get("sort")
 		if sortRaw != "" {
 			sort = sortRaw
@@ -151,7 +161,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, celFilter, sort, pageToken, pageSize, bearerToken)
+		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, celFilter, filterGrants, sort, pageToken, pageSize, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]

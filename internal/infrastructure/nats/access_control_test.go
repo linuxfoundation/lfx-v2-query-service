@@ -19,6 +19,8 @@ type MockNATSClient struct {
 	checkAccessError    error
 	closeError          error
 	isReadyError        error
+	readTuplesResponse  *ReadTuplesNATSResponse
+	readTuplesError     error
 }
 
 func NewMockNATSClient() *MockNATSClient {
@@ -30,6 +32,16 @@ func (m *MockNATSClient) CheckAccess(ctx context.Context, request *AccessCheckNA
 		return nil, m.checkAccessError
 	}
 	return m.checkAccessResponse, nil
+}
+
+func (m *MockNATSClient) ReadTuples(ctx context.Context, request *ReadTuplesNATSRequest) (*ReadTuplesNATSResponse, error) {
+	if m.readTuplesError != nil {
+		return nil, m.readTuplesError
+	}
+	if m.readTuplesResponse != nil {
+		return m.readTuplesResponse, nil
+	}
+	return &ReadTuplesNATSResponse{Results: []string{}}, nil
 }
 
 func (m *MockNATSClient) Close() error {
@@ -54,6 +66,14 @@ func (m *MockNATSClient) SetCloseError(err error) {
 
 func (m *MockNATSClient) SetIsReadyError(err error) {
 	m.isReadyError = err
+}
+
+func (m *MockNATSClient) SetReadTuplesResponse(response *ReadTuplesNATSResponse) {
+	m.readTuplesResponse = response
+}
+
+func (m *MockNATSClient) SetReadTuplesError(err error) {
+	m.readTuplesError = err
 }
 
 func TestNATSAccessControlChecker_CheckAccess(t *testing.T) {
@@ -457,6 +477,106 @@ func TestNewAccessControlChecker(t *testing.T) {
 				errClose := checker.Close()
 				assertion.NoError(errClose, "failed to close NATS client")
 			}
+		})
+	}
+}
+
+func TestNATSAccessControlChecker_ReadTuples(t *testing.T) {
+	tests := []struct {
+		name            string
+		setupMock       func(*MockNATSClient)
+		user            string
+		objectType      string
+		expectedRefs    []string
+		expectedError   bool
+		expectedErrMsg  string
+	}{
+		{
+			name: "happy path - returns deduplicated object refs",
+			setupMock: func(m *MockNATSClient) {
+				m.SetReadTuplesResponse(&ReadTuplesNATSResponse{
+					Results: []string{
+						"v1_past_meeting:meeting-1#invitee@user:jme",
+						"v1_past_meeting:meeting-2#attendee@user:jme",
+						"v1_past_meeting:meeting-1#attendee@user:jme", // duplicate object
+					},
+				})
+			},
+			user:          "user:jme",
+			objectType:    "v1_past_meeting",
+			expectedRefs:  []string{"v1_past_meeting:meeting-1", "v1_past_meeting:meeting-2"},
+			expectedError: false,
+		},
+		{
+			name: "empty results returns empty slice",
+			setupMock: func(m *MockNATSClient) {
+				m.SetReadTuplesResponse(&ReadTuplesNATSResponse{
+					Results: []string{},
+				})
+			},
+			user:          "user:jme",
+			objectType:    "v1_past_meeting",
+			expectedRefs:  []string{},
+			expectedError: false,
+		},
+		{
+			name: "malformed tuple strings without # are skipped",
+			setupMock: func(m *MockNATSClient) {
+				m.SetReadTuplesResponse(&ReadTuplesNATSResponse{
+					Results: []string{
+						"v1_past_meeting:meeting-1#invitee@user:jme",
+						"malformed-no-hash",
+						"v1_past_meeting:meeting-2#attendee@user:jme",
+					},
+				})
+			},
+			user:          "user:jme",
+			objectType:    "v1_past_meeting",
+			expectedRefs:  []string{"v1_past_meeting:meeting-1", "v1_past_meeting:meeting-2"},
+			expectedError: false,
+		},
+		{
+			name: "client error is propagated",
+			setupMock: func(m *MockNATSClient) {
+				m.SetReadTuplesError(errors.New("nats timeout"))
+			},
+			user:           "user:jme",
+			objectType:     "v1_past_meeting",
+			expectedError:  true,
+			expectedErrMsg: "NATS read_tuples failed",
+		},
+		{
+			name: "fga-sync error in response is propagated",
+			setupMock: func(m *MockNATSClient) {
+				m.SetReadTuplesError(errors.New("read_tuples error from fga-sync: internal error"))
+			},
+			user:           "user:jme",
+			objectType:     "v1_past_meeting",
+			expectedError:  true,
+			expectedErrMsg: "NATS read_tuples failed",
+		},
+	}
+
+	assertion := assert.New(t)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockClient := NewMockNATSClient()
+			tc.setupMock(mockClient)
+
+			checker := &NATSAccessControlChecker{client: mockClient}
+			ctx := context.Background()
+
+			refs, err := checker.ReadTuples(ctx, tc.user, tc.objectType, 5*time.Second)
+
+			if tc.expectedError {
+				assertion.Error(err)
+				assertion.Contains(err.Error(), tc.expectedErrMsg)
+				assertion.Nil(refs)
+				return
+			}
+			assertion.NoError(err)
+			assertion.ElementsMatch(tc.expectedRefs, refs)
 		})
 	}
 }

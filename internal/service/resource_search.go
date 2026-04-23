@@ -69,6 +69,36 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		criteria.PublicOnly = true
 	}
 
+	// If filter_grants=direct is requested, resolve the user's direct FGA grants and
+	// use them as a pre-query terms filter on object_ref in OpenSearch.
+	if criteria.FilterGrants != nil && *criteria.FilterGrants == "direct" {
+		if principal == constants.AnonymousPrincipal {
+			return nil, errors.NewValidation("filter_grants requires authentication")
+		}
+		objectRefs, errTuples := s.accessChecker.ReadTuples(ctx, "user:"+principal, *criteria.ResourceType, 15*time.Second)
+		if errTuples != nil {
+			slog.ErrorContext(ctx, "failed to read FGA tuples for filter_grants",
+				"error", errTuples,
+				"user", principal,
+				"object_type", *criteria.ResourceType,
+			)
+			return nil, fmt.Errorf("failed to read FGA tuples: %w", errTuples)
+		}
+		if len(objectRefs) == 0 {
+			slog.DebugContext(ctx, "no FGA grants found, returning empty result",
+				"user", principal,
+				"object_type", *criteria.ResourceType,
+			)
+			return &model.SearchResult{Resources: []model.Resource{}}, nil
+		}
+		criteria.ObjectRefs = objectRefs
+		slog.DebugContext(ctx, "applied FGA grant filter",
+			"user", principal,
+			"object_type", *criteria.ResourceType,
+			"grant_count", len(objectRefs),
+		)
+	}
+
 	// Log the search operation
 	slog.DebugContext(ctx, "validated search criteria, proceeding with search")
 
@@ -142,8 +172,13 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 // validateSearchCriteria validates the search criteria according to business rules
 func (s *ResourceSearch) validateSearchCriteria(criteria model.SearchCriteria) error {
 	// At least one search parameter must be provided
-	if criteria.Name == nil && criteria.Parent == nil && criteria.ResourceType == nil && len(criteria.Tags) == 0 {
-		return fmt.Errorf("at least one search parameter must be provided: name, parent, type, or tags")
+	if criteria.Name == nil && criteria.Parent == nil && criteria.ResourceType == nil && len(criteria.Tags) == 0 && criteria.FilterGrants == nil {
+		return fmt.Errorf("at least one search parameter must be provided: name, parent, type, tags, or filter_grants")
+	}
+
+	// filter_grants requires type so we can look up grants by object type
+	if criteria.FilterGrants != nil && criteria.ResourceType == nil {
+		return fmt.Errorf("type is required when filter_grants is set")
 	}
 
 	return nil

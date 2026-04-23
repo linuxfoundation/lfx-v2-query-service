@@ -6,6 +6,7 @@ package mock
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -29,6 +30,10 @@ type MockAccessControlChecker struct {
 	checkAccessResponse map[string]string
 	checkAccessError    error
 	isReadyError        error
+	// MockTupleRefs is the list of object refs returned by ReadTuples
+	MockTupleRefs []string
+	// SimulateTuplesError determines if ReadTuples should return an error
+	SimulateTuplesError bool
 }
 
 // CheckAccess implements the AccessControlChecker interface with mock behavior
@@ -90,6 +95,17 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	)
 
 	return result, nil
+}
+
+// ReadTuples implements the AccessControlChecker interface with mock behavior
+func (m *MockAccessControlChecker) ReadTuples(_ context.Context, _ string, _ string, _ time.Duration) ([]string, error) {
+	if m.SimulateTuplesError {
+		return nil, fmt.Errorf("mock read_tuples error")
+	}
+	if m.MockTupleRefs != nil {
+		return m.MockTupleRefs, nil
+	}
+	return []string{}, nil
 }
 
 // Close implements the AccessControlChecker interface (no-op for mock)

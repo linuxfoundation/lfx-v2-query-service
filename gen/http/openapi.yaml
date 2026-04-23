@@ -226,6 +226,13 @@ paths:
                   required: false
                   type: string
                   maxLength: 1000
+                - name: filter_grants
+                  in: query
+                  description: Filter results to only resources the authenticated user has direct FGA grants on. Requires type. Use 'direct' to filter by direct grants.
+                  required: false
+                  type: string
+                  enum:
+                    - direct
                 - name: sort
                   in: query
                   description: Sort order for results

@@ -57,6 +57,10 @@ type SearchCriteria struct {
 	DateFrom *string
 	// DateTo is the end date for range filter (inclusive, ISO 8601 or date-only)
 	DateTo *string
+	// FilterGrants filters results by the user's direct FGA grants ("direct")
+	FilterGrants *string
+	// ObjectRefs is a pre-computed list of object_ref values to filter results by (from FGA grants)
+	ObjectRefs []string
 }
 
 // SearchResult contains the results of a resource search

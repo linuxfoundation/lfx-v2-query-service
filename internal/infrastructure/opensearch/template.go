@@ -96,6 +96,19 @@ const queryResourceSource = `{
         }
         {{- end }}
         {{- end }}
+        {{- if .ObjectRefs }},
+        {
+          "terms": {
+            "object_ref": [
+              {{- $first := true -}}
+              {{- range .ObjectRefs -}}
+              {{- if $first -}}{{- $first = false -}}{{- else }},{{- end }}
+              {{ . | quote }}
+              {{- end }}
+            ]
+          }
+        }
+        {{- end }}
         {{- if .FiltersOr }},
         {
           "bool": {
@@ -144,7 +157,8 @@ const queryResourceSource = `{
   "sort": [
     {
       {{ .SortBy | quote }}: {
-        "order": {{ .SortOrder | quote }}
+        "order": {{ .SortOrder | quote }},
+        "missing": "_last"
       }
     },
     {"_id": "asc"}
