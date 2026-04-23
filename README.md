@@ -230,7 +230,7 @@ Authorization: Bearer <jwt_token>
 
 **Query Complexity Limits**
 
-OpenSearch enforces a hard limit of **1024 total clauses** per query (`maxClauseCount`). Exceeding this returns a `400 Bad Request` with a message indicating the clause limit was exceeded. Each query parameter contributes clauses as follows:
+OpenSearch enforces a configurable hard limit on total clauses per query (`maxClauseCount`). Exceeding this returns a `400 Bad Request` with a message indicating the clause limit was exceeded. Each query parameter contributes clauses as follows:
 
 | Parameter | Clauses added |
 |---|---|
@@ -246,9 +246,7 @@ OpenSearch enforces a hard limit of **1024 total clauses** per query (`maxClause
 
 Every request also adds 1 fixed clause (`latest: true`), plus 1 more for `public_only` or `private_only` when applicable.
 
-**Example:** A request with `filters_or` containing 500 values, `tags` with 300 values, and `filters_all` with 200 values would produce roughly 1003 clauses — approaching the limit before adding `type`, `parent`, or any other parameters.
-
-Keep the total number of values across all multi-value parameters well below 1000 to stay safe.
+**Example:** A request with `filters_or` containing 500 values, `tags` with 300 values, and `filters_all` with 200 values would produce roughly 1003 clauses — keep the total well below the configured `maxClauseCount` limit to stay safe.
 
 **Response:**
 
