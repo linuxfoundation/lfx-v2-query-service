@@ -76,7 +76,12 @@ func handleHTTPServer(ctx context.Context, host string, querySvcEndpoints *query
 		handler = debug.HTTP()(handler)
 	}
 	// Wrap the handler with OpenTelemetry instrumentation
-	handler = otelhttp.NewHandler(handler, "query-service")
+	handler = otelhttp.NewHandler(handler, "query-service",
+		otelhttp.WithFilter(func(r *http.Request) bool {
+			p := r.URL.Path
+			return p != "/healthz" && p != "/livez" && p != "/readyz"
+		}),
+	)
 
 	// Start HTTP server using default configuration, change the code to
 	// configure the server as required by your service.
