@@ -79,7 +79,7 @@ func handleHTTPServer(ctx context.Context, host string, querySvcEndpoints *query
 	handler = otelhttp.NewHandler(handler, "query-service",
 		otelhttp.WithFilter(func(r *http.Request) bool {
 			p := r.URL.Path
-			return p != "/healthz" && p != "/livez" && p != "/readyz"
+			return p != querysvcsvr.LivezQuerySvcPath() && p != querysvcsvr.ReadyzQuerySvcPath()
 		}),
 	)
 
