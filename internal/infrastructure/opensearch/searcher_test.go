@@ -246,10 +246,11 @@ func TestOpenSearchSearcherQueryResources(t *testing.T) {
 
 func TestOpenSearchSearcherRender(t *testing.T) {
 	tests := []struct {
-		name           string
-		criteria       model.SearchCriteria
-		expectedError  bool
-		expectedFields []string
+		name             string
+		criteria         model.SearchCriteria
+		expectedError    bool
+		expectedFields   []string
+		unexpectedFields []string
 	}{
 		{
 			name: "render query with name only",
@@ -446,8 +447,9 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 				SortOrder:    "asc",
 				PageSize:     10,
 			},
-			expectedError:  false,
-			expectedFields: []string{"sort_name"},
+			expectedError:    false,
+			expectedFields:   []string{"sort_name"},
+			unexpectedFields: []string{"\"_score\""},
 		},
 	}
 
@@ -477,6 +479,9 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			queryStr := string(query)
 			for _, field := range tc.expectedFields {
 				assertion.Contains(queryStr, field)
+			}
+			for _, field := range tc.unexpectedFields {
+				assertion.NotContains(queryStr, field)
 			}
 		})
 	}
