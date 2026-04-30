@@ -155,6 +155,9 @@ const queryResourceSource = `{
   {{- end }}
   {{- if gt .PageSize 0 }},
   "sort": [
+    {{- if .Name }}
+    {"_score": {"order": "desc"}},
+    {{- end }}
     {
       {{ .SortBy | quote }}: {
         "order": {{ .SortOrder | quote }},

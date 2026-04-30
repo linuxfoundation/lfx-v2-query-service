@@ -427,6 +427,28 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			expectedError:  false,
 			expectedFields: []string{"object_type", "v1_past_meeting"},
 		},
+		{
+			name: "render query with name uses score-first sort",
+			criteria: model.SearchCriteria{
+				Name:      stringPtr("LF Products"),
+				SortBy:    "sort_name",
+				SortOrder: "asc",
+				PageSize:  10,
+			},
+			expectedError:  false,
+			expectedFields: []string{"\"_score\":{\"order\":\"desc\"}", "sort_name"},
+		},
+		{
+			name: "render query without name omits score sort",
+			criteria: model.SearchCriteria{
+				ResourceType: stringPtr("project"),
+				SortBy:       "sort_name",
+				SortOrder:    "asc",
+				PageSize:     10,
+			},
+			expectedError:  false,
+			expectedFields: []string{"sort_name"},
+		},
 	}
 
 	assertion := assert.New(t)
