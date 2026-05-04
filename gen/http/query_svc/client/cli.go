@@ -150,8 +150,8 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	{
 		if querySvcQueryResourcesSort != "" {
 			sort = querySvcQueryResourcesSort
-			if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc") {
-				err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc"}))
+			if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc" || sort == "best_match") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc", "best_match"}))
 			}
 			if err != nil {
 				return nil, err

@@ -360,6 +360,7 @@ paths:
                         - name_desc
                         - updated_asc
                         - updated_desc
+                        - best_match
                   example: updated_desc
                 - name: page_token
                   in: query
@@ -877,6 +878,7 @@ components:
                         - name_desc
                         - updated_asc
                         - updated_desc
+                        - best_match
             example:
                 page_size: 20
                 page_token: '****'

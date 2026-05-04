@@ -157,8 +157,10 @@ const queryResourceSource = `{
   "sort": [
     {
       {{ .SortBy | quote }}: {
-        "order": {{ .SortOrder | quote }},
+        "order": {{ .SortOrder | quote }}
+        {{- if ne .SortBy "_score" }},
         "missing": "_last"
+        {{- end }}
       }
     },
     {"_id": "asc"}

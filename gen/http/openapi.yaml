@@ -244,6 +244,7 @@ paths:
                     - name_desc
                     - updated_asc
                     - updated_desc
+                    - best_match
                 - name: page_token
                   in: query
                   description: Opaque token for pagination

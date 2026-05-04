@@ -17,6 +17,10 @@ var SortValues = []any{
 	// propogating attributes from earlier revisions is not currently supported.
 	"updated_asc",
 	"updated_desc",
+	// best_match orders results by relevance score (descending). Most useful
+	// for typeahead/name searches; with no name query, scores are uniform and
+	// the ordering is effectively undefined.
+	"best_match",
 }
 
 var Sortable = dsl.Type("Sortable", func() {
