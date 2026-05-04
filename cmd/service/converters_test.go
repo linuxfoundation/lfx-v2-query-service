@@ -123,6 +123,21 @@ func TestPayloadToCriteria(t *testing.T) {
 			expectedError: false,
 		},
 		{
+			name: "payload with sorting - best_match",
+			payload: &querysvc.QueryResourcesPayload{
+				Name:     stringPtr("test"),
+				Sort:     "best_match",
+				PageSize: constants.DefaultPageSize,
+			},
+			expectedCriteria: model.SearchCriteria{
+				Name:      stringPtr("test"),
+				SortBy:    "_score",
+				SortOrder: "desc",
+				PageSize:  constants.DefaultPageSize,
+			},
+			expectedError: false,
+		},
+		{
 			name: "payload with explicit page_size",
 			payload: &querysvc.QueryResourcesPayload{
 				Name:     stringPtr("test"),

@@ -429,15 +429,28 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			expectedFields: []string{"object_type", "v1_past_meeting"},
 		},
 		{
-			name: "render query with name uses score-first sort",
+			name: "render query with best_match sorts by score",
+			criteria: model.SearchCriteria{
+				Name:      stringPtr("LF Products"),
+				SortBy:    "_score",
+				SortOrder: "desc",
+				PageSize:  10,
+			},
+			expectedError:    false,
+			expectedFields:   []string{"\"_score\"", "\"order\":\"desc\""},
+			unexpectedFields: []string{"\"missing\":\"_last\""},
+		},
+		{
+			name: "render query with name and default sort omits score",
 			criteria: model.SearchCriteria{
 				Name:      stringPtr("LF Products"),
 				SortBy:    "sort_name",
 				SortOrder: "asc",
 				PageSize:  10,
 			},
-			expectedError:  false,
-			expectedFields: []string{"\"_score\":{\"order\":\"desc\"}", "sort_name"},
+			expectedError:    false,
+			expectedFields:   []string{"sort_name"},
+			unexpectedFields: []string{"\"_score\""},
 		},
 		{
 			name: "render query without name omits score sort",
