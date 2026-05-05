@@ -45,7 +45,7 @@ var _ = dsl.Service("query-svc", func() {
 			})
 			dsl.Attribute("parent", dsl.String, "Parent (for navigation; varies by object type)", func() {
 				dsl.Example("project:123")
-				dsl.Pattern(`^[a-zA-Z]+:[a-zA-Z0-9_-]+$`)
+				dsl.Pattern(`^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$`)
 			})
 			dsl.Attribute("type", dsl.String, "Resource type to search", func() {
 				dsl.Example("committee")
@@ -145,6 +145,7 @@ var _ = dsl.Service("query-svc", func() {
 			})
 			dsl.Attribute("parent", dsl.String, "Parent (for navigation; varies by object type)", func() {
 				dsl.Example("project:123")
+				dsl.Pattern(`^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$`)
 			})
 			dsl.Attribute("type", dsl.String, "Resource type to search", func() {
 				dsl.Example("committee")
