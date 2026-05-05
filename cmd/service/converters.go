@@ -133,6 +133,9 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 	case "updated_desc":
 		criteria.SortBy = "updated_at"
 		criteria.SortOrder = "desc"
+	case "best_match":
+		criteria.SortBy = "_score"
+		criteria.SortOrder = "desc"
 	}
 
 	if criteria.PageToken != nil {

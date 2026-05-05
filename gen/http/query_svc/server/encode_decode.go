@@ -129,8 +129,8 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		} else {
 			sort = "name_asc"
 		}
-		if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc"}))
+		if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc" || sort == "best_match") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc", "best_match"}))
 		}
 		pageTokenRaw := qp.Get("page_token")
 		if pageTokenRaw != "" {

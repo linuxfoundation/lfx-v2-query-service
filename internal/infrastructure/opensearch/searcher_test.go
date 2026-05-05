@@ -246,10 +246,11 @@ func TestOpenSearchSearcherQueryResources(t *testing.T) {
 
 func TestOpenSearchSearcherRender(t *testing.T) {
 	tests := []struct {
-		name           string
-		criteria       model.SearchCriteria
-		expectedError  bool
-		expectedFields []string
+		name             string
+		criteria         model.SearchCriteria
+		expectedError    bool
+		expectedFields   []string
+		unexpectedFields []string
 	}{
 		{
 			name: "render query with name only",
@@ -427,6 +428,42 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			expectedError:  false,
 			expectedFields: []string{"object_type", "v1_past_meeting"},
 		},
+		{
+			name: "render query with best_match sorts by score",
+			criteria: model.SearchCriteria{
+				Name:      stringPtr("LF Products"),
+				SortBy:    "_score",
+				SortOrder: "desc",
+				PageSize:  10,
+			},
+			expectedError:    false,
+			expectedFields:   []string{"\"_score\"", "\"order\":\"desc\""},
+			unexpectedFields: []string{"\"missing\":\"_last\""},
+		},
+		{
+			name: "render query with name and default sort omits score",
+			criteria: model.SearchCriteria{
+				Name:      stringPtr("LF Products"),
+				SortBy:    "sort_name",
+				SortOrder: "asc",
+				PageSize:  10,
+			},
+			expectedError:    false,
+			expectedFields:   []string{"sort_name"},
+			unexpectedFields: []string{"\"_score\""},
+		},
+		{
+			name: "render query without name omits score sort",
+			criteria: model.SearchCriteria{
+				ResourceType: stringPtr("project"),
+				SortBy:       "sort_name",
+				SortOrder:    "asc",
+				PageSize:     10,
+			},
+			expectedError:    false,
+			expectedFields:   []string{"sort_name"},
+			unexpectedFields: []string{"\"_score\""},
+		},
 	}
 
 	assertion := assert.New(t)
@@ -455,6 +492,9 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			queryStr := string(query)
 			for _, field := range tc.expectedFields {
 				assertion.Contains(queryStr, field)
+			}
+			for _, field := range tc.unexpectedFields {
+				assertion.NotContains(queryStr, field)
 			}
 		})
 	}
