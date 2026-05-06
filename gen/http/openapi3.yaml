@@ -207,7 +207,7 @@ paths:
                     type: string
                     description: Parent (for navigation; varies by object type)
                     example: project:123
-                    pattern: ^[a-zA-Z]+:[a-zA-Z0-9_-]+$
+                    pattern: ^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$
                   example: project:123
                 - name: type
                   in: query
@@ -484,6 +484,7 @@ paths:
                     type: string
                     description: Parent (for navigation; varies by object type)
                     example: project:123
+                    pattern: ^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$
                   example: project:123
                 - name: type
                   in: query

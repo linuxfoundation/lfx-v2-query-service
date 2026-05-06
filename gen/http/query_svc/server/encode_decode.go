@@ -82,7 +82,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			parent = &parentRaw
 		}
 		if parent != nil {
-			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z]+:[a-zA-Z0-9_-]+$"))
+			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$"))
 		}
 		type_Raw := qp.Get("type")
 		if type_Raw != "" {
@@ -282,6 +282,9 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		parentRaw := qp.Get("parent")
 		if parentRaw != "" {
 			parent = &parentRaw
+		}
+		if parent != nil {
+			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$"))
 		}
 		type_Raw := qp.Get("type")
 		if type_Raw != "" {
