@@ -65,6 +65,7 @@ app:
     insecure: "false"
     tracesExporter: "none"
     tracesSampleRatio: "1.0"
+    tracesSampler: ""
     metricsExporter: "none"
     logsExporter: "none"
     propagators: "tracecontext,baggage,jaeger"
