@@ -378,11 +378,29 @@ func TestNewSampler_ParentHonored(t *testing.T) {
 	cfg := OTelConfig{TracesSampleRatio: 1.0}
 	s := newSampler(cfg) // default = parentbased_traceidratio
 
-	// With a sampled parent, child should also be sampled
-	sampledParent := oteltrace.SpanContext{}.WithTraceFlags(oteltrace.FlagsSampled)
+	// With a valid sampled parent, child should also be sampled
+	sampledParent := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+		TraceID:    oteltrace.TraceID{0x1},
+		SpanID:     oteltrace.SpanID{0x1},
+		TraceFlags: oteltrace.FlagsSampled,
+		Remote:     true,
+	})
 	parentCtx := oteltrace.ContextWithRemoteSpanContext(context.Background(), sampledParent)
 	result := s.ShouldSample(trace.SamplingParameters{ParentContext: parentCtx})
 	if result.Decision != trace.RecordAndSample {
 		t.Errorf("expected RecordAndSample with sampled parent, got %v", result.Decision)
+	}
+
+	// With a valid unsampled parent, child should not be sampled
+	unsampledParent := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+		TraceID:    oteltrace.TraceID{0x2},
+		SpanID:     oteltrace.SpanID{0x2},
+		TraceFlags: oteltrace.TraceFlags(0), // not sampled
+		Remote:     true,
+	})
+	parentCtx = oteltrace.ContextWithRemoteSpanContext(context.Background(), unsampledParent)
+	result = s.ShouldSample(trace.SamplingParameters{ParentContext: parentCtx})
+	if result.Decision != trace.Drop {
+		t.Errorf("expected Drop with unsampled parent, got %v", result.Decision)
 	}
 }
