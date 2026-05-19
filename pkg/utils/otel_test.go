@@ -362,13 +362,20 @@ func TestNewSampler(t *testing.T) {
 // falls back to cfg.TracesSampleRatio without panicking.
 func TestNewSampler_InvalidArg(t *testing.T) {
 	cfg := OTelConfig{
-		TracesSampleRatio: 0.5,
+		TracesSampleRatio: 0.0, // fallback ratio: never sample
 		TracesSampler:     "parentbased_traceidratio",
 		TracesSamplerArg:  "invalid",
 	}
 	s := newSampler(cfg)
 	if s == nil {
 		t.Fatal("newSampler returned nil for invalid OTEL_TRACES_SAMPLER_ARG")
+	}
+
+	// Verify that invalid arg causes fallback to cfg.TracesSampleRatio (0.0)
+	// by checking sampling decision for a root span (no parent).
+	result := s.ShouldSample(trace.SamplingParameters{})
+	if result.Decision != trace.Drop {
+		t.Errorf("expected Drop (never sample) with fallback ratio 0.0, got %v", result.Decision)
 	}
 }
 

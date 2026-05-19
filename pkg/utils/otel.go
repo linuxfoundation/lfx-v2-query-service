@@ -321,8 +321,11 @@ func newSampler(cfg OTelConfig) trace.Sampler {
 			if err == nil && r >= 0.0 && r <= 1.0 {
 				return r
 			}
-			slog.Warn("invalid OTEL_TRACES_SAMPLER_ARG, using TracesSampleRatio",
-				"provided-value", cfg.TracesSamplerArg, "error", err)
+			fields := []interface{}{"provided-value", cfg.TracesSamplerArg}
+			if err != nil {
+				fields = append(fields, "error", err)
+			}
+			slog.Warn("invalid OTEL_TRACES_SAMPLER_ARG, using TracesSampleRatio", fields...)
 		}
 		return cfg.TracesSampleRatio
 	}
@@ -343,7 +346,7 @@ func newSampler(cfg OTelConfig) trace.Sampler {
 	default:
 		if cfg.TracesSampler != "" {
 			slog.Warn("unknown OTEL_TRACES_SAMPLER, falling back to parentbased_traceidratio",
-				"provided-value", cfg.TracesSampler, "fallback-ratio", cfg.TracesSampleRatio)
+				"provided-value", cfg.TracesSampler, "resolved-ratio", parseRatio())
 		}
 		return trace.ParentBased(trace.TraceIDRatioBased(parseRatio()))
 	}
