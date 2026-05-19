@@ -53,6 +53,8 @@ func TestOTelConfigFromEnv_CustomValues(t *testing.T) {
 	t.Setenv("OTEL_TRACES_EXPORTER", "otlp")
 	t.Setenv("OTEL_METRICS_EXPORTER", "otlp")
 	t.Setenv("OTEL_LOGS_EXPORTER", "otlp")
+	t.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "0.5")
 
 	cfg := OTelConfigFromEnv()
 
@@ -80,6 +82,12 @@ func TestOTelConfigFromEnv_CustomValues(t *testing.T) {
 	if cfg.LogsExporter != OTelExporterOTLP {
 		t.Errorf("expected LogsExporter %q, got %q", OTelExporterOTLP, cfg.LogsExporter)
 	}
+	if cfg.TracesSampler != "parentbased_traceidratio" {
+		t.Errorf("expected TracesSampler 'parentbased_traceidratio', got %q", cfg.TracesSampler)
+	}
+	if cfg.TracesSamplerArg != "0.5" {
+		t.Errorf("expected TracesSamplerArg '0.5', got %q", cfg.TracesSamplerArg)
+	}
 }
 
 // TestOTelConfigFromEnv_UnsupportedProtocol verifies that an unsupported protocol
@@ -91,6 +99,23 @@ func TestOTelConfigFromEnv_UnsupportedProtocol(t *testing.T) {
 
 	if cfg.Protocol != "unsupported" {
 		t.Errorf("expected Protocol 'unsupported', got %q", cfg.Protocol)
+	}
+}
+
+// TestOTelConfigFromEnv_SamplerNormalization verifies that OTEL_TRACES_SAMPLER
+// is normalized to lowercase and whitespace-trimmed, and OTEL_TRACES_SAMPLER_ARG
+// is whitespace-trimmed.
+func TestOTelConfigFromEnv_SamplerNormalization(t *testing.T) {
+	t.Setenv("OTEL_TRACES_SAMPLER", "  ParentBased_TraceIdRatio  ")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "  0.75  ")
+
+	cfg := OTelConfigFromEnv()
+
+	if cfg.TracesSampler != "parentbased_traceidratio" {
+		t.Errorf("expected TracesSampler lowercased and trimmed to 'parentbased_traceidratio', got %q", cfg.TracesSampler)
+	}
+	if cfg.TracesSamplerArg != "0.75" {
+		t.Errorf("expected TracesSamplerArg trimmed to '0.75', got %q", cfg.TracesSamplerArg)
 	}
 }
 
