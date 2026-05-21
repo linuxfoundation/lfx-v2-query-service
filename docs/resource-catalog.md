@@ -16,7 +16,7 @@ Each service owns its indexer contract — the authoritative reference for data 
 | [lfx-v2-mailing-list-service](https://github.com/linuxfoundation/lfx-v2-mailing-list-service) | Groups.io Service, Groups.io Service Settings, Groups.io Mailing List, Groups.io Mailing List Settings, Groups.io Member, Groups.io Artifact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-mailing-list-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-voting-service](https://github.com/linuxfoundation/lfx-v2-voting-service) | Vote, Vote Response | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-voting-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-survey-service](https://github.com/linuxfoundation/lfx-v2-survey-service) | Survey, Survey Response, Survey Template | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-survey-service/blob/main/docs/indexer-contract.md) |
-| [lfx-v2-member-service](https://github.com/linuxfoundation/lfx-v2-member-service) | B2B Org, Project Membership, Key Contact, Membership Tier | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-member-service/blob/LFXV2-1365/docs/indexer-contract.md) |
+| [lfx-v2-member-service](https://github.com/linuxfoundation/lfx-v2-member-service) | B2B Org, Project Membership, Key Contact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-member-service/blob/main/docs/indexer-contract.md) |
 
 ---
 
@@ -140,12 +140,6 @@ GET /query/resources?v=1&type=survey&tags=committee_uid:<committee_uid>
 
 ```bash
 GET /query/resources?v=1&type=survey_response&tags=survey_uid:<survey_uid>
-```
-
-### Find membership tiers for a project
-
-```bash
-GET /query/resources?v=1&type=membership_tier&tags=project_uid:<project_uid>
 ```
 
 ### Find memberships for a project
