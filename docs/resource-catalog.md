@@ -1,8 +1,16 @@
 # Resource Catalog
 
-This document is the index of all resource types searchable via the Query Service, organized by the service that indexes them.
+This document is the index of all resource types searchable via the Query
+Service, organized by the service that indexes them, and a cookbook of common
+query patterns.
 
-Each service owns its indexer contract — the authoritative reference for data schemas, tags, access control, and parent references for its resource types. When a resource type changes, only that service's contract needs updating.
+For the NATS subjects and source files where each type is published, see
+[`docs/indexed-data-types.md`](indexed-data-types.md).
+
+Each service owns its indexer contract, which is the authoritative reference
+for data schemas, tags, access control, and parent references for its resource
+types. When a resource type changes, only that service's contract needs
+updating.
 
 ---
 
@@ -10,15 +18,22 @@ Each service owns its indexer contract — the authoritative reference for data 
 
 | Service | Resource Types | Indexer Contract |
 |---|---|---|
-| [lfx-v2-project-service](https://github.com/linuxfoundation/lfx-v2-project-service) | Project, Project Settings | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-project-service/blob/main/docs/indexer-contract.md) |
-| [lfx-v2-committee-service](https://github.com/linuxfoundation/lfx-v2-committee-service) | Committee, Committee Settings, Committee Member, Committee Invite, Committee Application, Committee Link, Committee Link Folder | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-committee-service/blob/main/docs/indexer-contract.md) |
+| [lfx-v2-project-service](https://github.com/linuxfoundation/lfx-v2-project-service) | Project, Project Settings, Project Link, Project Folder, Project Document | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-project-service/blob/main/docs/indexer-contract.md) |
+| [lfx-v2-committee-service](https://github.com/linuxfoundation/lfx-v2-committee-service) | Committee, Committee Settings, Committee Member, Committee Invite, Committee Application, Committee Document, Committee Link, Committee Link Folder | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-committee-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-meeting-service](https://github.com/linuxfoundation/lfx-v2-meeting-service) | V1 Meeting, V1 Meeting Registrant, V1 Meeting RSVP, V1 Meeting Attachment, V1 Past Meeting, V1 Past Meeting Participant, V1 Past Meeting Recording, V1 Past Meeting Transcript, V1 Past Meeting Summary, V1 Past Meeting Attachment | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-meeting-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-mailing-list-service](https://github.com/linuxfoundation/lfx-v2-mailing-list-service) | Groups.io Service, Groups.io Service Settings, Groups.io Mailing List, Groups.io Mailing List Settings, Groups.io Member, Groups.io Artifact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-mailing-list-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-voting-service](https://github.com/linuxfoundation/lfx-v2-voting-service) | Vote, Vote Response | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-voting-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-survey-service](https://github.com/linuxfoundation/lfx-v2-survey-service) | Survey, Survey Response, Survey Template | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-survey-service/blob/main/docs/indexer-contract.md) |
-| [lfx-v2-member-service](https://github.com/linuxfoundation/lfx-v2-member-service) | Membership Tier, Project Membership, Key Contact, B2B Org | |
 
 ---
+
+## Not Currently Queryable
+
+`lfx-v2-member-service` has architecture notes for member-domain indexed types,
+but its current implementation does not publish `lfx.index.*` messages. Do not
+query `membership_tier`, `project_membership`, `key_contact`, or `b2b_org`
+through this service until member-service lands real indexer publishing code and
+an indexer contract.
 
 ## Adding a New Service
 
@@ -31,7 +46,9 @@ When a new service starts indexing data:
 
 ## Common Query Patterns
 
-The examples below use `/query/resources`. All requests require `v=1` and a valid JWT token.
+The examples below use `/query/resources`. All requests require `v=1` and a
+Heimdall principal. Authenticated principals receive FGA-filtered results;
+`_anonymous` principals only receive documents indexed with `public: true`.
 
 ### Find all committees for a project
 
@@ -66,14 +83,38 @@ GET /query/resources?v=1&type=committee_member&tags=organization_name:<org_name>
 ### Advanced filtering with CEL
 
 ```bash
-# Find public committees in a specific category
-GET /query/resources?v=1&type=committee&tags=project_uid:<project_uid>&cel_filter=data.category=="TSC"&&data.public==true
+# Find committees in a specific category. Anonymous callers only see public committees.
+GET /query/resources?v=1&type=committee&tags=project_uid:<project_uid>&cel_filter=data.category=="TSC"
+```
+
+### Find resources with direct grants
+
+```bash
+GET /query/resources?v=1&type=committee&filter_grants=direct
 ```
 
 ### Find a project by slug
 
 ```bash
 GET /query/resources?v=1&type=project&tags=project_slug:<slug>
+```
+
+### Find project documents for a project
+
+```bash
+GET /query/resources?v=1&type=project_document&tags=project_uid:<project_uid>
+```
+
+### Find committee documents for a committee
+
+```bash
+GET /query/resources?v=1&type=committee_document&tags=committee_uid:<committee_uid>
+```
+
+### Find committee links in a folder
+
+```bash
+GET /query/resources?v=1&type=committee_link&tags=folder_uid:<folder_uid>
 ```
 
 ### Find all meetings for a project
@@ -140,30 +181,6 @@ GET /query/resources?v=1&type=survey&tags=committee_uid:<committee_uid>
 
 ```bash
 GET /query/resources?v=1&type=survey_response&tags=survey_uid:<survey_uid>
-```
-
-### Find membership tiers for a project
-
-```bash
-GET /query/resources?v=1&type=membership_tier&tags=project_uid:<project_uid>
-```
-
-### Find memberships for a project
-
-```bash
-GET /query/resources?v=1&type=project_membership&tags=project_uid:<project_uid>
-```
-
-### Find memberships by status
-
-```bash
-GET /query/resources?v=1&type=project_membership&tags_all=project_uid:<project_uid>&tags_all=status:Active
-```
-
-### Find memberships for a company
-
-```bash
-GET /query/resources?v=1&type=project_membership&tags=b2b_org_uid:<b2b_org_uid>
 ```
 
 For the full list of queryable fields and tags per resource type, refer to the service's indexer contract linked in the table above.

@@ -2,6 +2,9 @@
 
 HTTP service for LFX API consumers to perform access-controlled queries for LFX resources, including typeahead and full-text search.
 
+> Agents working in this repo should start with [`CLAUDE.md`](CLAUDE.md).
+> API contract truth lives under [`docs/`](docs/).
+
 ## Architecture Overview
 
 The implementation follows the clean architecture principles where:
@@ -45,7 +48,7 @@ The implementation follows the clean architecture principles where:
 #### Ports (`internal/domain/port/`)
 
 - **ResourceSearcher Interface**: Defines the contract for resource search operations
-- **OrganizationSearcher Interface**: Defines the contract for organization search operations  
+- **OrganizationSearcher Interface**: Defines the contract for organization search operations
 - **AccessControlChecker Interface**: Defines the contract for access control operations
 - **Authenticator Interface**: Defines the contract for authentication operations
 
@@ -91,7 +94,7 @@ The Clearbit implementation provides organization search capabilities using the 
 
 ## Dependency Injection
 
-Dependency injection is performed in `cmd/main.go`, where the concrete implementations for resource search and access control are selected based on configuration and then injected into the service constructor.
+Dependency injection starts in `cmd/main.go`, with concrete implementations selected in `cmd/service/providers.go` based on environment configuration and then injected into the service constructor.
 
 ## Benefits of This Architecture
 
@@ -123,7 +126,12 @@ make docker-run
 
 ### Queryable Resource Types
 
-All resource types searchable via this service are listed in [`docs/resource-catalog.md`](docs/resource-catalog.md), organized by the service that indexes them. Each entry links to that service's indexer contract — the authoritative reference for its data schemas, tags, access control config, and parent references.
+All resource types searchable via this service are listed in [`docs/resource-catalog.md`](docs/resource-catalog.md), organized by the service that indexes them. Each entry links to that service's indexer contract, the authoritative reference for its data schemas, tags, access control config, and parent references.
+
+For agent-oriented contract docs:
+
+- [`docs/query-service-contract.md`](docs/query-service-contract.md): query API, access filtering, OpenSearch fields, tags, filters, CEL, page size, date ranges, and clause limits.
+- [`docs/indexed-data-types.md`](docs/indexed-data-types.md): active queryable resource types and where their service-owned contracts live.
 
 ### Running Locally
 
@@ -131,10 +139,14 @@ All resource types searchable via this service are listed in [`docs/resource-cat
 
 ```bash
 # Using mock implementations
-SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock go run cmd/main.go
+SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock ORG_SEARCH_SOURCE=mock AUTH_SOURCE=mock \
+JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL=dev_user \
+PAGE_TOKEN_SECRET=12345678901234567890123456789012 go run ./cmd
 
 # With custom port
-SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock go run cmd/main.go -p 3000
+SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock ORG_SEARCH_SOURCE=mock AUTH_SOURCE=mock \
+JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL=dev_user \
+PAGE_TOKEN_SECRET=12345678901234567890123456789012 go run ./cmd -p 3000
 ```
 
 #### With Production Services
@@ -146,13 +158,14 @@ ORG_SEARCH_SOURCE=clearbit \
 ACCESS_CONTROL_SOURCE=nats \
 OPENSEARCH_URL={{placeholder}} \
 OPENSEARCH_INDEX=resources \
-NATS_URL{{placeholder}} \
+NATS_URL={{placeholder}} \
+PAGE_TOKEN_SECRET=12345678901234567890123456789012 \
 CLEARBIT_CREDENTIAL=your_clearbit_api_key \
 CLEARBIT_BASE_URL=https://company.clearbit.com \
 CLEARBIT_TIMEOUT=30s \
 CLEARBIT_MAX_RETRIES=5 \
 CLEARBIT_RETRY_DELAY=2s \
-go run cmd/main.go
+go run ./cmd
 ```
 
 ### Available Environment Variables
@@ -169,6 +182,7 @@ go run cmd/main.go
 
 - `OPENSEARCH_URL`: OpenSearch URL (default: `http://localhost:9200`)
 - `OPENSEARCH_INDEX`: OpenSearch index name (default: "resources")
+- `PAGE_TOKEN_SECRET`: 32-character secret used to encode/decode opaque page tokens (required when paging)
 
 **Access Control Implementation:**
 
@@ -220,33 +234,16 @@ Authorization: Bearer <jwt_token>
 - `parent`: Parent resource for hierarchical queries
 - `tags`: Array of tags to filter by (OR logic - matches resources with any of these tags)
 - `tags_all`: Array of tags to filter by (AND logic - matches resources that have all of these tags)
-- `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](#cel-filter) section)
+- `filters`, `filters_all`, `filters_or`: `field:value` filters against `data.*`
+- `cel_filter`: CEL expression for advanced post-query filtering
+- `filter_grants`: `direct` to pre-filter to resources with direct FGA grants (requires `type`)
 - `date_field`: Date field to filter on (within data object) - used with date_from and/or date_to
 - `date_from`: Start date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses start of day UTC
 - `date_to`: End date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses end of day UTC
-- `sort`: Sort order (name_asc, name_desc, updated_asc, updated_desc)
+- `sort`: Sort order (name_asc, name_desc, updated_asc, updated_desc, best_match)
+- `page_size`: Number of results per page (1-1000, default 50)
 - `page_token`: Pagination token
 - `v`: API version (required)
-
-**Query Complexity Limits**
-
-OpenSearch enforces a configurable hard limit on total clauses per query (`maxClauseCount`). Exceeding this returns a `400 Bad Request` with a message indicating the clause limit was exceeded. Each query parameter contributes clauses as follows:
-
-| Parameter | Clauses added |
-|---|---|
-| `type` | 1 |
-| `parent` | 1 |
-| `name` | 1 |
-| `date_field` + `date_from`/`date_to` | 1 |
-| `tags` | 1 per value |
-| `tags_all` | 1 per value |
-| `filters` | 1 per value |
-| `filters_all` | 1 per value |
-| `filters_or` | 1 (wrapping `bool`) + 1 per value |
-
-Every request also adds 1 fixed clause (`latest: true`), plus 1 more for `public_only` or `private_only` when applicable.
-
-**Example:** A request with `filters_or` containing 500 values, `tags` with 300 values, and `filters_all` with 200 values would produce roughly 1003 clauses — keep the total well below the configured `maxClauseCount` limit to stay safe.
 
 **Response:**
 
@@ -263,162 +260,14 @@ Every request also adds 1 fixed clause (`latest: true`), plus 1 more for `public
       }
     }
   ],
-  "page_token": "offset_50",
+  "page_token": "opaque-token-or-omitted",
   "cache_control": "public, max-age=300"
 }
 ```
 
-**Date Range Filtering Examples:**
-
-Filter resources updated between two dates (date-only format):
-
-```bash
-GET /query/resources?v=1&date_field=updated_at&date_from=2025-01-10&date_to=2025-01-28
-Authorization: Bearer <jwt_token>
-```
-
-Filter resources with precise datetime filtering (ISO 8601 format):
-
-```bash
-GET /query/resources?v=1&date_field=created_at&date_from=2025-01-10T15:30:00Z&date_to=2025-01-28T18:45:00Z
-Authorization: Bearer <jwt_token>
-```
-
-Filter resources created after a specific date (open-ended range):
-
-```bash
-GET /query/resources?v=1&date_field=created_at&date_from=2025-01-01
-Authorization: Bearer <jwt_token>
-```
-
-Combine date filtering with other parameters:
-
-```bash
-GET /query/resources?v=1&type=project&tags=active&date_field=updated_at&date_from=2025-01-01&date_to=2025-03-31
-Authorization: Bearer <jwt_token>
-```
-
-**Date Format Notes:**
-
-- **ISO 8601 datetime format**: `2025-01-10T15:30:00Z` (time is used as provided)
-- **Date-only format**: `2025-01-10` (automatically converted to start/end of day UTC)
-  - For `date_from`: Converts to `2025-01-10T00:00:00Z` (start of day)
-  - For `date_to`: Converts to `2025-01-10T23:59:59Z` (end of day)
-- All dates are inclusive (uses `gte` and `lte` operators)
-- The `date_field` parameter is automatically prefixed with `"data."` to scope to the resource's data object
-
-#### CEL Filter
-
-The `cel_filter` query parameter enables advanced filtering of search results using Common Expression Language (CEL). CEL is a non-Turing complete expression language designed for safe, fast evaluation of expressions in performance-critical applications.
-
-**Why CEL Filter?**
-
-CEL filtering was added to provide flexible, dynamic filtering capabilities on arbitrary resource data fields without modifying the OpenSearch query structure. This allows API consumers to:
-
-- Filter on any field within the resource data
-- Combine multiple conditions with boolean logic
-- Perform complex comparisons beyond simple equality checks
-- Apply filters without requiring backend code changes
-
-**What is CEL?**
-
-CEL (Common Expression Language) is an open-source expression language developed by Google. It provides:
-
-- **Safety**: Non-Turing complete, no side effects, no infinite loops
-- **Performance**: Linear time evaluation with compilation and caching
-- **Portability**: Language-agnostic with implementations in multiple languages
-- **Security**: Execution timeouts and resource constraints
-
-Learn more: [CEL Specification](https://github.com/google/cel-spec) | [CEL-Go Documentation](https://github.com/google/cel-go)
-
-**How It Works**
-
-CEL filters are applied **after** the OpenSearch query executes but **before** access control checks. This means:
-
-1. OpenSearch returns initial results based on primary search criteria (`type`, `name`, `parent`, `tags`)
-2. CEL filter evaluates each resource and removes non-matching items
-3. Access control checks are performed only on filtered results (improved performance)
-4. Final results are returned to the client
-
-**Available Variables**
-
-CEL expressions have access to the following variables for each resource:
-
-- `data` (map): The resource's data object containing all custom fields
-- `resource_type` (string): The type of the resource (e.g., "project", "committee")
-- `id` (string): The unique identifier of the resource
-
-**Security Constraints**
-
-- **Maximum expression length**: 1000 characters
-- **Evaluation timeout**: 100ms per resource
-- **Expression caching**: Compiled programs cached with LRU and 5-minute TTL
-- **No external access**: Cannot make network calls or access filesystem
-
-**Usage Examples**
-
-Filter projects by slug:
-```
-GET /query/resources?type=project&cel_filter=data.slug == "tlf"&v=1
-```
-
-Filter by status and priority:
-```
-GET /query/resources?type=project&cel_filter=data.status == "active" && data.priority > 5&v=1
-```
-
-Filter by resource type:
-```
-GET /query/resources?parent=org:123&cel_filter=resource_type == "committee"&v=1
-```
-
-Complex boolean logic:
-```
-GET /query/resources?type=project&cel_filter=data.status == "active" || (data.priority > 8 && data.category == "security")&v=1
-```
-
-String operations:
-```
-GET /query/resources?type=project&cel_filter=data.name.contains("LF") && data.description.startsWith("Open")&v=1
-```
-
-Check field existence:
-```
-GET /query/resources?type=project&cel_filter=has(data.archived) && data.archived == false&v=1
-```
-
-List membership:
-```
-GET /query/resources?type=project&cel_filter=data.category in ["security", "networking", "storage"]&v=1
-```
-
-Nested field access:
-```
-GET /query/resources?type=project&cel_filter=data.metadata.owner == "admin" && data.metadata.region == "us-west"&v=1
-```
-
-**Supported Operators**
-
-- **Comparison**: `==`, `!=`, `<`, `<=`, `>`, `>=`
-- **Logical**: `&&` (AND), `||` (OR), `!` (NOT)
-- **Arithmetic**: `+`, `-`, `*`, `/`, `%`
-- **String**: `contains()`, `startsWith()`, `endsWith()`, `matches()` (regex)
-- **Membership**: `in`
-- **Field check**: `has()`
-
-**Important Limitations**
-
-⚠️ **Pagination Consideration**: CEL filters are applied to the results from each OpenSearch page. If you're looking for a specific resource that matches your CEL filter but it's not in the first page of OpenSearch results, it may not be found. For best results when using CEL filters, use more specific primary search parameters (`type`, `name`, `parent`, `tags`) to narrow down the OpenSearch results first.
-
-**Error Handling**
-
-Invalid CEL expressions return a 400 Bad Request with details:
-
-```json
-{
-  "error": "filter expression failed: ERROR: <input>:1:6: Syntax error: mismatched input 'invalid' expecting {'[', '{', '(', '.', '-', '!', 'true', 'false', 'null', NUM_FLOAT, NUM_INT, NUM_UINT, STRING, BYTES, IDENTIFIER}"
-}
-```
+For API contract details (page size, date ranges, CEL filter, clause limits,
+anonymous vs authenticated semantics, access-control flow), see
+[`docs/query-service-contract.md`](docs/query-service-contract.md).
 
 #### Organization Search API
 
@@ -614,13 +463,15 @@ This command generated the basic server structure, which was then customized and
 3. **Build the project**:
 
    ```bash
-   go build cmd
+   go build ./cmd
    ```
 
 4. **Run with mock data** (for development):
 
    ```bash
-   SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock go run ./cmd
+   SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock ORG_SEARCH_SOURCE=mock AUTH_SOURCE=mock \
+   JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL=dev_user \
+   PAGE_TOKEN_SECRET=12345678901234567890123456789012 go run ./cmd
    ```
 
 5. **Run tests**:
