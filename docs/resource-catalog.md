@@ -24,6 +24,7 @@ updating.
 | [lfx-v2-mailing-list-service](https://github.com/linuxfoundation/lfx-v2-mailing-list-service) | Groups.io Service, Groups.io Service Settings, Groups.io Mailing List, Groups.io Mailing List Settings, Groups.io Member, Groups.io Artifact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-mailing-list-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-voting-service](https://github.com/linuxfoundation/lfx-v2-voting-service) | Vote, Vote Response | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-voting-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-survey-service](https://github.com/linuxfoundation/lfx-v2-survey-service) | Survey, Survey Response, Survey Template | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-survey-service/blob/main/docs/indexer-contract.md) |
+| [lfx-v2-member-service](https://github.com/linuxfoundation/lfx-v2-member-service) | B2B Org, Project Membership, Key Contact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-member-service/blob/main/docs/indexer-contract.md) |
 
 ---
 
@@ -181,6 +182,24 @@ GET /query/resources?v=1&type=survey&tags=committee_uid:<committee_uid>
 
 ```bash
 GET /query/resources?v=1&type=survey_response&tags=survey_uid:<survey_uid>
+```
+
+### Find memberships for a project
+
+```bash
+GET /query/resources?v=1&type=project_membership&tags=project_uid:<project_uid>
+```
+
+### Find memberships by status
+
+```bash
+GET /query/resources?v=1&type=project_membership&tags_all=project_uid:<project_uid>&tags_all=status:Active
+```
+
+### Find memberships for a company
+
+```bash
+GET /query/resources?v=1&type=project_membership&tags=b2b_org_uid:<b2b_org_uid>
 ```
 
 For the full list of queryable fields and tags per resource type, refer to the service's indexer contract linked in the table above.
