@@ -107,13 +107,21 @@ Indexer contract: [docs/indexer-contract.md](https://github.com/linuxfoundation/
 | `survey_response` | `lfx.index.survey_response` | `internal/infrastructure/eventing/nats_publisher.go` |
 | `survey_template` | `lfx.index.survey_template` | `internal/infrastructure/eventing/nats_publisher.go` |
 
-## Not Currently Indexed
+### Members (`lfx-v2-member-service`)
 
-`lfx-v2-member-service` currently does not publish `lfx.index.*` messages in
-its implementation. Its architecture notes mention future member-domain query
-types such as `b2b_org`, `project_membership`, `key_contact`, and
-`membership_tier`, but those are not active query-service types until that repo
-adds real indexer publishing code and an indexer contract.
+Indexer contract: [docs/indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-member-service/blob/main/docs/indexer-contract.md)
+
+| `type` | NATS subject | Source file |
+|--------|-------------|-------------|
+| `b2b_org` | `lfx.index.b2b_org` | `pkg/constants/subjects.go` |
+| `b2b_org_settings` | `lfx.index.b2b_org_settings` | `pkg/constants/subjects.go` |
+| `project_membership` | `lfx.index.project_membership` | `pkg/constants/subjects.go` |
+| `key_contact` | `lfx.index.key_contact` | `pkg/constants/subjects.go` |
+
+> `project_membership` records are Salesforce-managed and indexed via
+> `/admin/reindex`. `b2b_org_settings` docs are created on demand by the first
+> `PUT /b2b_orgs/{uid}/settings` that configures a writer or auditor, not by the
+> backfill runner.
 
 ---
 

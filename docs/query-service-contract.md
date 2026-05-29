@@ -171,7 +171,7 @@ messages are rejected by the indexer, but old or manually inserted documents can
 still be missing access fields. Query OpenSearch directly:
 
 ```bash
-curl "$OPENSEARCH_URL/lfx-resources/_search" -H 'Content-Type: application/json' -d '{
+curl "$OPENSEARCH_URL/$OPENSEARCH_INDEX/_search" -H 'Content-Type: application/json' -d '{
   "query": {"bool": {"must": [
     {"term": {"object_id": "<uid>"}},
     {"term": {"latest": true}}

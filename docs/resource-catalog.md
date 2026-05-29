@@ -24,17 +24,9 @@ updating.
 | [lfx-v2-mailing-list-service](https://github.com/linuxfoundation/lfx-v2-mailing-list-service) | Groups.io Service, Groups.io Service Settings, Groups.io Mailing List, Groups.io Mailing List Settings, Groups.io Member, Groups.io Artifact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-mailing-list-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-voting-service](https://github.com/linuxfoundation/lfx-v2-voting-service) | Vote, Vote Response | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-voting-service/blob/main/docs/indexer-contract.md) |
 | [lfx-v2-survey-service](https://github.com/linuxfoundation/lfx-v2-survey-service) | Survey, Survey Response, Survey Template | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-survey-service/blob/main/docs/indexer-contract.md) |
-| [lfx-v2-member-service](https://github.com/linuxfoundation/lfx-v2-member-service) | B2B Org, Project Membership, Key Contact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-member-service/blob/main/docs/indexer-contract.md) |
+| [lfx-v2-member-service](https://github.com/linuxfoundation/lfx-v2-member-service) | B2B Org, B2B Org Settings, Project Membership, Key Contact | [indexer-contract.md](https://github.com/linuxfoundation/lfx-v2-member-service/blob/main/docs/indexer-contract.md) |
 
 ---
-
-## Not Currently Queryable
-
-`lfx-v2-member-service` has architecture notes for member-domain indexed types,
-but its current implementation does not publish `lfx.index.*` messages. Do not
-query `membership_tier`, `project_membership`, `key_contact`, or `b2b_org`
-through this service until member-service lands real indexer publishing code and
-an indexer contract.
 
 ## Adding a New Service
 
@@ -192,14 +184,31 @@ GET /query/resources?v=1&type=project_membership&tags=project_uid:<project_uid>
 
 ### Find memberships by status
 
+`status` is a `data` field on `project_membership` (not a tag), so combine a
+tag filter with a `filters` clause.
+
 ```bash
-GET /query/resources?v=1&type=project_membership&tags_all=project_uid:<project_uid>&tags_all=status:Active
+GET /query/resources?v=1&type=project_membership&tags=project_uid:<project_uid>&filters=status:Active
 ```
 
 ### Find memberships for a company
 
 ```bash
 GET /query/resources?v=1&type=project_membership&tags=b2b_org_uid:<b2b_org_uid>
+```
+
+### Find key contacts for a membership
+
+```bash
+GET /query/resources?v=1&type=key_contact&tags=project_membership_uid:<membership_uid>
+```
+
+### Find which orgs a user has access to
+
+The `b2b_org_settings` `member:` tag covers both writer and auditor roles.
+
+```bash
+GET /query/resources?v=1&type=b2b_org_settings&tags=member:<auth0|username>
 ```
 
 For the full list of queryable fields and tags per resource type, refer to the service's indexer contract linked in the table above.
