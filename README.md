@@ -182,7 +182,7 @@ go run ./cmd
 
 - `OPENSEARCH_URL`: OpenSearch URL (default: `http://localhost:9200`)
 - `OPENSEARCH_INDEX`: OpenSearch index name (default: "resources")
-- `PAGE_TOKEN_SECRET`: 32-character secret used to encode/decode opaque page tokens (required when paging)
+- `PAGE_TOKEN_SECRET`: 32-character secret used to encode/decode opaque page tokens. Required for any deployment: the service calls `global.PageTokenSecret()` (which fatals if the var is unset) whenever it generates a `page_token` for a full page, so even an ordinary first-page query can crash the process if this is missing.
 
 **Access Control Implementation:**
 
