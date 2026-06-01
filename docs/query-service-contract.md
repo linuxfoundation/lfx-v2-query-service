@@ -93,7 +93,7 @@ and callers should issue a narrower count query.
 | | Anonymous (`_anonymous`) | Authenticated |
 | --- | --- | --- |
 | OpenSearch filter | `public: true` only | All documents |
-| FGA check | Skipped | Batch check via NATS |
+| FGA check | Skipped | Batch check via NATS for non-public results only (`public: true` results skip the check) |
 | Cache-Control | `public, max-age=300` | Not set |
 
 Anonymous users are identified by the `_anonymous` principal. They only see
@@ -155,7 +155,7 @@ resource to be discoverable and accessible:
 | `parent_refs` | Parent filtering (`parent=` param) | Resource won't appear in parent queries |
 | `name_and_aliases` | Typeahead search (`name=` param) | Resource won't appear in name searches |
 | `tags` | Tag filtering | Resource won't match tag queries |
-| `public` | Skips FGA check for anonymous users | Anonymous users can't see it |
+| `public` | Marks the resource as public: skips the FGA check for all callers (`BuildMessage` returns it without checking when `public` is true) and lets anonymous callers see it via the `public: true` filter | Anonymous users can't see it; setting it incorrectly exposes a private resource to everyone |
 | `access_check_object` | Identifies FGA object to check | Resource skipped by access filtering if a legacy/malformed document is encountered |
 | `access_check_relation` | FGA relation to check (e.g. `viewer`) | Resource skipped by access filtering if a legacy/malformed document is encountered |
 | `access_check_query` | `{access_check_object}#{access_check_relation}` used by count aggregations | Authenticated counts can undercount private resources |
@@ -292,11 +292,15 @@ Common operations:
 - List membership: `data.category in ["security", "networking"]`
 - Field existence: `has(data.archived)`
 
-**Important limitation:** CEL filters apply only to results from each OpenSearch
-page. If the target resource is not in the first page of OpenSearch results,
-it won't be found even if it matches the CEL filter. Always use specific
-primary search criteria (`type`, `name`, `parent`) to narrow OpenSearch results
-first.
+**Important limitation:** CEL filters apply per OpenSearch page, after the raw
+page is fetched and before access control. A matching resource that falls
+outside the first raw page is still returned once the caller follows
+`page_token` to that page, so callers must keep paginating until `page_token`
+is absent (see [Page Size](#page-size)). The trade-off is that a CEL expression
+which significantly reduces a page can yield short or empty pages, so it is not
+a substitute for narrowing the OpenSearch query itself. Always pair `cel_filter`
+with specific primary search criteria (`type`, `name`, `parent`) to keep the raw
+result set small.
 
 ## Query Clause Limits
 
