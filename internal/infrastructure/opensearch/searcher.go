@@ -22,6 +22,9 @@ import (
 	"github.com/opensearch-project/opensearch-go/v4"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var queryResourceTemplate = template.Must(
@@ -249,11 +252,22 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 	opensearchClient, errpensearchClient := opensearchapi.NewClient(opensearchapi.Config{
 		Client: opensearch.Config{
 			Addresses: []string{config.URL},
-			Transport: otelhttp.NewTransport(&http.Transport{
-				MaxIdleConnsPerHost:   10,
-				ResponseHeaderTimeout: 30 * time.Second,
-				DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
-			}),
+			Transport: otelhttp.NewTransport(
+				&http.Transport{
+					MaxIdleConnsPerHost:   10,
+					ResponseHeaderTimeout: 30 * time.Second,
+					DialContext:           (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
+				},
+				// peer.service was removed from OTel semconv in v1.39 (replaced by
+				// resource-level service.name). It is set here as a raw attribute
+				// because Datadog still uses it to label downstream nodes in the
+				// service map; without it, Datadog falls back to server.address
+				// which resolves to the raw AWS VPC hostname.
+				otelhttp.WithSpanOptions(trace.WithAttributes(
+					attribute.String("peer.service", "opensearch"),
+					semconv.DBSystemNameOpenSearch,
+				)),
+			),
 		},
 	})
 	if errpensearchClient != nil {
