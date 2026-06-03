@@ -7,6 +7,7 @@ go 1.25.0
 
 require (
 	github.com/auth0/go-jwt-middleware/v2 v2.3.0
+	github.com/go-chi/chi/v5 v5.2.2
 	github.com/google/cel-go v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/nats-io/nats.go v1.43.0
@@ -41,7 +42,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dimfeld/httppath v0.0.0-20170720192232-ee938bf73598 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/go-chi/chi/v5 v5.2.2 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gohugoio/hashstructure v0.5.0 // indirect
