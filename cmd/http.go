@@ -11,13 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/trace"
+	"goa.design/clue/debug"
+	goahttp "goa.design/goa/v3/http"
+
 	querysvcsvr "github.com/linuxfoundation/lfx-v2-query-service/gen/http/query_svc/server"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/middleware"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"goa.design/clue/debug"
-	goahttp "goa.design/goa/v3/http"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
@@ -35,7 +38,7 @@ func handleHTTPServer(ctx context.Context, host string, querySvcEndpoints *query
 
 	// Build the service HTTP request multiplexer and mount debug and profiler
 	// endpoints in debug mode.
-	var mux goahttp.Muxer
+	var mux goahttp.MiddlewareMuxer
 	{
 		mux = goahttp.NewMuxer()
 		if dbg {
@@ -62,6 +65,29 @@ func handleHTTPServer(ctx context.Context, host string, querySvcEndpoints *query
 		eh := errorHandler(ctx)
 		querySvcServer = querysvcsvr.New(querySvcEndpoints, mux, dec, enc, eh, nil, koHttpDir, koHttpDir, koHttpDir, koHttpDir)
 	}
+
+	// Register route-tagging middleware inside chi's routing chain so that
+	// http.route is set on the OTel span after chi has matched the route pattern.
+	// The span name is also updated here to avoid high-cardinality names from
+	// using raw URL paths (which contain actual path parameter values).
+	// Must be registered before Mount calls per chi convention.
+	// Reads RoutePattern after next.ServeHTTP because chi populates the pattern
+	// during routing (inside ServeHTTP), not before.
+	mux.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r)
+			rctx := chi.RouteContext(r.Context())
+			if rctx != nil {
+				routePattern := rctx.RoutePattern()
+				if routePattern != "" {
+					if labeler, ok := otelhttp.LabelerFromContext(r.Context()); ok {
+						labeler.Add(semconv.HTTPRoute(routePattern))
+					}
+					trace.SpanFromContext(r.Context()).SetName(r.Method + " " + routePattern)
+				}
+			}
+		})
+	})
 
 	// Configure the mux.
 	querysvcsvr.Mount(mux, querySvcServer)
