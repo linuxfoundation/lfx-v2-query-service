@@ -15,6 +15,10 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 
 	"github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // NATSClient wraps the NATS connection and provides access control operations
@@ -33,6 +37,33 @@ type NATSClientInterface interface {
 	IsReady(ctx context.Context) error
 }
 
+// requestWithSpan wraps conn.RequestMsgWithContext with an OTel client span and
+// injects trace context into the NATS message headers.
+func (c *NATSClient) requestWithSpan(ctx context.Context, subject string, data []byte) (*nats.Msg, error) {
+	ctx, span := tracer.Start(ctx, "nats.request",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "nats"),
+			attribute.String("messaging.destination.name", subject),
+			attribute.Int("messaging.message.body.size", len(data)),
+		),
+	)
+	defer span.End()
+
+	msg := nats.NewMsg(subject)
+	msg.Data = data
+	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(msg.Header))
+
+	reply, err := c.conn.RequestMsgWithContext(ctx, msg)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return reply, nil
+}
+
 // CheckAccess sends an access control request via NATS and waits for the response
 func (c *NATSClient) CheckAccess(ctx context.Context, request *AccessCheckNATSRequest) (AccessCheckNATSResponse, error) {
 
@@ -44,8 +75,15 @@ func (c *NATSClient) CheckAccess(ctx context.Context, request *AccessCheckNATSRe
 		return nil, fmt.Errorf("invalid NATS access check request: subject and message must be set")
 	}
 
+	// Apply per-request timeout to context
+	if request.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, request.Timeout)
+		defer cancel()
+	}
+
 	// Send the request and wait for response
-	natsResponse, errRequest := c.conn.Request(request.Subject, request.Message, request.Timeout)
+	natsResponse, errRequest := c.requestWithSpan(ctx, request.Subject, request.Message)
 	if errRequest != nil {
 		return nil, fmt.Errorf("NATS request failed: %w", errRequest)
 	}
@@ -101,7 +139,7 @@ func (c *NATSClient) ReadTuples(ctx context.Context, request *ReadTuplesNATSRequ
 		defer cancel()
 	}
 
-	natsResponse, err := c.conn.RequestWithContext(ctx, constants.ReadTuplesSubject, data)
+	natsResponse, err := c.requestWithSpan(ctx, constants.ReadTuplesSubject, data)
 	if err != nil {
 		return nil, fmt.Errorf("NATS read_tuples request failed: %w", err)
 	}
