@@ -19,15 +19,15 @@ var tracer = otel.Tracer("github.com/linuxfoundation/lfx-v2-query-service/intern
 type natsHeaderCarrier nats.Header
 
 func (c natsHeaderCarrier) Get(key string) string {
-	vals := c[key]
-	if len(vals) == 0 {
-		return ""
-	}
-	return vals[0]
+	// nats.Header canonicalizes keys to MIME-style casing (e.g., "Traceparent").
+	// Use Header.Get to ensure consistent key canonicalization with downstream code.
+	return nats.Header(c).Get(key)
 }
 
 func (c natsHeaderCarrier) Set(key string, value string) {
-	c[key] = []string{value}
+	// Use Header.Set to ensure keys are canonicalized (e.g., "traceparent" -> "Traceparent").
+	// This ensures trace context injection is readable by code that uses Header.Get.
+	nats.Header(c).Set(key, value)
 }
 
 func (c natsHeaderCarrier) Keys() []string {

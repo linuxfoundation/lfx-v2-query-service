@@ -77,9 +77,13 @@ func (c *NATSClient) CheckAccess(ctx context.Context, request *AccessCheckNATSRe
 	}
 
 	// Apply per-request timeout to context
+	timeout := c.timeout
 	if request.Timeout > 0 {
+		timeout = request.Timeout
+	}
+	if timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, request.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 
