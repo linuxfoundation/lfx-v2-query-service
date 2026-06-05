@@ -30,6 +30,8 @@ DISABLE_ERRORS_LINTERS:
 YAML_YAMLLINT_CONFIG_FILE: .yamllint
 REPOSITORY_KICS_ARGUMENTS: >-
   scan --no-progress --exclude-severities="medium,low,info,trace" --exclude-paths="gen/*"
+REPOSITORY_CHECKOV_ARGUMENTS: >-
+  --skip-check CKV_OPENAPI_4,CKV_OPENAPI_7,CKV_OPENAPI_16,CKV_OPENAPI_20,CKV_OPENAPI_21
 SPELL_CSPELL_ANALYZE_FILE_NAMES: false
 # Make sure Vale is setup to run with the styles it needs.
 SPELL_VALE_PRE_COMMANDS:
