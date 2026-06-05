@@ -14,10 +14,10 @@ import (
 // MockResourceSearcher is a mock implementation of ResourceSearcher for testing
 // This demonstrates how the clean architecture allows easy swapping of implementations
 type MockResourceSearcher struct {
-	resources                    []model.Resource
-	queryResourcesCountResponse  *model.CountResult
-	queryResourcesCountError     error
-	isReadyError                 error
+	resources                   []model.Resource
+	queryResourcesCountResponse *model.CountResult
+	queryResourcesCountError    error
+	isReadyError                error
 }
 
 // NewMockResourceSearcher creates a new mock searcher with some sample data

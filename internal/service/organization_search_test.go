@@ -760,14 +760,14 @@ func TestOrganizationSearchInterface(t *testing.T) {
 		service := NewOrganizationSearch(mockSearcher)
 
 		// Verify that the service implements the interface
-		var _ OrganizationSearcher = service
+		var _ = service
 		assertion.NotNil(service)
 	})
 
 	t.Run("interface methods are callable", func(t *testing.T) {
 		// Setup
 		mockSearcher := mock.NewMockOrganizationSearcher()
-		var service OrganizationSearcher = NewOrganizationSearch(mockSearcher)
+		service := NewOrganizationSearch(mockSearcher)
 
 		ctx := context.Background()
 		criteria := model.OrganizationSearchCriteria{

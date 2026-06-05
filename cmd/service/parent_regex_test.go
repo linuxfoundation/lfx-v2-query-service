@@ -29,7 +29,7 @@ func TestParentPattern(t *testing.T) {
 	}
 
 	invalid := []string{
-		"past_meeting:",     // empty id fragment
+		"past_meeting:",    // empty id fragment
 		":abc",             // empty type fragment
 		"_leading:abc",     // leading underscore in type
 		"past meeting:abc", // space in type

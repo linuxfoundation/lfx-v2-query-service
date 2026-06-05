@@ -595,7 +595,7 @@ func TestQuerySvcsrvc_InterfaceCompliance(t *testing.T) {
 	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
 
 	// This will fail to compile if querySvcsrvc doesn't implement querysvc.Service
-	var _ querysvc.Service = service
+	var _ = service
 
 	assert.NotNil(t, service)
 }

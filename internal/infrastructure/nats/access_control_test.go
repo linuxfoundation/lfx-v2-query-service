@@ -483,13 +483,13 @@ func TestNewAccessControlChecker(t *testing.T) {
 
 func TestNATSAccessControlChecker_ReadTuples(t *testing.T) {
 	tests := []struct {
-		name            string
-		setupMock       func(*MockNATSClient)
-		user            string
-		objectType      string
-		expectedRefs    []string
-		expectedError   bool
-		expectedErrMsg  string
+		name           string
+		setupMock      func(*MockNATSClient)
+		user           string
+		objectType     string
+		expectedRefs   []string
+		expectedError  bool
+		expectedErrMsg string
 	}{
 		{
 			name: "happy path - returns deduplicated object refs",
