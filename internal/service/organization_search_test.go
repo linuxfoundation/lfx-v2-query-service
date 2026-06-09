@@ -759,8 +759,8 @@ func TestOrganizationSearchInterface(t *testing.T) {
 		mockSearcher := mock.NewMockOrganizationSearcher()
 		service := NewOrganizationSearch(mockSearcher)
 
-		// Verify that the service implements the interface
-		var _ = service
+		// Compile-time guarantee that OrganizationSearch satisfies OrganizationSearcher.
+		var _ OrganizationSearcher = (*OrganizationSearch)(nil)
 		assertion.NotNil(service)
 	})
 

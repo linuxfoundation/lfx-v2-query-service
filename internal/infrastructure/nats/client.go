@@ -96,7 +96,7 @@ func (c *NATSClient) CheckAccess(ctx context.Context, request *AccessCheckNATSRe
 	slog.DebugContext(ctx, "received NATS response",
 		"subject", request.Subject,
 		"message", string(natsResponse.Data),
-		"timeout", request.Timeout,
+		"timeout", timeout,
 	)
 
 	response := make(map[string]string)
