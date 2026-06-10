@@ -220,6 +220,9 @@ Authorization: Bearer <jwt_token>
 - `parent`: Parent resource for hierarchical queries
 - `tags`: Array of tags to filter by (OR logic - matches resources with any of these tags)
 - `tags_all`: Array of tags to filter by (AND logic - matches resources that have all of these tags)
+- `filters`: Legacy/backwards-compatible array of exact field filters with AND logic (format: `field:value`, e.g. `stage:Active`). Fields are auto-prefixed with `data.`
+- `filters_all`: Preferred array of exact field filters with AND logic (same `field:value` format). If both `filters` and `filters_all` are provided, both sets of filters are applied and combined with AND logic
+- `filters_or`: Array of exact field filters with OR logic — at least one must match (same `field:value` format)
 - `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](#cel-filter) section)
 - `date_field`: Date field to filter on (within data object) - used with date_from and/or date_to
 - `date_from`: Start date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses start of day UTC
