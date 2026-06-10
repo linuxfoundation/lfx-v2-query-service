@@ -27,13 +27,17 @@ make apigen
 make build
 
 # Run locally with mock implementations (development)
-SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock go run ./cmd
+SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock ORG_SEARCH_SOURCE=mock AUTH_SOURCE=mock \
+JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL=dev_user \
+PAGE_TOKEN_SECRET=12345678901234567890123456789012 go run ./cmd
 
-# Run with OpenSearch and NATS (production-like)
-SEARCH_SOURCE=opensearch ACCESS_CONTROL_SOURCE=nats \
+# Run with OpenSearch and NATS (production-like; Clearbit vars needed for
+# the /query/orgs endpoints — see README "Running Locally" for the full set)
+SEARCH_SOURCE=opensearch ACCESS_CONTROL_SOURCE=nats ORG_SEARCH_SOURCE=clearbit \
 OPENSEARCH_URL=http://localhost:9200 \
 OPENSEARCH_INDEX=resources \
 NATS_URL=nats://localhost:4222 \
+PAGE_TOKEN_SECRET=12345678901234567890123456789012 \
 go run ./cmd
 ```
 
@@ -142,8 +146,11 @@ or the task needs additional peer repos.
 
 Environment variables control implementation selection:
 
-- `SEARCH_SOURCE`: "mock" or "opensearch"
-- `ACCESS_CONTROL_SOURCE`: "mock" or "nats"
+- `SEARCH_SOURCE`: "mock" or "opensearch" (default "opensearch")
+- `ACCESS_CONTROL_SOURCE`: "mock" or "nats" (default "nats")
+- `ORG_SEARCH_SOURCE`: "mock" or "clearbit" (default "clearbit"; Clearbit needs `CLEARBIT_*` vars)
+- `AUTH_SOURCE`: "mock" or "jwt" (default "jwt"; mock reads `JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL`)
+- `PAGE_TOKEN_SECRET`: required 32-character secret for opaque page tokens; `global.PageTokenSecret()` fatals if unset when a full page generates a token
 - Additional configs for OpenSearch and NATS connections
 
 ### Testing Strategy

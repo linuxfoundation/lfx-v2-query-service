@@ -51,7 +51,7 @@ Do not:
 Do:
 
 - Construct domain errors via `pkg/errors`: `NewValidation`, `NewNotFound`,
-  `NewConflict`, `NewServiceUnavailable`, and friends.
+  `NewServiceUnavailable`, `NewUnexpected`.
 - Wrap upstream errors with `%w` so `errors.Is` and `errors.As` still work
   across layers.
 - Translate domain errors at the Goa or transport boundary
@@ -62,8 +62,7 @@ Do not:
 - Return raw OpenSearch, NATS, or Clearbit errors out of the service
   layer. Wrap or translate first.
 - Introduce a parallel sentinel-error family. The typed domain errors in
-  `pkg/errors` already cover the V2 status mapping (400, 404, 409, 500,
-  503).
+  `pkg/errors` already cover the V2 status mapping (400, 404, 500, 503).
 - Map errors to HTTP status codes outside the Goa boundary.
 
 ## Request Context
@@ -145,7 +144,8 @@ Do not:
 
 Do:
 
-- Run `make fmt` and `make lint` before commit.
+- Run `gofmt -w` on changed files (there is no `make fmt` target) and
+  `make lint` before commit.
 - Use `npx mega-linter-runner .` to mirror CI when unsure.
 - Preserve the two-line license header on every new `.go` file.
 - Add docstrings for exported symbols when `revive.toml` requires them.

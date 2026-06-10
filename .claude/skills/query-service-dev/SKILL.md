@@ -83,7 +83,8 @@ when in doubt or when adding a new package.
   `object_ref`, `request_id`. Never log JWTs, raw bearer headers, or full
   request bodies. Honor `LOG_LEVEL` and the `-d` debug flag.
 - **Errors.** Construct domain errors via `pkg/errors` (`NewValidation`,
-  `NewNotFound`, `NewConflict`, etc.) so `cmd/service/error.go::wrapError`
+  `NewNotFound`, `NewServiceUnavailable`, `NewUnexpected`) so
+  `cmd/service/error.go::wrapError`
   maps them to the right HTTP status. Wrap upstream errors with `%w` so
   `errors.Is` and `errors.As` still work. Translate at the Goa boundary,
   not in deeper layers.
@@ -106,9 +107,9 @@ when in doubt or when adding a new package.
   `internal/domain/port/` and the mocks in `internal/infrastructure/mock/`.
   Use table-driven tests with one test function per exported method. Co-
   locate `*_test.go`. Run `make test` (race detector is on).
-- **Format and lint.** Run `make fmt` and `make lint`. CI uses
-  `mega-linter-runner`. Follow `revive.toml` for exported-symbol
-  docstrings.
+- **Format and lint.** Run `gofmt -w` on changed files (there is no
+  `make fmt` target) and `make lint`. CI uses MegaLinter (go flavor).
+  Follow `revive.toml` for exported-symbol docstrings.
 
 ## Query-specific implementation truths
 
