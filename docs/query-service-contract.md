@@ -27,8 +27,9 @@ The `access_check_object` and `access_check_relation` fields written into each
 OpenSearch document by the indexer (from the resource service's `IndexingConfig`) are
 what the query-service uses to build the FGA check. New messages with missing
 access fields are rejected by the indexer. If a legacy or manually inserted
-document is missing either field, query-service skips it during access
-filtering.
+non-public document is missing either field, query-service cannot construct an
+access-check message for it and treats it as unauthorized: the resource is
+excluded from results (it does not bypass access filtering).
 
 ## HTTP API
 
@@ -156,8 +157,8 @@ resource to be discoverable and accessible:
 | `name_and_aliases` | Typeahead search (`name=` param) | Resource won't appear in name searches |
 | `tags` | Tag filtering | Resource won't match tag queries |
 | `public` | Marks the resource as public: skips the FGA check for all callers (`BuildMessage` returns it without checking when `public` is true) and lets anonymous callers see it via the `public: true` filter | Anonymous users can't see it; setting it incorrectly exposes a private resource to everyone |
-| `access_check_object` | Identifies FGA object to check | Resource skipped by access filtering if a legacy/malformed document is encountered |
-| `access_check_relation` | FGA relation to check (e.g. `viewer`) | Resource skipped by access filtering if a legacy/malformed document is encountered |
+| `access_check_object` | Identifies FGA object to check | Non-public resource treated as unauthorized and excluded from results (legacy/malformed document) |
+| `access_check_relation` | FGA relation to check (e.g. `viewer`) | Non-public resource treated as unauthorized and excluded from results (legacy/malformed document) |
 | `access_check_query` | `{access_check_object}#{access_check_relation}` used by count aggregations | Authenticated counts can undercount private resources |
 | `sort_name` | Sorting by name | May sort incorrectly |
 | `updated_at` | Sorting by `updated_asc` / `updated_desc` | Updated-date sorting may be wrong or place records last |
