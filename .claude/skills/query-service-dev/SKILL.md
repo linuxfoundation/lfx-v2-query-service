@@ -15,6 +15,9 @@ paths:
 allowed-tools: Read, Glob, Grep, Edit, Write, Bash
 ---
 
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # Development Conventions
 
 Repo-owned Go coding conventions for `lfx-v2-query-service`, plus the
@@ -152,7 +155,9 @@ OpenSearch does the narrowing. CEL does the per-resource refinement.
   `internal/service/resource_search.go` (see the `criteria.CelFilter`
   block). Implementation in `internal/infrastructure/filter/cel_filter.go`
   enforces 1000-char max expression length, 100ms per-resource timeout,
-  and an LRU cache (100 entries, 5-minute TTL).
+  and a TTL-bounded map cache (100 entries, 5-minute TTL; no LRU eviction
+  — when full it drops expired entries and otherwise stops caching new
+  programs).
 - Add new structured filters to the OpenSearch template, not to CEL. CEL
   is for caller-supplied expressions over `data.*`.
 - CEL cannot rescue a resource that was not in the OpenSearch page.

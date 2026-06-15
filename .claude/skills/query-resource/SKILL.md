@@ -5,6 +5,9 @@ allowed-tools: Read, Glob, Grep, Edit, Write, Bash
 paths: ['design/**', 'internal/service/resource_search.go', 'internal/infrastructure/opensearch/**', 'internal/infrastructure/nats/**', 'internal/infrastructure/filter/**', 'cmd/service/converters*.go', 'pkg/constants/query.go', 'docs/query-service-contract.md', 'docs/indexed-data-types.md', 'docs/resource-catalog.md', '.claude/skills/query-resource/**']
 ---
 
+<!-- Copyright The Linux Foundation and each contributor to LFX. -->
+<!-- SPDX-License-Identifier: MIT -->
+
 # Query Resource
 
 The query-service is a generic search/read aggregator over OpenSearch with NATS access checks. It does not know about individual resource types. Follow this workflow for any change to the API contract or pipeline.
