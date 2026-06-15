@@ -182,7 +182,7 @@ go run ./cmd
 
 - `OPENSEARCH_URL`: OpenSearch URL (default: `http://localhost:9200`)
 - `OPENSEARCH_INDEX`: OpenSearch index name (default: "resources")
-- `PAGE_TOKEN_SECRET`: 32-character secret used to encode/decode opaque page tokens. Required for any deployment: the service calls `global.PageTokenSecret()` (which fatals if the var is unset) whenever it generates a `page_token` for a full page, so even an ordinary first-page query can crash the process if this is missing.
+- `PAGE_TOKEN_SECRET`: 32-character secret used to encode/decode opaque page tokens. Required for any deployment: the service calls `global.PageTokenSecret(ctx)` (which fatals if the var is unset) whenever it generates a `page_token` for a full page, so even an ordinary first-page query can crash the process if this is missing.
 
 **Access Control Implementation:**
 
@@ -198,7 +198,8 @@ go run ./cmd
 **Clearbit Configuration:**
 
 - `CLEARBIT_CREDENTIAL`: Clearbit API key (required for organization search)
-- `CLEARBIT_BASE_URL`: Clearbit API base URL (default: `https://company.clearbit.com`)
+- `CLEARBIT_BASE_URL`: Clearbit Company API base URL (default: `https://company.clearbit.com`)
+- `CLEARBIT_AUTOCOMPLETE_BASE_URL`: Clearbit Autocomplete API base URL (default: `https://autocomplete.clearbit.com`)
 - `CLEARBIT_TIMEOUT`: HTTP client timeout for API requests (default: "10s")
 - `CLEARBIT_MAX_RETRIES`: Maximum number of retry attempts for failed requests (default: "3")
 - `CLEARBIT_RETRY_DELAY`: Delay between retry attempts (default: "1s")
@@ -264,6 +265,28 @@ Authorization: Bearer <jwt_token>
   "cache_control": "public, max-age=300"
 }
 ```
+
+At least one of `name`, `parent`, `type`, `tags`, or `filter_grants` must be
+provided; a request with only `cel_filter`, `date_*`, `filters*`, `sort`, or
+pagination parameters is rejected with `400 Bad Request`.
+
+#### Resource Count API
+
+```
+GET /query/resources/count?type=committee&v=1
+Authorization: Bearer <jwt_token>
+```
+
+Accepts the same filter parameters as `GET /query/resources` except
+`cel_filter`, `filter_grants`, `sort`, `page_size`, and `page_token`, and
+returns a count rather than the resources themselves:
+
+```json
+{ "count": 42, "has_more": false }
+```
+
+`has_more` is `true` when the count is not guaranteed to be exhaustive and the
+client should request a narrower query.
 
 For API contract details (page size, date ranges, CEL filter, clause limits,
 anonymous vs authenticated semantics, access-control flow), see
@@ -346,7 +369,7 @@ export CLEARBIT_CREDENTIAL=your_clearbit_api_key_here
 
 # Optional: Custom configuration (defaults shown)
 export CLEARBIT_BASE_URL=https://company.clearbit.com
-export CLEARBIT_TIMEOUT=30s
+export CLEARBIT_TIMEOUT=10s
 export CLEARBIT_MAX_RETRIES=3
 export CLEARBIT_RETRY_DELAY=1s
 
@@ -387,9 +410,14 @@ searcher := mock.NewMockResourceSearcher()
 searcher.AddResource(testResource)
 
 accessChecker := mock.NewMockAccessControlChecker()
-accessChecker.SetAccessResult(testResult)
+// CheckAccess returns a map keyed by the per-resource access-check line
+accessChecker.SetCheckAccessResponse(map[string]string{
+    "project:abc#viewer@user:123": "true",
+})
 
-service := service.NewResourceService(searcher, accessChecker)
+resourceFilter := mock.NewMockResourceFilter()
+
+service := service.NewResourceSearch(searcher, accessChecker, resourceFilter)
 result, err := service.QueryResources(ctx, criteria)
 ```
 

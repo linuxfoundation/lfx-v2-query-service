@@ -150,7 +150,7 @@ Environment variables control implementation selection:
 - `ACCESS_CONTROL_SOURCE`: "mock" or "nats" (default "nats")
 - `ORG_SEARCH_SOURCE`: "mock" or "clearbit" (default "clearbit"; Clearbit needs `CLEARBIT_*` vars)
 - `AUTH_SOURCE`: "mock" or "jwt" (default "jwt"; mock reads `JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL`)
-- `PAGE_TOKEN_SECRET`: required 32-character secret for opaque page tokens; `global.PageTokenSecret()` fatals if unset when a full page generates a token
+- `PAGE_TOKEN_SECRET`: required 32-character secret for opaque page tokens; `global.PageTokenSecret(ctx)` fatals if unset when a full page generates a token
 - Additional configs for OpenSearch and NATS connections
 
 ### Testing Strategy

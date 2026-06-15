@@ -1,7 +1,7 @@
 <!-- Copyright The Linux Foundation and each contributor to LFX. -->
 <!-- SPDX-License-Identifier: MIT -->
 
-# Query Service Patterns
+# Query Service Contract
 
 The query-service provides a generic HTTP search API over OpenSearch. It does not know
 about individual resource types: it queries a shared `resources` index and delegates
@@ -69,6 +69,14 @@ excluded from results (it does not bypass access filtering).
 `data` is the full resource object as stored by the indexer: schema-free, no
 migration needed for new fields.
 
+**Required parameters:** at least one of `name`, `parent`, `type`, `tags`, or
+`filter_grants` must be provided. A request that supplies only `cel_filter`,
+`date_*`, `filters*`, `sort`, or pagination parameters (with none of the five
+above) is rejected with a `400 Bad Request` ("at least one search parameter
+must be provided: name, parent, type, tags, or filter_grants"). In addition,
+`filter_grants` requires `type` (otherwise a `400` is returned). Validation
+lives in `validateSearchCriteria` in `internal/service/resource_search.go`.
+
 ### GET /query/resources/count
 
 Same parameters as `GET /query/resources` except `cel_filter`,
@@ -85,9 +93,10 @@ Count queries use two OpenSearch requests for authenticated principals:
   `access_check_query.keyword`, followed by one batched FGA access check over
   those aggregation keys.
 
-The service adds authorized private bucket counts to the public count. If the
-private aggregation overflows the configured bucket size, `has_more` is `true`
-and callers should issue a narrower count query.
+The service adds authorized private bucket counts to the public count. The
+private aggregation is capped at `constants.DefaultBucketSize` (100) distinct
+`access_check_query` buckets. If the private aggregation overflows that bucket
+size, `has_more` is `true` and callers should issue a narrower count query.
 
 ## Anonymous vs Authenticated Requests
 
@@ -262,8 +271,10 @@ Key components:
 
 - **ResourceFilter Interface**: `internal/domain/port/filter.go`
 - **CELFilter Implementation**: uses `google/cel-go` for evaluation.
-- **Expression Caching**: LRU cache with TTL for compiled CEL programs (100
-  max entries, 5-minute TTL).
+- **Expression Caching**: TTL-bounded map cache for compiled CEL programs (100
+  max entries, 5-minute TTL). There is no LRU eviction: when the cache is full
+  it first drops expired entries, and if it is still full it stops caching new
+  programs (they are recompiled on each use until space frees up).
 - **Security**: max expression length 1000 chars, evaluation timeout 100ms per
   resource.
 

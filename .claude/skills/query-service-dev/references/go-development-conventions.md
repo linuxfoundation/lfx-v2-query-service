@@ -71,8 +71,11 @@ Do:
 
 - Read context values via the typed keys in `pkg/constants/http.go`
   (`PrincipalContextID`, `RequestIDHeader`).
-- Set up context in `internal/middleware/` (request ID, principal). Service
-  code consumes context, it does not parse HTTP headers.
+- Set up context in the right layer: the request ID is set by
+  `internal/middleware/` (`RequestIDMiddleware`), while the principal
+  (`PrincipalContextID`) is set in the Goa `JWTAuth` security handler in
+  `cmd/service/service.go` during token validation, not in middleware.
+  Service code consumes context, it does not parse HTTP headers.
 - Forward context into downstream calls (NATS, OpenSearch, CEL evaluator)
   so cancellation propagates.
 
@@ -80,7 +83,9 @@ Do not:
 
 - Use bare-string context keys.
 - Mutate context shape ad-hoc in deep call sites. If a new key is needed,
-  add it to `pkg/constants/http.go` and set it in middleware.
+  add it to `pkg/constants/http.go` and set it in the appropriate entry
+  layer (request-scoped middleware, or the Goa security handler for
+  auth-derived values such as the principal).
 
 ## NATS
 
