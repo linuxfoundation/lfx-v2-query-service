@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 	"strings"
+	"time"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
