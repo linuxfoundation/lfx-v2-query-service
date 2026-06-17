@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Central LFX skills:**
+> - Start with `lfx-skills:lfx` for cross-repo tasks, "where does X live" questions, owner/peer repo routing, or missing checkouts.
+> - Use `lfx-skills:lfx-platform-architecture` after routing when you need platform composition, V2 service classes, write/read/access-check flows, cross-service responsibilities, NATS/KV ownership, or handoff points across FGA, indexer, query, Heimdall, OpenFGA, Helm, or ArgoCD.
+> - The repo-local `query-service-dev` skill auto-attaches on Go paths (`**/*.go`, `design/**`, `cmd/**`, `internal/**`, `pkg/**`, `gen/**`, `go.mod`, `go.sum`, `Makefile`) and owns repo-local Go conventions plus query-specific implementation truth: post-page-shrinkage pagination, CEL-vs-OpenSearch split, batched access-check pattern.
+> - The repo-local `query-resource` skill owns the per-resource query workflow (new query parameter, OpenSearch field changes, debugging "user can't see a resource").
+> - This repo OWNS query behavior: indexed reads over OpenSearch, access filtering via batched fga-sync calls, CEL post-filtering, and post-page-shrinkage pagination semantics. Treat repo-local truth as authoritative; the central platform-architecture skill describes the cross-service shape, not these mechanics.
+> - Repo-owned docs under `docs/` are canonical for query behavior, active indexed resource inventory, and query cookbook examples. If the plugin is missing, install with `/plugin marketplace add linuxfoundation/lfx-skills` then `/plugin install lfx-skills@lfx-skills`.
+
 ## Essential Commands
 
 ### Build and Development
@@ -19,13 +27,17 @@ make apigen
 make build
 
 # Run locally with mock implementations (development)
-SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock go run ./cmd
+SEARCH_SOURCE=mock ACCESS_CONTROL_SOURCE=mock ORG_SEARCH_SOURCE=mock AUTH_SOURCE=mock \
+JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL=dev_user \
+PAGE_TOKEN_SECRET=12345678901234567890123456789012 go run ./cmd
 
-# Run with OpenSearch and NATS (production-like)
-SEARCH_SOURCE=opensearch ACCESS_CONTROL_SOURCE=nats \
+# Run with OpenSearch and NATS (production-like; Clearbit vars needed for
+# the /query/orgs endpoints — see README "Running Locally" for the full set)
+SEARCH_SOURCE=opensearch ACCESS_CONTROL_SOURCE=nats ORG_SEARCH_SOURCE=clearbit \
 OPENSEARCH_URL=http://localhost:9200 \
 OPENSEARCH_INDEX=resources \
 NATS_URL=nats://localhost:4222 \
+PAGE_TOKEN_SECRET=12345678901234567890123456789012 \
 go run ./cmd
 ```
 
@@ -58,6 +70,38 @@ make docker-run
 
 This service follows clean architecture principles with clear separation of concerns:
 
+## Agent Guidance
+
+Repo-owned guidance is split: convention references live under `.claude/skills/query-service-dev/references/`; contract and ownership docs live under `docs/`:
+
+- `docs/query-service-contract.md` - query API, access filtering,
+  OpenSearch fields, tags, filters, and CEL caveats.
+- `docs/indexed-data-types.md` - active queryable resource types
+  and where their service-owned contracts live.
+- `docs/resource-catalog.md` - human-readable query cookbook companion to
+  `indexed-data-types.md`, organized by indexing service.
+
+Read these before changing query contracts or helping another repo consume the
+query service.
+
+## Consumed Cross-Repo Contracts
+
+This repo depends on contracts owned elsewhere. Do not copy or infer them from
+local examples. Read the owner file before changing indexed read behavior,
+access filtering, or resource-type assumptions.
+
+- Generic indexer event contract and OpenSearch document shape:
+  `lfx-v2-indexer-service/docs/indexer-contract.md`
+- Generic FGA envelope and access-check contract:
+  `lfx-v2-fga-sync/docs/fga-sync-contract.md`
+- Per-resource indexer emission contracts:
+  `<resource-service>/docs/indexer-contract.md`
+- Per-resource FGA emission contracts:
+  `<resource-service>/docs/fga-contract.md`
+
+Use `lfx-skills:lfx` if an owner repo is missing locally, the path has moved,
+or the task needs additional peer repos.
+
 ### Layer Structure
 
 1. **Domain Layer** (`internal/domain/`)
@@ -79,7 +123,7 @@ This service follows clean architecture principles with clear separation of conc
 
 ### Key Design Patterns
 
-- **Dependency Injection**: Concrete implementations injected in `cmd/main.go`
+- **Dependency Injection**: Concrete implementations selected in `cmd/main.go` and wired in `cmd/service/providers.go`
 - **Port/Adapter Pattern**: Domain interfaces (ports) with swappable implementations
 - **Repository Pattern**: Search and access control abstracted behind interfaces
 
@@ -92,7 +136,8 @@ This service follows clean architecture principles with clear separation of conc
 ### Request Flow
 
 1. HTTP request → Goa generated server (`gen/http/query_svc/server/`)
-2. Service layer (`cmd/query_svc/query_svc.go`)
+2. Goa endpoints wiring (`cmd/service/service.go`) and DI providers
+   (`cmd/service/providers.go`)
 3. Use case orchestration (`internal/service/resource_search.go`)
 4. Domain interfaces called with concrete implementations
 5. Response formatted and returned through Goa
@@ -101,147 +146,23 @@ This service follows clean architecture principles with clear separation of conc
 
 Environment variables control implementation selection:
 
-- `SEARCH_SOURCE`: "mock" or "opensearch"
-- `ACCESS_CONTROL_SOURCE`: "mock" or "nats"
+- `SEARCH_SOURCE`: "mock" or "opensearch" (default "opensearch")
+- `ACCESS_CONTROL_SOURCE`: "mock" or "nats" (default "nats")
+- `ORG_SEARCH_SOURCE`: "mock" or "clearbit" (default "clearbit"; Clearbit needs `CLEARBIT_*` vars)
+- `AUTH_SOURCE`: "mock" or "jwt" (default "jwt"; mock reads `JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL`)
+- `PAGE_TOKEN_SECRET`: required 32-character secret for opaque page tokens; `global.PageTokenSecret(ctx)` fatals if unset when a full page generates a token
 - Additional configs for OpenSearch and NATS connections
 
 ### Testing Strategy
 
-- Unit tests use mock implementations
-- Integration tests can switch between real and mock implementations
-- Test files follow `*_test.go` pattern alongside implementation files
+Repo-owned test conventions (mock interfaces, table-driven tests, co-located `*_test.go`, one test function per exported method) live in path-scoped `query-service-dev` guidance.
+
+Query-service specifics: integration tests can switch between real and mock implementations via the `SEARCH_SOURCE` and `ACCESS_CONTROL_SOURCE` env vars.
 
 ## API Features
 
-### Page Size
-
-The `query-resources` endpoint supports a `page_size` query parameter to control how many documents are returned per page.
-
-**Query Parameter:**
-
-- `page_size` (int, optional): Number of results per page (min: 1, max: 1000, default: 50)
-
-**Examples:**
-
-```bash
-# Custom page size
-GET /query/resources?v=1&type=project&page_size=20
-
-# Combined with other filters
-GET /query/resources?v=1&type=project&tags=active&date_field=updated_at&date_from=2025-01-01&page_size=100
-```
-
-**Interaction with post-query filters:** `cel_filter` and access control checks are applied after OpenSearch returns results, so a page may return fewer than `page_size` results.
-
-**Implementation Details:**
-
-- Goa design: `design/types.go` (`Sortable` type), `design/query-svc.go` (HTTP param)
-- Converter: `cmd/service/converters.go` (`payloadToCriteria()` passes `p.PageSize` to criteria)
-- Domain model: `internal/domain/model/search_criteria.go` (`PageSize` field)
-- OpenSearch pagination: `internal/infrastructure/opensearch/client.go` (page token generated when `len(hits) == pageSize`)
-- Constants: `pkg/constants/query.go` (`DefaultPageSize`, `MaxPageSize`)
-
-### Date Range Filtering
-
-The query service supports filtering resources by date ranges on fields within the `data` object.
-
-**Query Parameters:**
-
-- `date_field` (string, optional): Date field to filter on (automatically prefixed with `"data."`)
-- `date_from` (string, optional): Start date (inclusive, gte operator)
-- `date_to` (string, optional): End date (inclusive, lte operator)
-
-**Supported Date Formats:**
-
-1. **ISO 8601 datetime**: `2025-01-10T15:30:00Z` (time used as provided)
-2. **Date-only**: `2025-01-10` (converted to start/end of day UTC)
-   - `date_from` → `2025-01-10T00:00:00Z` (start of day)
-   - `date_to` → `2025-01-10T23:59:59Z` (end of day)
-
-**Examples:**
-
-```bash
-# Date range with date-only format
-GET /query/resources?v=1&date_field=updated_at&date_from=2025-01-10&date_to=2025-01-28
-
-# Date range with ISO 8601 format
-GET /query/resources?v=1&date_field=created_at&date_from=2025-01-10T15:30:00Z&date_to=2025-01-28T18:45:00Z
-
-# Open-ended range (only start date)
-GET /query/resources?v=1&date_field=created_at&date_from=2025-01-01
-
-# Combined with other filters
-GET /query/resources?v=1&type=project&tags=active&date_field=updated_at&date_from=2025-01-01&date_to=2025-03-31
-```
-
-**Implementation Details:**
-
-- Date parsing logic: `cmd/service/converters.go` (`parseDateFilter()` function)
-- Domain model: `internal/domain/model/search_criteria.go` (DateField, DateFrom, DateTo)
-- OpenSearch query: `internal/infrastructure/opensearch/template.go` (range query with gte/lte)
-- API design: `design/query-svc.go` (Goa design specification)
-- Test coverage: `cmd/service/converters_test.go` (17 comprehensive test cases)
-
-### CEL Filter
-
-The service supports Common Expression Language (CEL) filtering for post-query resource filtering.
-
-CEL filtering allows API consumers to filter resources on arbitrary data fields using a safe, non-Turing complete expression language. The filter is applied after the OpenSearch query but before access control checks.
-
-**Location**: `internal/infrastructure/filter/cel_filter.go`
-
-**Key Components**:
-- **ResourceFilter Interface** (`internal/domain/port/filter.go`): Domain interface for filtering
-- **CELFilter Implementation**: Uses `google/cel-go` library for expression evaluation
-- **Expression Caching**: LRU cache with TTL for compiled CEL programs
-- **Security Features**: Max expression length (1000 chars), evaluation timeout (100ms per resource)
-
-**Integration Point**: `internal/service/resource_search.go` (lines 84-102)
-- CEL filter applied after OpenSearch query
-- Filters resources before access control checks
-- Reduces number of access control checks needed
-
-**Available Variables in CEL Expressions:**
-
-- `data` (map): Resource data object
-- `resource_type` (string): Resource type
-- `id` (string): Resource ID
-
-Note: `type` is a reserved word in CEL, so we use `resource_type` instead.
-
-**Example Usage:**
-
-```bash
-GET /query/resources?type=project&cel_filter=data.slug == "tlf"
-```
-
-**Common CEL Operations:**
-
-- Equality: `data.status == "active"`
-- Comparison: `data.priority > 5`
-- Boolean logic: `data.status == "active" && data.priority > 5`
-- String operations: `data.name.contains("LF")`
-- List membership: `data.category in ["security", "networking"]`
-- Field existence: `has(data.archived)`
-
-**Performance Considerations:**
-
-- Compiled CEL programs are cached (100 max entries, 5-minute TTL)
-- Each resource evaluation has 100ms timeout
-- Post-query filtering means pagination may return fewer results than page size
-- For best performance, use specific OpenSearch criteria first, then CEL for refinement
-
-**Important Limitations:**
-
-CEL filters apply only to results from each OpenSearch page. If the target resource is not in the first page of OpenSearch results, it won't be found even if it matches the CEL filter. Always use specific primary search criteria (`type`, `name`, `parent`) to narrow OpenSearch results first.
-
-### Query Clause Limits
-
-OpenSearch enforces a configurable hard limit on clauses per query (`maxClauseCount`). Exceeding it returns a `400 Bad Request` to the API caller with a message indicating the query exceeded the maximum clause limit.
-
-- Each `tags`, `tags_all`, `filters`, `filters_all` value is 1 clause.
-- `filters_or` adds 1 wrapping clause plus 1 per value.
-- `type`, `parent`, `name`, and the date range each add 1 clause.
-- Every request adds 1 fixed clause (`latest: true`).
-
-**Error handling implementation**: `internal/infrastructure/opensearch/client.go` — detects `opensearch.StructError` where any `RootCause` entry has `Type == "too_many_nested_clauses"` (OpenSearch wraps it inside a `search_phase_execution_exception`) and converts it to `errors.Validation` so `wrapError()` in `cmd/service/error.go` maps it to HTTP 400. Applied consistently across `Search()`, `AggregationSearch()`, and `Count()`.
+Detailed API behavior (page size, date range filtering, CEL filter, query
+clause limits) lives in
+[`docs/query-service-contract.md`](docs/query-service-contract.md).
+Read that file before changing API parameters, OpenSearch query construction,
+CEL behavior, or error mapping.
