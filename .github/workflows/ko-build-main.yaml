@@ -9,8 +9,12 @@ name: Publish Main
       - main
   workflow_dispatch:
 
+env:
+  HELM_VERSION: v3.18.4
+
 permissions:
   contents: read
+  packages: write
 
 jobs:
   publish:
@@ -42,3 +46,25 @@ jobs:
             -t ${{ github.sha }} \
             -t development \
             --sbom spdx
+
+  release-helm-chart:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Publish Chart to GHCR
+        # yamllint disable-line rule:line-length
+        uses: linuxfoundation/lfx-public-workflows/.github/actions/helm-chart-oci-publisher@17e4144d7ba68f7c3e8c16eece5aed15fd7c2dc8 # main
+        with:
+          name: lfx-v2-query-service
+          repository: ${{ github.repository }}/chart
+          chart_version: 0.0.0-development
+          app_version: development
+          registry: ghcr.io
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
