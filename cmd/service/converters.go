@@ -249,7 +249,8 @@ func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResou
 		Filters: payload.Filters, FiltersAll: payload.FiltersAll, FiltersOr: payload.FiltersOr,
 		DateField: payload.DateField, DateFrom: payload.DateFrom, DateTo: payload.DateTo,
 	}
-	return criteria, applyCommonFields(&criteria, params)
+	err := applyCommonFields(&criteria, params)
+	return criteria, err
 }
 
 func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
@@ -266,7 +267,8 @@ func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.Query
 		Filters: payload.Filters, FiltersAll: payload.FiltersAll, FiltersOr: payload.FiltersOr,
 		DateField: payload.DateField, DateFrom: payload.DateFrom, DateTo: payload.DateTo,
 	}
-	return criteria, applyCommonFields(&criteria, params)
+	err := applyCommonFields(&criteria, params)
+	return criteria, err
 }
 
 func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *querysvc.QueryResourcesCountResult {
