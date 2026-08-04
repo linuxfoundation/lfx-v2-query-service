@@ -973,6 +973,307 @@ func TestPayloadToCriteriaWithDateFilters(t *testing.T) {
 	}
 }
 
+func TestApplyCommonFields(t *testing.T) {
+	tests := []struct {
+		name          string
+		params        commonQueryParams
+		seed          model.SearchCriteria // pre-populated caller fields
+		expectError   bool
+		errorContains string
+		check         func(*testing.T, model.SearchCriteria)
+	}{
+		{
+			name: "sets name, parent, type",
+			params: commonQueryParams{
+				Name:   stringPtr("my-resource"),
+				Parent: stringPtr("parent-id"),
+				Type:   stringPtr("project"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("my-resource"), c.Name)
+				assert.Equal(t, stringPtr("parent-id"), c.Parent)
+				assert.Equal(t, stringPtr("project"), c.ResourceType)
+			},
+		},
+		{
+			name: "parses filters and tags",
+			params: commonQueryParams{
+				Tags:       []string{"active"},
+				TagsAll:    []string{"governance"},
+				Filters:    []string{"status:active"},
+				FiltersAll: []string{"priority:high"},
+				FiltersOr:  []string{"region:us"},
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, []string{"active"}, c.Tags)
+				assert.Equal(t, []string{"governance"}, c.TagsAll)
+				assert.Equal(t, []model.FieldFilter{{Field: "data.status", Value: "active"}}, c.Filters)
+				assert.Equal(t, []model.FieldFilter{{Field: "data.priority", Value: "high"}}, c.FiltersAll)
+				assert.Equal(t, []model.FieldFilter{{Field: "data.region", Value: "us"}}, c.FiltersOr)
+			},
+		},
+		{
+			name: "date range with ISO 8601",
+			params: commonQueryParams{
+				DateField: stringPtr("updated_at"),
+				DateFrom:  stringPtr("2025-01-10T00:00:00Z"),
+				DateTo:    stringPtr("2025-01-28T23:59:59Z"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.updated_at"), c.DateField)
+				assert.Equal(t, stringPtr("2025-01-10T00:00:00Z"), c.DateFrom)
+				assert.Equal(t, stringPtr("2025-01-28T23:59:59Z"), c.DateTo)
+			},
+		},
+		{
+			name: "date range with date-only format",
+			params: commonQueryParams{
+				DateField: stringPtr("created_at"),
+				DateFrom:  stringPtr("2025-01-10"),
+				DateTo:    stringPtr("2025-01-28"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.created_at"), c.DateField)
+				assert.Equal(t, stringPtr("2025-01-10T00:00:00Z"), c.DateFrom)
+				assert.Equal(t, stringPtr("2025-01-28T23:59:59Z"), c.DateTo)
+			},
+		},
+		{
+			name: "date_field only (no date_from or date_to)",
+			params: commonQueryParams{
+				DateField: stringPtr("updated_at"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.updated_at"), c.DateField)
+				assert.Nil(t, c.DateFrom)
+				assert.Nil(t, c.DateTo)
+			},
+		},
+		{
+			name:          "date_from without date_field returns error",
+			params:        commonQueryParams{DateFrom: stringPtr("2025-01-10")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+		{
+			name:          "date_to without date_field returns error",
+			params:        commonQueryParams{DateTo: stringPtr("2025-01-28")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+		{
+			name:          "invalid filter format returns error",
+			params:        commonQueryParams{Filters: []string{"no-colon"}},
+			expectError:   true,
+			errorContains: "invalid filter",
+		},
+		{
+			name:          "invalid date_from returns error",
+			params:        commonQueryParams{DateField: stringPtr("f"), DateFrom: stringPtr("not-a-date")},
+			expectError:   true,
+			errorContains: "invalid date_from",
+		},
+		{
+			name:          "invalid date_to returns error",
+			params:        commonQueryParams{DateField: stringPtr("f"), DateTo: stringPtr("01/28/2025")},
+			expectError:   true,
+			errorContains: "invalid date_to",
+		},
+		{
+			name:   "preserves caller-set fields in seed criteria",
+			params: commonQueryParams{},
+			seed:   model.SearchCriteria{PageSize: 42, PublicOnly: true},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, 42, c.PageSize)
+				assert.True(t, c.PublicOnly)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			criteria := tc.seed
+			err := applyCommonFields(&criteria, tc.params)
+
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			if tc.check != nil {
+				tc.check(t, criteria)
+			}
+		})
+	}
+}
+
+func TestPayloadToCountPublicCriteria(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
+	svc := service.(*querySvcsrvc)
+
+	tests := []struct {
+		name          string
+		payload       *querysvc.QueryResourcesCountPayload
+		expectError   bool
+		errorContains string
+		check         func(*testing.T, model.SearchCriteria)
+	}{
+		{
+			name:    "empty payload sets public-only defaults",
+			payload: &querysvc.QueryResourcesCountPayload{},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.True(t, c.PublicOnly)
+				assert.Equal(t, -1, c.PageSize)
+				assert.Equal(t, constants.DefaultBucketSize, c.GroupBySize)
+			},
+		},
+		{
+			name: "sets name, parent, type from payload",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Name:   stringPtr("my-project"),
+				Parent: stringPtr("p1"),
+				Type:   stringPtr("project"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("my-project"), c.Name)
+				assert.Equal(t, stringPtr("p1"), c.Parent)
+				assert.Equal(t, stringPtr("project"), c.ResourceType)
+			},
+		},
+		{
+			name: "date range is applied",
+			payload: &querysvc.QueryResourcesCountPayload{
+				DateField: stringPtr("created_at"),
+				DateFrom:  stringPtr("2025-01-01"),
+				DateTo:    stringPtr("2025-12-31"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.created_at"), c.DateField)
+				assert.NotNil(t, c.DateFrom)
+				assert.NotNil(t, c.DateTo)
+			},
+		},
+		{
+			name:          "invalid filter returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{Filters: []string{"bad"}},
+			expectError:   true,
+			errorContains: "invalid filter",
+		},
+		{
+			name:          "date_from without date_field returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{DateFrom: stringPtr("2025-01-01")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.payloadToCountPublicCriteria(tc.payload)
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			if tc.check != nil {
+				tc.check(t, result)
+			}
+		})
+	}
+}
+
+func TestPayloadToCountAggregationCriteria(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
+	svc := service.(*querySvcsrvc)
+
+	tests := []struct {
+		name          string
+		payload       *querysvc.QueryResourcesCountPayload
+		expectError   bool
+		errorContains string
+		check         func(*testing.T, model.SearchCriteria)
+	}{
+		{
+			name:    "empty payload sets private-only aggregation defaults",
+			payload: &querysvc.QueryResourcesCountPayload{},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.True(t, c.PrivateOnly)
+				assert.Equal(t, 0, c.PageSize)
+				assert.Equal(t, "access_check_query.keyword", c.GroupBy)
+				assert.Equal(t, constants.DefaultBucketSize, c.GroupBySize)
+			},
+		},
+		{
+			name: "sets name, parent, type from payload",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Name:   stringPtr("my-project"),
+				Parent: stringPtr("p1"),
+				Type:   stringPtr("project"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("my-project"), c.Name)
+				assert.Equal(t, stringPtr("p1"), c.Parent)
+				assert.Equal(t, stringPtr("project"), c.ResourceType)
+			},
+		},
+		{
+			name: "date range is applied",
+			payload: &querysvc.QueryResourcesCountPayload{
+				DateField: stringPtr("updated_at"),
+				DateFrom:  stringPtr("2025-06-01"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.updated_at"), c.DateField)
+				assert.NotNil(t, c.DateFrom)
+				assert.Nil(t, c.DateTo)
+			},
+		},
+		{
+			name:          "invalid filters_all returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{FiltersAll: []string{"no-colon"}},
+			expectError:   true,
+			errorContains: "invalid filter",
+		},
+		{
+			name:          "date_to without date_field returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{DateTo: stringPtr("2025-12-31")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.payloadToCountAggregationCriteria(tc.payload)
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			if tc.check != nil {
+				tc.check(t, result)
+			}
+		})
+	}
+}
+
 // Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s
