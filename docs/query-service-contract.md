@@ -163,7 +163,7 @@ resource to be discoverable and accessible:
 
 | Field | Purpose | If missing/wrong |
 | --- | --- | --- |
-| `object_ref` | Stable `{type}:{id}` ref used for access-check dedupe and `filter_grants=direct` pre-filtering | Duplicate checks or direct-grant filters can behave incorrectly |
+| `object_ref` | Stable `{type}:{id}` ref used for `filter_grants=direct` pre-filtering | Direct-grant filters can behave incorrectly |
 | `object_type` | Type filtering (`type=` param) | Resource won't match type queries |
 | `object_id` | Debug lookup and warning-log context for the source resource ID | Harder to trace an indexed document back to the owning resource |
 | `parent_refs` | Parent filtering (`parent=` param) | Resource won't appear in parent queries |
