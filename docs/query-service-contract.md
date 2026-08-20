@@ -116,7 +116,10 @@ fail the FGA check.
 For authenticated requests, the query-service:
 
 1. Runs the OpenSearch query, gets back all matching documents regardless of permissions
-2. Builds a batch access check message, one line per non-public resource:
+2. Builds a batch access check message, one line per unique
+   `access_check_object#access_check_relation` key among non-public resources
+   (resources that share a key, e.g. meeting registrants sharing their parent
+   meeting, collapse to a single line):
 
    ```text
    committee:abc-123#viewer@user:alice
@@ -136,8 +139,9 @@ For authenticated requests, the query-service:
 
 5. Drops any resource where the response is `false` or missing
 
-The query-service deduplicates by `object_ref` so each FGA object is checked at most once
-per request.
+The query-service deduplicates by `access_check_object#access_check_relation`, not by
+`object_ref`, so each distinct FGA object/relation pair is checked at most once per request
+regardless of how many resources share it.
 
 ### Direct grant filtering
 
@@ -159,7 +163,7 @@ resource to be discoverable and accessible:
 
 | Field | Purpose | If missing/wrong |
 | --- | --- | --- |
-| `object_ref` | Stable `{type}:{id}` ref used for access-check dedupe and `filter_grants=direct` pre-filtering | Duplicate checks or direct-grant filters can behave incorrectly |
+| `object_ref` | Stable `{type}:{id}` ref used for `filter_grants=direct` pre-filtering | Direct-grant filters can behave incorrectly |
 | `object_type` | Type filtering (`type=` param) | Resource won't match type queries |
 | `object_id` | Debug lookup and warning-log context for the source resource ID | Harder to trace an indexed document back to the owning resource |
 | `parent_refs` | Parent filtering (`parent=` param) | Resource won't appear in parent queries |

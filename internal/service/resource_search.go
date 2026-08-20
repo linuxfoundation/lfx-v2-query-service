@@ -186,18 +186,18 @@ func (s *ResourceSearch) validateSearchCriteria(criteria model.SearchCriteria) e
 
 func (s *ResourceSearch) BuildMessage(ctx context.Context, principal string, result *model.SearchResult) []byte {
 
-	// avoid duplicate resource references in the result
-	seenRefs := make(map[string]struct{}, len(result.Resources))
+	// Many resources (e.g. meeting registrants, past-meeting participants) share the
+	// same parent AccessCheckObject/AccessCheckRelation by design, so only the emitted
+	// check line is deduped here. Classification below (Public / missing fields /
+	// NeedCheck) always runs for every resource: CheckAccess independently re-derives
+	// each resource's relation key and looks it up, so skipping classification on a
+	// "duplicate" would leave NeedCheck at its zero value (false) and cause that
+	// resource to be returned unchecked.
+	seenKeys := make(map[string]struct{}, len(result.Resources))
 
 	// estimate the size of each line in the access check message
 	accessCheckMessage := make([]byte, 0, 80*len(result.Resources))
 	for idx := range result.Resources {
-
-		if _, seen := seenRefs[result.Resources[idx].ObjectRef]; seen {
-			// Skip this result.
-			continue
-		}
-		seenRefs[result.Resources[idx].ObjectRef] = struct{}{}
 
 		if result.Resources[idx].Public {
 			result.Resources[idx].NeedCheck = false
@@ -215,6 +215,14 @@ func (s *ResourceSearch) BuildMessage(ctx context.Context, principal string, res
 			continue
 		}
 		result.Resources[idx].NeedCheck = true
+
+		relationKey := result.Resources[idx].AccessCheckObject + "#" + result.Resources[idx].AccessCheckRelation
+		if _, seen := seenKeys[relationKey]; seen {
+			// Already emitted a check line for this object#relation pair.
+			continue
+		}
+		seenKeys[relationKey] = struct{}{}
+
 		// make the access check message
 		accessCheckMessage = append(accessCheckMessage, result.Resources[idx].AccessCheckObject...)
 		accessCheckMessage = append(accessCheckMessage, byte('#'))

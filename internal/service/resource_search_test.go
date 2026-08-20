@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -298,6 +299,7 @@ func TestResourceSearchBuildMessage(t *testing.T) {
 		expectedPublicCount     int
 		expectedNeedCheckCount  int
 		expectedMessageContains []string
+		expectedLineCount       int // 0 means "not checked"
 	}{
 		{
 			name:      "only public resources",
@@ -414,6 +416,105 @@ func TestResourceSearchBuildMessage(t *testing.T) {
 			expectedMessageContains: []string{},
 		},
 		{
+			// Regression test: child resources (e.g. meeting registrants) are
+			// deliberately assigned their parent's AccessCheckObject/Relation so
+			// that many rows collapse to one check. BuildMessage must dedupe the
+			// emitted check line by that key, not by ObjectRef, while still
+			// marking every one of them NeedCheck=true (CheckAccess resolves
+			// each resource independently via the shared response line).
+			name:      "resources sharing one access check object emit a single line",
+			principal: "user123",
+			searchResult: &model.SearchResult{
+				Resources: []model.Resource{
+					{
+						Type: "meeting_registrant",
+						ID:   "registrant-1",
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "meeting_registrant:registrant-1",
+							ObjectType:          "meeting_registrant",
+							ObjectID:            "registrant-1",
+							Public:              false,
+							AccessCheckObject:   "meeting:shared-meeting",
+							AccessCheckRelation: "viewer",
+						},
+					},
+					{
+						Type: "meeting_registrant",
+						ID:   "registrant-2",
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "meeting_registrant:registrant-2",
+							ObjectType:          "meeting_registrant",
+							ObjectID:            "registrant-2",
+							Public:              false,
+							AccessCheckObject:   "meeting:shared-meeting",
+							AccessCheckRelation: "viewer",
+						},
+					},
+					{
+						Type: "meeting_registrant",
+						ID:   "registrant-3",
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "meeting_registrant:registrant-3",
+							ObjectType:          "meeting_registrant",
+							ObjectID:            "registrant-3",
+							Public:              false,
+							AccessCheckObject:   "meeting:shared-meeting",
+							AccessCheckRelation: "viewer",
+						},
+					},
+				},
+			},
+			expectedPublicCount:    0,
+			expectedNeedCheckCount: 3,
+			expectedMessageContains: []string{
+				"meeting:shared-meeting#viewer@user:user123",
+			},
+			expectedLineCount: 1,
+		},
+		{
+			// Regression test: a Public resource `continue`s before touching
+			// seenKeys (BuildMessage), so it must not suppress the check line
+			// for a private resource sharing its AccessCheckObject/Relation,
+			// nor should the private resource's own classification be affected
+			// by the public one preceding it.
+			name:      "public and private resource sharing one access check key",
+			principal: "user123",
+			searchResult: &model.SearchResult{
+				Resources: []model.Resource{
+					{
+						Type: "meeting",
+						ID:   "shared-meeting",
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "meeting:shared-meeting",
+							ObjectType:          "meeting",
+							ObjectID:            "shared-meeting",
+							Public:              true,
+							AccessCheckObject:   "meeting:shared-meeting",
+							AccessCheckRelation: "viewer",
+						},
+					},
+					{
+						Type: "meeting_registrant",
+						ID:   "registrant-1",
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "meeting_registrant:registrant-1",
+							ObjectType:          "meeting_registrant",
+							ObjectID:            "registrant-1",
+							Public:              false,
+							AccessCheckObject:   "meeting:shared-meeting",
+							AccessCheckRelation: "viewer",
+						},
+					},
+				},
+			},
+			expectedPublicCount:    1,
+			expectedNeedCheckCount: 1,
+			expectedMessageContains: []string{
+				"meeting:shared-meeting#viewer@user:user123",
+			},
+			expectedLineCount: 1,
+		},
+		{
 			name:      "resource missing access check info",
 			principal: "user123",
 			searchResult: &model.SearchResult{
@@ -472,6 +573,9 @@ func TestResourceSearchBuildMessage(t *testing.T) {
 			messageStr := string(message)
 			for _, expectedSubstring := range tc.expectedMessageContains {
 				assertion.Contains(messageStr, expectedSubstring)
+			}
+			if tc.expectedLineCount > 0 {
+				assertion.Equal(tc.expectedLineCount, strings.Count(messageStr, "\n"))
 			}
 		})
 	}
@@ -576,6 +680,86 @@ func TestResourceSearchCheckAccess(t *testing.T) {
 				checker.DeniedResourceIDs = []string{"denied-project"}
 			},
 			expectedResources: 1,
+			expectedError:     false,
+		},
+		{
+			// Regression test: BuildMessage now dedupes the emitted line for
+			// resources sharing one AccessCheckObject/Relation, so a single
+			// response line must resolve every one of those resources here.
+			name:      "single deduped line resolves all sharing resources",
+			principal: "user123",
+			resources: []model.Resource{
+				{
+					Type:      "meeting_registrant",
+					ID:        "registrant-1",
+					NeedCheck: true,
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:           "meeting_registrant:registrant-1",
+						ObjectType:          "meeting_registrant",
+						ObjectID:            "registrant-1",
+						AccessCheckObject:   "meeting:shared-meeting",
+						AccessCheckRelation: "viewer",
+					},
+				},
+				{
+					Type:      "meeting_registrant",
+					ID:        "registrant-2",
+					NeedCheck: true,
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:           "meeting_registrant:registrant-2",
+						ObjectType:          "meeting_registrant",
+						ObjectID:            "registrant-2",
+						AccessCheckObject:   "meeting:shared-meeting",
+						AccessCheckRelation: "viewer",
+					},
+				},
+			},
+			message: []byte("meeting:shared-meeting#viewer@user:user123\n"),
+			setupAccessChecker: func(checker *mock.MockAccessControlChecker) {
+				checker.DefaultResult = "allowed"
+				checker.AllowedUserIDs = []string{"user123"}
+			},
+			expectedResources: 2,
+			expectedError:     false,
+		},
+		{
+			// Regression test: the DENIED direction of the deduped line. A single
+			// "false" response line must exclude every resource sharing that
+			// AccessCheckObject/Relation key, not just the one whose ObjectRef
+			// happens to match.
+			name:      "single deduped line denies all sharing resources",
+			principal: "user123",
+			resources: []model.Resource{
+				{
+					Type:      "meeting_registrant",
+					ID:        "registrant-1",
+					NeedCheck: true,
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:           "meeting_registrant:registrant-1",
+						ObjectType:          "meeting_registrant",
+						ObjectID:            "registrant-1",
+						AccessCheckObject:   "meeting:shared-meeting",
+						AccessCheckRelation: "viewer",
+					},
+				},
+				{
+					Type:      "meeting_registrant",
+					ID:        "registrant-2",
+					NeedCheck: true,
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:           "meeting_registrant:registrant-2",
+						ObjectType:          "meeting_registrant",
+						ObjectID:            "registrant-2",
+						AccessCheckObject:   "meeting:shared-meeting",
+						AccessCheckRelation: "viewer",
+					},
+				},
+			},
+			message: []byte("meeting:shared-meeting#viewer@user:user123\n"),
+			setupAccessChecker: func(checker *mock.MockAccessControlChecker) {
+				checker.DefaultResult = "denied"
+			},
+			expectedResources: 0,
 			expectedError:     false,
 		},
 		{
