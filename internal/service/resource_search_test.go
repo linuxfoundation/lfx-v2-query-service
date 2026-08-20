@@ -472,6 +472,49 @@ func TestResourceSearchBuildMessage(t *testing.T) {
 			expectedLineCount: 1,
 		},
 		{
+			// Regression test: a Public resource `continue`s before touching
+			// seenKeys (BuildMessage), so it must not suppress the check line
+			// for a private resource sharing its AccessCheckObject/Relation,
+			// nor should the private resource's own classification be affected
+			// by the public one preceding it.
+			name:      "public and private resource sharing one access check key",
+			principal: "user123",
+			searchResult: &model.SearchResult{
+				Resources: []model.Resource{
+					{
+						Type: "meeting",
+						ID:   "shared-meeting",
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "meeting:shared-meeting",
+							ObjectType:          "meeting",
+							ObjectID:            "shared-meeting",
+							Public:              true,
+							AccessCheckObject:   "meeting:shared-meeting",
+							AccessCheckRelation: "viewer",
+						},
+					},
+					{
+						Type: "meeting_registrant",
+						ID:   "registrant-1",
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "meeting_registrant:registrant-1",
+							ObjectType:          "meeting_registrant",
+							ObjectID:            "registrant-1",
+							Public:              false,
+							AccessCheckObject:   "meeting:shared-meeting",
+							AccessCheckRelation: "viewer",
+						},
+					},
+				},
+			},
+			expectedPublicCount:    1,
+			expectedNeedCheckCount: 1,
+			expectedMessageContains: []string{
+				"meeting:shared-meeting#viewer@user:user123",
+			},
+			expectedLineCount: 1,
+		},
+		{
 			name:      "resource missing access check info",
 			principal: "user123",
 			searchResult: &model.SearchResult{
@@ -677,6 +720,46 @@ func TestResourceSearchCheckAccess(t *testing.T) {
 				checker.AllowedUserIDs = []string{"user123"}
 			},
 			expectedResources: 2,
+			expectedError:     false,
+		},
+		{
+			// Regression test: the DENIED direction of the deduped line. A single
+			// "false" response line must exclude every resource sharing that
+			// AccessCheckObject/Relation key, not just the one whose ObjectRef
+			// happens to match.
+			name:      "single deduped line denies all sharing resources",
+			principal: "user123",
+			resources: []model.Resource{
+				{
+					Type:      "meeting_registrant",
+					ID:        "registrant-1",
+					NeedCheck: true,
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:           "meeting_registrant:registrant-1",
+						ObjectType:          "meeting_registrant",
+						ObjectID:            "registrant-1",
+						AccessCheckObject:   "meeting:shared-meeting",
+						AccessCheckRelation: "viewer",
+					},
+				},
+				{
+					Type:      "meeting_registrant",
+					ID:        "registrant-2",
+					NeedCheck: true,
+					TransactionBodyStub: model.TransactionBodyStub{
+						ObjectRef:           "meeting_registrant:registrant-2",
+						ObjectType:          "meeting_registrant",
+						ObjectID:            "registrant-2",
+						AccessCheckObject:   "meeting:shared-meeting",
+						AccessCheckRelation: "viewer",
+					},
+				},
+			},
+			message: []byte("meeting:shared-meeting#viewer@user:user123\n"),
+			setupAccessChecker: func(checker *mock.MockAccessControlChecker) {
+				checker.DefaultResult = "denied"
+			},
+			expectedResources: 0,
 			expectedError:     false,
 		},
 		{
