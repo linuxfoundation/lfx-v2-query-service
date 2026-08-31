@@ -93,6 +93,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
 				dsl.Example("public, max-age=300")
 			})
+			dsl.Attribute("withheld_count", dsl.Int, "Number of resources on this page that matched the query but were withheld by access control. Present only when positive. When resources is empty and withheld_count is positive, matches exist that the caller lacks permission to view.", func() {
+				dsl.Example(3)
+			})
 			dsl.Required("resources")
 		})
 

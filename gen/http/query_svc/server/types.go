@@ -19,6 +19,11 @@ type QueryResourcesResponseBody struct {
 	Resources []*ResourceResponseBody `form:"resources" json:"resources" xml:"resources"`
 	// Opaque token if more results are available
 	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
+	// Number of resources on this page that matched the query but were withheld by
+	// access control. Present only when positive. When resources is empty and
+	// withheld_count is positive, matches exist that the caller lacks permission
+	// to view.
+	WithheldCount *int `form:"withheld_count,omitempty" json:"withheld_count,omitempty" xml:"withheld_count,omitempty"`
 }
 
 // QueryResourcesCountResponseBody is the type of the "query-svc" service
@@ -196,7 +201,8 @@ type OrganizationSuggestionResponseBody struct {
 // of the "query-resources" endpoint of the "query-svc" service.
 func NewQueryResourcesResponseBody(res *querysvc.QueryResourcesResult) *QueryResourcesResponseBody {
 	body := &QueryResourcesResponseBody{
-		PageToken: res.PageToken,
+		PageToken:     res.PageToken,
+		WithheldCount: res.WithheldCount,
 	}
 	if res.Resources != nil {
 		body.Resources = make([]*ResourceResponseBody, len(res.Resources))

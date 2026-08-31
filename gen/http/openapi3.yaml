@@ -420,6 +420,7 @@ paths:
                                         description: a committee
                                       id: "123"
                                       type: committee
+                                withheld_count: 3
                 "400":
                     description: 'BadRequest: Bad request'
                     content:
@@ -789,6 +790,11 @@ components:
                             description: a committee
                           id: "123"
                           type: committee
+                withheld_count:
+                    type: integer
+                    description: Number of resources on this page that matched the query but were withheld by access control. Present only when positive. When resources is empty and withheld_count is positive, matches exist that the caller lacks permission to view.
+                    example: 3
+                    format: int64
             example:
                 page_token: '****'
                 resources:
@@ -816,6 +822,7 @@ components:
                         description: a committee
                       id: "123"
                       type: committee
+                withheld_count: 3
             required:
                 - resources
         Resource:

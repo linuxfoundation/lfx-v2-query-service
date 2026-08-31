@@ -224,6 +224,11 @@ type QueryResourcesResult struct {
 	PageToken *string
 	// Cache control header
 	CacheControl *string
+	// Number of resources on this page that matched the query but were withheld by
+	// access control. Present only when positive. When resources is empty and
+	// withheld_count is positive, matches exist that the caller lacks permission
+	// to view.
+	WithheldCount *int
 }
 
 // A resource is a universal representation of an LFX API resource for indexing.
