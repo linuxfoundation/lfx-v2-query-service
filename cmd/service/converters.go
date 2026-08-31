@@ -223,6 +223,11 @@ func (s *querySvcsrvc) domainResultToResponse(result *model.SearchResult) *query
 		CacheControl: result.CacheControl,
 	}
 
+	if result.WithheldCount > 0 {
+		withheldCount := result.WithheldCount
+		response.WithheldCount = &withheldCount
+	}
+
 	for i, domainResource := range result.Resources {
 		// Create local copies to avoid taking addresses of loop variables
 		resourceType := domainResource.Type
@@ -240,7 +245,7 @@ func (s *querySvcsrvc) domainResultToResponse(result *model.SearchResult) *query
 func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	criteria := model.SearchCriteria{
 		GroupBySize: constants.DefaultBucketSize,
-		PageSize:    -1,  // page size is not used for _count
+		PageSize:    -1,   // page size is not used for _count
 		PublicOnly:  true, // _count only counts public resources
 	}
 	params := commonQueryParams{

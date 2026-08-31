@@ -22,6 +22,7 @@ func TestResourceSearchQueryResources(t *testing.T) {
 		setupMocks           func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
 		expectedError        bool
 		expectedResources    int
+		expectedWithheld     int
 		expectedCacheControl bool
 	}{
 		{
@@ -137,6 +138,7 @@ func TestResourceSearchQueryResources(t *testing.T) {
 			},
 			expectedError:        false,
 			expectedResources:    0,
+			expectedWithheld:     1,
 			expectedCacheControl: false,
 		},
 	}
@@ -175,6 +177,7 @@ func TestResourceSearchQueryResources(t *testing.T) {
 			assertion.NoError(err)
 			assertion.NotNil(result)
 			assertion.Equal(tc.expectedResources, len(result.Resources))
+			assertion.Equal(tc.expectedWithheld, result.WithheldCount)
 
 			if tc.expectedCacheControl {
 				assertion.NotNil(result.CacheControl)

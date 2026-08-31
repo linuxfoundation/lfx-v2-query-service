@@ -154,10 +154,15 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		return nil, fmt.Errorf("access control check failed: %w", errCheckAccess)
 	}
 	searchResult.Resources = checkedResources
+	// Surface how much access control shrank the page: without this signal,
+	// a caller with no permission on any match sees the same empty page as a
+	// caller whose query matched nothing.
+	searchResult.WithheldCount = len(result.Resources) - len(checkedResources)
 
 	slog.DebugContext(ctx, "resource search completed",
 		"query_count", len(result.Resources),
 		"response_after_access_check", len(searchResult.Resources),
+		"withheld_count", searchResult.WithheldCount,
 	)
 
 	if principal == constants.AnonymousPrincipal {

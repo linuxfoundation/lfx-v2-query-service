@@ -73,6 +73,9 @@ type SearchResult struct {
 	CacheControl *string
 	// Total number of resources found
 	Total int
+	// Number of resources on this page that matched the query but were
+	// withheld by access control
+	WithheldCount int
 }
 
 // CountResult contains the results of a resource count search

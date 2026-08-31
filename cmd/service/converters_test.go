@@ -297,6 +297,20 @@ func TestDomainResultToResponse(t *testing.T) {
 				CacheControl: nil,
 			},
 		},
+		{
+			name: "result with resources withheld by access control",
+			domainResult: &model.SearchResult{
+				Resources:     []model.Resource{},
+				PageToken:     stringPtr("next-page-token"),
+				Total:         0,
+				WithheldCount: 3,
+			},
+			expectedResponse: &querysvc.QueryResourcesResult{
+				Resources:     []*querysvc.Resource{},
+				PageToken:     stringPtr("next-page-token"),
+				WithheldCount: intPtr(3),
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -316,6 +330,7 @@ func TestDomainResultToResponse(t *testing.T) {
 
 			assert.Equal(t, tc.expectedResponse.PageToken, result.PageToken)
 			assert.Equal(t, tc.expectedResponse.CacheControl, result.CacheControl)
+			assert.Equal(t, tc.expectedResponse.WithheldCount, result.WithheldCount)
 		})
 	}
 }
@@ -1277,4 +1292,9 @@ func TestPayloadToCountAggregationCriteria(t *testing.T) {
 // Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s
+}
+
+// Helper function to create int pointers
+func intPtr(i int) *int {
+	return &i
 }

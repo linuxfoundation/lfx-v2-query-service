@@ -62,12 +62,24 @@ excluded from results (it does not bypass access filtering).
     { "type": "committee", "id": "uuid", "data": { ... } }
   ],
   "page_token": "opaque-token-or-omitted",
-  "cache_control": "public, max-age=300"
+  "cache_control": "public, max-age=300",
+  "withheld_count": 3
 }
 ```
 
 `data` is the full resource object as stored by the indexer: schema-free, no
 migration needed for new fields.
+
+`withheld_count` is the number of resources on this page that matched the
+query but were withheld by access control (step 5 of the access control
+flow). It is present only when positive. It lets callers distinguish "nothing
+matched" from "matches exist that this principal cannot view" — the two
+otherwise produce an identical empty page. It counts only access-control
+removals, not `cel_filter` removals, and it is a per-page count, not a total
+across all pages. Note this intentionally discloses that inaccessible matches
+exist (a count only — never their identifiers or contents); the raw-page
+`page_token` behavior already discloses the same existence signal whenever
+the raw page is full.
 
 **Required parameters:** at least one of `name`, `parent`, `type`, `tags`, or
 `filter_grants` must be provided. A request that supplies only `cel_filter`,
