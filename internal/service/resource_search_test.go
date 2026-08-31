@@ -141,6 +141,40 @@ func TestResourceSearchQueryResources(t *testing.T) {
 			expectedWithheld:     1,
 			expectedCacheControl: false,
 		},
+		{
+			// Locks the withheld arithmetic against regressions that would
+			// report the raw page size or the returned size: with a mixed
+			// page the three quantities all differ (3 raw, 2 returned,
+			// 1 withheld).
+			name: "mixed page - withheld counts only the denied resources",
+			criteria: model.SearchCriteria{
+				Name: stringPtr("test"),
+			},
+			principal: "user123",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				for _, id := range []string{"test-visible-one", "test-denied-project", "test-visible-two"} {
+					searcher.AddResource(model.Resource{
+						Type: "project",
+						ID:   id,
+						Data: map[string]any{"name": id},
+						TransactionBodyStub: model.TransactionBodyStub{
+							ObjectRef:           "project:" + id,
+							ObjectType:          "project",
+							ObjectID:            id,
+							Public:              false,
+							AccessCheckObject:   "project:" + id,
+							AccessCheckRelation: "view",
+						},
+					})
+				}
+				accessChecker.DefaultResult = "allowed"
+				accessChecker.DeniedResourceIDs = []string{"denied-project"}
+			},
+			expectedError:        false,
+			expectedResources:    2,
+			expectedWithheld:     1,
+			expectedCacheControl: false,
+		},
 	}
 
 	assertion := assert.New(t)
@@ -188,6 +222,66 @@ func TestResourceSearchQueryResources(t *testing.T) {
 
 		})
 	}
+}
+
+// dropOneResourceFilter is a ResourceFilter stub that removes one resource by
+// ID, standing in for a CEL expression that filters it out. The shared
+// MockResourceFilter is a no-op, so it cannot exercise CEL shrinkage.
+type dropOneResourceFilter struct{ dropID string }
+
+func (f dropOneResourceFilter) Filter(_ context.Context, resources []model.Resource, _ string) ([]model.Resource, error) {
+	out := make([]model.Resource, 0, len(resources))
+	for _, resource := range resources {
+		if resource.ID != f.dropID {
+			out = append(out, resource)
+		}
+	}
+	return out, nil
+}
+
+// TestResourceSearchWithheldCountExcludesCELFiltered pins the order of
+// operations behind WithheldCount: the CEL filter runs before the access
+// check, so a resource removed by CEL is not "withheld" - only access-control
+// denials count. 3 raw, 1 CEL-filtered, 1 denied => 1 returned, 1 withheld.
+func TestResourceSearchWithheldCountExcludesCELFiltered(t *testing.T) {
+	assertion := assert.New(t)
+
+	mockSearcher := mock.NewMockResourceSearcher()
+	for _, id := range []string{"test-cel-filtered", "test-denied-project", "test-visible-one"} {
+		mockSearcher.AddResource(model.Resource{
+			Type: "project",
+			ID:   id,
+			Data: map[string]any{"name": id},
+			TransactionBodyStub: model.TransactionBodyStub{
+				ObjectRef:           "project:" + id,
+				ObjectType:          "project",
+				ObjectID:            id,
+				Public:              false,
+				AccessCheckObject:   "project:" + id,
+				AccessCheckRelation: "view",
+			},
+		})
+	}
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockAccessChecker.DefaultResult = "allowed"
+	mockAccessChecker.DeniedResourceIDs = []string{"denied-project"}
+
+	service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, dropOneResourceFilter{dropID: "test-cel-filtered"}).(*ResourceSearch)
+	if !ok {
+		t.Fatal("failed to create ResourceSearch service")
+	}
+
+	ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "user123")
+	celExpression := "resource.data.name != 'test-cel-filtered'"
+	result, err := service.QueryResources(ctx, model.SearchCriteria{
+		Name:      stringPtr("test"),
+		CelFilter: &celExpression,
+	})
+
+	assertion.NoError(err)
+	assertion.NotNil(result)
+	assertion.Equal(1, len(result.Resources))
+	assertion.Equal(1, result.WithheldCount)
 }
 
 func TestResourceSearchValidateSearchCriteria(t *testing.T) {

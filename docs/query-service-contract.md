@@ -77,9 +77,22 @@ matched" from "matches exist that this principal cannot view" — the two
 otherwise produce an identical empty page. It counts only access-control
 removals, not `cel_filter` removals, and it is a per-page count, not a total
 across all pages. Note this intentionally discloses that inaccessible matches
-exist (a count only — never their identifiers or contents); the raw-page
-`page_token` behavior already discloses the same existence signal whenever
-the raw page is full.
+exist (a count only — never their identifiers, types, or contents).
+
+**Disclosure analysis:** this field does not create a new cardinality oracle —
+the post-page-shrinkage pagination design already discloses raw-match
+cardinality to an authenticated caller. A `page_token` is emitted whenever the
+raw pre-filtering page is full, so a caller iterating pages (down to
+`page_size=1`) can already count raw matches — including fully withheld ones —
+one token at a time, at one request per page, without this field.
+`withheld_count` is bounded by the page size and reveals per page exactly what
+that page's token behavior implies, minus the final-partial-page ambiguity. An
+attacker gains no information they could not already extract; a legitimate
+caller gains an honest empty-page explanation in one request. Rate limiting
+remains the control on enumeration in both designs. If disclosure policy ever
+tightens, degrade this field to a boolean before removing it — consumers
+(e.g. lfx-mcp's access-aware empty-result notes) need existence, not
+magnitude.
 
 **Required parameters:** at least one of `name`, `parent`, `type`, `tags`, or
 `filter_grants` must be provided. A request that supplies only `cel_filter`,
