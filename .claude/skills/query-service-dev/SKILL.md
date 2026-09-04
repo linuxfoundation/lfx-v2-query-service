@@ -98,7 +98,7 @@ when in doubt or when adding a new package.
 - **NATS request/reply.** Query-service is a NATS client, not a subscriber.
   Keep subjects in `pkg/constants/access_control.go`. Access checks go
   through `NATSClient.CheckAccess` using the caller-provided timeout
-  (`15*time.Second` from the service layer today); direct tuple reads use
+  (`service.Config.AccessCheckTimeout`, default 15s); direct tuple reads use
   `RequestWithContext` in `NATSClient.ReadTuples`. Close the connection
   through `NATSAccessControlChecker.Close()` from the graceful-shutdown path
   in `cmd/main.go`.
@@ -178,7 +178,7 @@ resource.
   one line per remaining resource in the format
   `{access_check_object}#{access_check_relation}@user:{principal}`.
 - `CheckAccess` sends the batch on `lfx.access_check.request`
-  (`constants.AccessCheckSubject`) with a 15s timeout via
+  (`constants.AccessCheckSubject`) with the `ACCESS_CHECK_TIMEOUT` (default 15s) via
   `internal/infrastructure/nats/access_control.go`.
 - Response is tab-separated `key\tbool` lines. Resources whose response is
   `false` or missing are dropped. Order is not guaranteed; match on the
@@ -194,19 +194,34 @@ resource.
 ### 4. Count-query access pattern
 
 `GET /query/resources/count` does not fetch resource hits and then filter
-them. It counts public resources directly, then aggregates private resources
-by `access_check_query.keyword` and access-checks those aggregation keys.
+them. It counts public resources directly, then walks private resources
+grouped by access-check key and access-checks each page of keys.
 
 - Criteria are built in `cmd/service/converters.go`:
-  `payloadToCountPublicCriteria()` sets `PublicOnly`, while
-  `payloadToCountAggregationCriteria()` sets `PrivateOnly`,
-  `GroupBy: "access_check_query.keyword"`, and `PageSize: 0`.
-- `internal/service/resource_search.go::BuildCountMessage` emits one access
-  check per aggregation bucket, then `CheckCountAccess` adds only allowed
-  bucket doc counts to the public count.
-- `HasMore` is set when `SumOtherDocCount > 0`; callers need a narrower
-  count query if they require an exact number beyond the aggregation bucket
-  window.
+  `payloadToCountPublicCriteria()` sets `PublicOnly`,
+  `payloadToCountPrivateCriteria()` sets `PrivateOnly`, and
+  `payloadToCountAggregation()` validates `group_by`, `group_by_size`
+  and `metric` into a `model.CountAggregation`. The converters do not
+  know the access field name.
+- `internal/infrastructure/opensearch/searcher.go::resolveAccessKeyField`
+  reads the index mapping once and picks `access_check_query` (keyword)
+  or `access_check_query.keyword` (text + keyword subfield). Never
+  hardcode the field: on a plain-keyword index the `.keyword` aggregation
+  returns zero buckets with HTTP 200.
+- `internal/service/resource_search.go::walkAccessBuckets` pages a
+  composite aggregation (`Config.AccessBucketPage` buckets per page), builds
+  one batched check per page with `BuildCountMessage`, sums granted
+  `doc_count`s in `CheckCountAccess`, and stops on a short page or once
+  `Config.MaxAccessBuckets` buckets were walked (`HasMore = true`). Pages are
+  never split. A failed check is `errors.NewServiceUnavailable` (503), never
+  a partial count.
+- Groups and the cardinality metric run afterwards in
+  `AuthorizedAggregation`, filtered to `public: true` OR granted keys. Only
+  `tags` (keyword) can be aggregated; `data` is `flat_object`.
+- Timeouts and caps come from `service.Config`, read from the environment
+  in `cmd/service/providers.go::ResourceSearchConfigImpl`
+  (`ACCESS_CHECK_TIMEOUT`, `READ_TUPLES_TIMEOUT`, `COUNT_ACCESS_BUCKET_PAGE`,
+  `COUNT_MAX_ACCESS_BUCKETS`).
 
 Anti-patterns: looking up tuples synchronously per result, issuing one
 access check per resource, or forgetting to dedupe by `ObjectRef`.

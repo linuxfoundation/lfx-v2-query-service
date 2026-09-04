@@ -45,7 +45,7 @@ skill, which auto-attaches on Go paths.
 4. **For access-control changes**: this service issues
    `lfx.access_check.request` to fga-sync with one line per non-public
    resource. Order is not guaranteed, match on the request token. Default
-   timeout 15s.
+   timeout `ACCESS_CHECK_TIMEOUT` (default 15s).
 5. **For debugging "user can't see resource"**: first confirm the type is in
    `docs/indexed-data-types.md` as an active publisher, then check
    OpenSearch directly for the resource. If `access_check_object` or

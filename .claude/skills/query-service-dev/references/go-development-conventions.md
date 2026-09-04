@@ -97,7 +97,8 @@ Do:
 - Keep subjects in `pkg/constants/access_control.go`
   (`AccessCheckSubject`, `ReadTuplesSubject`).
 - Use `NATSClient.CheckAccess` for batched access checks. It currently calls
-  `conn.Request` with the timeout supplied by the service layer.
+  `conn.Request` with the timeout supplied by the service layer
+  (`service.Config.AccessCheckTimeout`, env `ACCESS_CHECK_TIMEOUT`).
 - Use `NATSClient.ReadTuples` for `filter_grants=direct`; that path wraps the
   request in a timeout-aware context and calls `RequestWithContext`.
 - Close the connection through `NATSAccessControlChecker.Close()` from the

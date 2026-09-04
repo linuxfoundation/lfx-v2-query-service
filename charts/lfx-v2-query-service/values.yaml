@@ -67,6 +67,16 @@ app:
     ## In case of mock, please set the ORG_SEARCH_SOURCE to mock.
     CLEARBIT_CREDENTIAL:
       value: null
+    ## Access-check and count tunables. Defaults live in code; leave unset
+    ## unless a deployment needs to override them.
+    ## ACCESS_CHECK_TIMEOUT:      # default 15s   - each batched fga-sync access check
+    ##   value: 15s
+    ## READ_TUPLES_TIMEOUT:       # default 15s   - filter_grants=direct tuple read
+    ##   value: 15s
+    ## COUNT_ACCESS_BUCKET_PAGE:  # default 100   - access-key buckets per count page (1-1000)
+    ##   value: "100"
+    ## COUNT_MAX_ACCESS_BUCKETS:  # default 5000  - buckets walked before a count reports has_more
+    ##   value: "5000"
   # extraEnv allows injecting additional environment variables before OTEL configuration.
   # Supports both simple values and Kubernetes field references.
   extraEnv: []

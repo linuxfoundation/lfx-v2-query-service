@@ -195,6 +195,13 @@ go run ./cmd
 - `NATS_MAX_RECONNECT`: Maximum reconnection attempts (default: "3")
 - `NATS_RECONNECT_WAIT`: Time between reconnection attempts (default: "2s")
 
+**Access Checks and Counting:**
+
+- `ACCESS_CHECK_TIMEOUT`: Timeout of each batched fga-sync access check (default: "15s")
+- `READ_TUPLES_TIMEOUT`: Timeout of the `filter_grants=direct` tuple read (default: "15s")
+- `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
+- `COUNT_MAX_ACCESS_BUCKETS`: Buckets a single count walks before reporting `has_more` (≥ page, default: "5000")
+
 **Clearbit Configuration:**
 
 - `CLEARBIT_CREDENTIAL`: Clearbit API key (required for organization search)
@@ -287,6 +294,18 @@ returns a count rather than the resources themselves:
 
 `has_more` is `true` when the count is not guaranteed to be exhaustive and the
 client should request a narrower query.
+
+Two optional parameters aggregate the count over the resources the caller may
+see: `group_by=<tag prefix>` returns `groups` (one entry per tag value after
+`<prefix>:`, capped by `group_by_size`, `groups_complete` says whether all are
+present) and `metric=cardinality:<tag prefix>` returns `metric_value` (distinct
+tag values) with `metric_complete`. They cannot be combined, and `data.*`
+fields cannot be aggregated on this index.
+
+```bash
+GET /query/resources/count?v=1&type=v1_past_meeting&group_by=project_uid
+GET /query/resources/count?v=1&type=v1_past_meeting_participant&tags_all=is_attended:true&metric=cardinality:email
+```
 
 For API contract details (page size, date ranges, CEL filter, clause limits,
 anonymous vs authenticated semantics, access-control flow), see
