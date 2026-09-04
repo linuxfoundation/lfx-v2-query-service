@@ -465,8 +465,9 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			unexpectedFields: []string{"\"_score\""},
 		},
 		{
-			// Without an explicit operator, match_bool_prefix defaults to OR, so each
-			// extra word widens the result set instead of narrowing it.
+			// Without an explicit operator, match_bool_prefix defaults to OR, so an extra
+			// word can only add matches, never remove them — the opposite of what someone
+			// typing more of a name expects.
 			name: "render name query requires every term to match",
 			criteria: model.SearchCriteria{
 				Name: stringPtr("Cloud Native Computing"),
