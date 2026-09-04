@@ -110,10 +110,10 @@ Returns:
 | --- | --- | --- |
 | `count` | always | Matching documents the caller may see |
 | `has_more` | always | `true` when the count is not guaranteed exhaustive (the access-bucket walk stopped at `COUNT_MAX_ACCESS_BUCKETS`) |
-| `groups` | with `group_by` | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag |
-| `groups_complete` | with `group_by` | `true` when every group is present; `false` when more groups exist than `group_by_size` |
+| `groups` | with `group_by`, when non-empty | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag. Omitted (not `[]`) when no group matched; `groups_complete` is the signal that `group_by` was honoured |
+| `groups_complete` | with `group_by` | `true` when every group is present; `false` when more groups exist than `group_by_size`, **or** when `has_more` is `true` (the groups were computed over a truncated authorized set) |
 | `metric_value` | with `metric` | The cardinality |
-| `metric_complete` | with `metric` | `true` when the distinct-value walk finished; `false` when it stopped at `COUNT_MAX_ACCESS_BUCKETS` distinct values |
+| `metric_complete` | with `metric` | `true` when the distinct-value walk finished; `false` when it stopped at `COUNT_MAX_ACCESS_BUCKETS` distinct values, **or** when `has_more` is `true` |
 
 #### How a count is computed
 
@@ -177,7 +177,7 @@ three facts about the live mapping:
 | --- | --- | --- |
 | `tags` | `keyword` | The **only aggregatable dimension**. `group_by` and `metric=cardinality:` both aggregate on it; a tag prefix is the way to expose a groupable attribute |
 | `data` | `flat_object` | Never aggregatable, never summable, no numeric operations. This is why `sum` and `group_by` on `data.*` are declined rather than attempted |
-| `access_check_query` | `keyword`, **or** `text` with a `keyword` subfield | The access-bucket walk aggregates on it. The searcher reads `GET /<index>/_mapping` once on first use and picks `access_check_query` (keyword) or `access_check_query.keyword` (text + subfield); anything else, or a failed mapping call, falls back to `access_check_query.keyword` with a warning. It logs `resolved access key field` at `Info` |
+| `access_check_query` | `keyword`, **or** `text` with a `keyword` subfield | The access-bucket walk aggregates on it. The searcher reads `GET /<index>/_mapping` on first use and picks `access_check_query` (keyword) or `access_check_query.keyword` (text + subfield), memoizing the answer and logging `resolved access key field` at `Info`. Any other shape falls back to `access_check_query.keyword` with a warning. A *failed* mapping call also falls back with a warning but is **not** memoized: the next request retries, so a transient error at boot cannot pin the wrong field |
 
 The mockdata fallback mapping declares `access_check_query` as plain `keyword`;
 an index whose field was created by dynamic mapping carries `text` +

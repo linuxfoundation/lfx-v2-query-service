@@ -1094,26 +1094,37 @@ func TestResolveAccessKeyField(t *testing.T) {
 			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"tags": {Type: "keyword"}}},
 			expected: accessCheckQueryKeywordField,
 		},
-		{
-			name:     "mapping call failure falls back",
-			err:      errors.New("boom"),
-			expected: accessCheckQueryKeywordField,
-		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			client := NewMockOpenSearchClient()
 			client.SetMappingResponse(tc.mapping)
-			client.SetMappingError(tc.err)
 			searcher := &OpenSearchSearcher{client: client, index: "test-index"}
 
 			assert.Equal(t, tc.expected, searcher.resolveAccessKeyField(context.Background()))
-			// Resolution happens once.
+			// A successful read is memoized.
 			assert.Equal(t, tc.expected, searcher.resolveAccessKeyField(context.Background()))
 			assert.Equal(t, 1, client.mappingCalls)
 		})
 	}
+
+	t.Run("mapping call failure falls back for the request and retries next time", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetMappingError(errors.New("boom"))
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+
+		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, 2, client.mappingCalls, "a failure must not be memoized")
+
+		// Once the mapping is readable the real field is resolved and kept.
+		client.SetMappingError(nil)
+		client.SetMappingResponse(&IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}}})
+		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, 3, client.mappingCalls)
+	})
 
 	t.Run("preset field skips the mapping call", func(t *testing.T) {
 		client := NewMockOpenSearchClient()

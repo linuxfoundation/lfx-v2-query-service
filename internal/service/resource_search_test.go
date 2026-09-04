@@ -1264,7 +1264,7 @@ func TestAccessBucketWalkPagesAndCaps(t *testing.T) {
 		assertion.Equal(1, searcher.AccessBucketCalls())
 	})
 
-	t.Run("full page without a cursor ends the walk defensively", func(t *testing.T) {
+	t.Run("full page without a cursor cannot be continued: has_more, never silently complete", func(t *testing.T) {
 		assertion := assert.New(t)
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetCountPublicResponse(0)
@@ -1277,7 +1277,40 @@ func TestAccessBucketWalkPagesAndCaps(t *testing.T) {
 		result, err := service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, model.CountAggregation{})
 		assertion.NoError(err)
 		assertion.Equal(100, result.Count)
+		assertion.True(result.HasMore)
 		assertion.Equal(1, searcher.AccessBucketCalls())
+	})
+
+	t.Run("a capped walk marks groups and metric incomplete even when the aggregation itself was complete", func(t *testing.T) {
+		assertion := assert.New(t)
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetCountPublicResponse(0)
+		searcher.SetAccessBucketPages(
+			&model.AccessBucketPage{Buckets: p1, AfterKey: after(p1)},
+			&model.AccessBucketPage{Buckets: p2, AfterKey: after(p2)},
+		)
+		searcher.SetAuthorizedAggregationResponse(&model.CountAggregationResult{
+			Groups:         []model.CountGroup{{Key: "P1", Count: 100}},
+			GroupsComplete: true,
+			MetricValue:    5,
+			MetricComplete: true,
+		})
+		checker := mock.NewMockAccessControlChecker()
+		checker.DefaultResult = "allowed"
+		service := newTestResourceSearchWithConfig(t, searcher, checker, Config{AccessBucketPage: 100, MaxAccessBuckets: 100})
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+		result, err := service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 10})
+		assertion.NoError(err)
+		assertion.True(result.HasMore)
+		assertion.Equal([]model.CountGroup{{Key: "P1", Count: 100}}, result.Groups)
+		assertion.False(*result.GroupsComplete, "groups were computed over a truncated authorized set")
+
+		result, err = service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, model.CountAggregation{CardinalityPrefix: "email"})
+		assertion.NoError(err)
+		assertion.True(result.HasMore)
+		assertion.Equal(uint64(5), *result.MetricValue)
+		assertion.False(*result.MetricComplete, "metric was computed over a truncated authorized set")
 	})
 }
 
