@@ -58,6 +58,19 @@ var Resource = dsl.Type("Resource", func() {
 	})
 })
 
+// CountGroup is one group of a grouped count.
+var CountGroup = dsl.Type("CountGroup", func() {
+	dsl.Description("One group of a grouped resource count.")
+
+	dsl.Attribute("key", dsl.String, "Group key: the tag value with the group_by prefix stripped", func() {
+		dsl.Example("a1b2c3d4")
+	})
+	dsl.Attribute("count", dsl.UInt64, "Number of authorized resources in the group", func() {
+		dsl.Example(12)
+	})
+	dsl.Required("key", "count")
+})
+
 // BadRequestError is the DSL type for a bad request error.
 var BadRequestError = dsl.Type("BadRequestError", func() {
 	dsl.Attribute("message", dsl.String, "Error message", func() {
