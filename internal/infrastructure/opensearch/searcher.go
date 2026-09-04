@@ -280,9 +280,9 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 			return nil, fmt.Errorf("opensearch response is missing the group_by aggregation")
 		}
 		if response.GroupBy.DocCountErrorUpperBound > 0 {
-			// Only possible on a multi-shard index when a shard's candidate
-			// list was cut at shard_size; the reported counts may then be
-			// lower bounds. Not surfaced to callers.
+			// Reported when a shard's candidate list was cut at shard_size;
+			// the returned counts may then be lower bounds. Not surfaced to
+			// callers.
 			slog.DebugContext(ctx, "grouped count has a non-zero doc_count_error_upper_bound",
 				"prefix", aggregation.GroupByPrefix,
 				"size", aggregation.GroupBySize,
