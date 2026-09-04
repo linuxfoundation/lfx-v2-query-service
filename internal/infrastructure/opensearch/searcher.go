@@ -77,6 +77,9 @@ type countAggregationParams struct {
 	GroupByPrefix  string
 	GroupBySize    int
 	GroupByInclude string
+	// GroupByShardSize is the per-shard candidate count for the terms
+	// aggregation (see groupByShardSize).
+	GroupByShardSize int
 
 	// CardinalityPrefix renders the composite walk over tags.
 	CardinalityPrefix string
@@ -94,6 +97,14 @@ const (
 	// account without indices:admin/mappings/get) costs one extra round-trip
 	// per interval instead of one per request.
 	accessKeyFieldRetryInterval = 30 * time.Second
+	// groupByShardSizeFactor and groupByShardSizeMax bound the terms
+	// aggregation's shard_size: each shard returns min(size*factor, max)
+	// candidates so that, on a multi-shard index, the top groups and their
+	// doc_counts are exact in practice. Composite aggregations (the access
+	// walk and the cardinality walk) are exact by construction and need no
+	// such tuning.
+	groupByShardSizeFactor = 5
+	groupByShardSizeMax    = 5000
 	// accessKeyFieldReadTimeout bounds the mapping read itself. The read is
 	// decoupled from the caller's context so one cancelled request cannot
 	// open the retry window for every other request.
@@ -252,6 +263,7 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 		params := base
 		params.GroupByPrefix = aggregation.GroupByPrefix
 		params.GroupBySize = aggregation.GroupBySize
+		params.GroupByShardSize = groupByShardSize(aggregation.GroupBySize)
 		params.GroupByInclude = tagPrefixInclude(aggregation.GroupByPrefix)
 		query, err := os.RenderCountAggregation(ctx, params)
 		if err != nil {
@@ -266,6 +278,17 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 		}
 		if response.GroupBy == nil {
 			return nil, fmt.Errorf("opensearch response is missing the group_by aggregation")
+		}
+		if response.GroupBy.DocCountErrorUpperBound > 0 {
+			// Only possible on a multi-shard index when a shard's candidate
+			// list was cut at shard_size; the reported counts may then be
+			// lower bounds. Not surfaced to callers.
+			slog.DebugContext(ctx, "grouped count has a non-zero doc_count_error_upper_bound",
+				"prefix", aggregation.GroupByPrefix,
+				"size", aggregation.GroupBySize,
+				"shard_size", params.GroupByShardSize,
+				"doc_count_error_upper_bound", response.GroupBy.DocCountErrorUpperBound,
+			)
 		}
 		prefix := aggregation.GroupByPrefix + ":"
 		result.Groups = make([]model.CountGroup, 0, len(response.GroupBy.Buckets))
@@ -371,6 +394,15 @@ func (os *OpenSearchSearcher) aggregationSearch(ctx context.Context, query []byt
 		}
 	}
 	return &response, nil
+}
+
+// groupByShardSize returns min(size*groupByShardSizeFactor, groupByShardSizeMax).
+func groupByShardSize(size int) int {
+	shardSize := size * groupByShardSizeFactor
+	if shardSize > groupByShardSizeMax {
+		return groupByShardSizeMax
+	}
+	return shardSize
 }
 
 // tagPrefixInclude builds the Lucene regular expression that restricts a

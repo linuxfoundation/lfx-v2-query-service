@@ -268,6 +268,7 @@ const countAggregationSource = `{
       "terms": {
         "field": "tags",
         "size": {{ .GroupBySize }},
+        "shard_size": {{ .GroupByShardSize }},
         "include": {{ .GroupByInclude | quote }}
       }
     }

@@ -140,9 +140,13 @@ For an authenticated principal:
    *authorized set*: `public: true` OR `access_check_query` in the granted keys
    (at most `COUNT_MAX_ACCESS_BUCKETS` values, below OpenSearch's
    `index.max_terms_count` default of 65536). `group_by` is a `terms`
-   aggregation on `tags` with `include: "<prefix>:.*"`; `metric` is a composite
-   walk over `tags` starting just after the bare `<prefix>:` key and stopping at
-   the first key outside the prefix, so it is exact and needs no scripting.
+   aggregation on `tags` with `include: "<prefix>:.*"` and
+   `shard_size = min(group_by_size × 5, 5000)`, so on a multi-shard index the
+   returned groups and their counts are exact in practice (a non-zero
+   `doc_count_error_upper_bound` is logged at `Debug`, not surfaced). `metric`
+   is a composite walk over `tags` starting just after the bare `<prefix>:` key
+   and stopping at the first key outside the prefix; like the access-bucket
+   walk it is exact by construction and needs no scripting.
 
 Resource families whose access key is per object (past meetings:
 `v1_past_meeting:{id}#viewer`, and their participants, which inherit it)
