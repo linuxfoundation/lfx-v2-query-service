@@ -110,7 +110,7 @@ Returns:
 | --- | --- | --- |
 | `count` | always | Matching documents the caller may see |
 | `has_more` | always | `true` when the count is not guaranteed exhaustive (the access-bucket walk stopped at `COUNT_MAX_ACCESS_BUCKETS`) |
-| `groups` | with `group_by`, when non-empty | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag. Omitted (not `[]`) when no group matched; `groups_complete` is the signal that `group_by` was honoured |
+| `groups` | with `group_by`, when non-empty | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag. Per-group counts are exact up to `shard_size = min(group_by_size × 5, 5000)` terms per shard. Omitted (not `[]`) when no group matched; `groups_complete` is the signal that `group_by` was honoured |
 | `groups_complete` | with `group_by` | `true` when every group is present; `false` when more groups exist than `group_by_size`, **or** when `has_more` is `true` (the groups were computed over a truncated authorized set) |
 | `metric_value` | with `metric` | The cardinality |
 | `metric_complete` | with `metric` | `true` when the distinct-value walk finished; `false` when it stopped at `COUNT_MAX_ACCESS_BUCKETS` distinct values, **or** when `has_more` is `true` |
