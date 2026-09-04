@@ -46,6 +46,7 @@ const queryResourceSource = `{
           "multi_match": {
             "query": {{ .Name | quote }},
             "type": "bool_prefix",
+            "operator": "and",
             "fields": [
               "name_and_aliases",
               "name_and_aliases._2gram",
