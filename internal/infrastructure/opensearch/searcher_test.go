@@ -1055,18 +1055,18 @@ func TestOpenSearchSearcherRenderCountAggregation(t *testing.T) {
 			params: countAggregationParams{
 				Criteria: plain, AccessKeyField: accessCheckQueryField,
 				AuthorizedFilter: true, IncludePublic: true, AuthorizedKeys: []string{"k1", "k2"},
-				GroupByPrefix: "project_uid", GroupBySize: 100, GroupByInclude: "project_uid:.*",
+				GroupByPrefix: "project_uid", GroupBySize: 100, GroupByShardSize: 500, GroupByInclude: "project_uid:.*",
 			},
-			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}},{"terms":{"access_check_query":["k1","k2"]}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":100,"include":"project_uid:.*"}}}}`,
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}},{"terms":{"access_check_query":["k1","k2"]}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":100,"shard_size":500,"include":"project_uid:.*"}}}}`,
 		},
 		{
 			name: "grouped count for anonymous is public only",
 			params: countAggregationParams{
 				Criteria: plain, AccessKeyField: accessCheckQueryField,
 				AuthorizedFilter: true, IncludePublic: true,
-				GroupByPrefix: "meeting_type", GroupBySize: 1, GroupByInclude: "meeting_type:.*",
+				GroupByPrefix: "meeting_type", GroupBySize: 1, GroupByShardSize: 5, GroupByInclude: "meeting_type:.*",
 			},
-			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":1,"include":"meeting_type:.*"}}}}`,
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":1,"shard_size":5,"include":"meeting_type:.*"}}}}`,
 		},
 		{
 			name: "cardinality walk first page starts after the bare prefix",
@@ -1086,6 +1086,13 @@ func TestOpenSearchSearcherRenderCountAggregation(t *testing.T) {
 			assert.Equal(t, tc.expected, string(query))
 		})
 	}
+}
+
+func TestGroupByShardSize(t *testing.T) {
+	assert.Equal(t, 5, groupByShardSize(1))
+	assert.Equal(t, 500, groupByShardSize(100))
+	assert.Equal(t, 5000, groupByShardSize(1000), "capped at the maximum")
+	assert.Equal(t, 5000, groupByShardSize(1001))
 }
 
 func TestTagPrefixInclude(t *testing.T) {
@@ -1320,6 +1327,7 @@ func TestGroupByStripsPrefix(t *testing.T) {
 	assert.False(t, result.GroupsComplete, "sum_other_doc_count > 0 means more groups exist")
 	assert.Equal(t, 1, client.aggregationCalls)
 	assert.Contains(t, string(client.aggregationQueries[0]), `"include":"project_uid:.*"`)
+	assert.Contains(t, string(client.aggregationQueries[0]), `"size":2,"shard_size":10,`)
 }
 
 func TestCardinalityWalkStopsAtPrefixBoundary(t *testing.T) {
