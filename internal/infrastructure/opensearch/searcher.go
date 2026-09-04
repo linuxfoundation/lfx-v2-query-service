@@ -98,8 +98,8 @@ type OpenSearchSearcher struct {
 
 	// accessKeyField is resolved from the live index mapping on first use
 	// (see resolveAccessKeyField). Tests may preset it to skip resolution.
-	accessKeyField     string
-	accessKeyFieldOnce sync.Once
+	accessKeyField   string
+	accessKeyFieldMu sync.Mutex
 }
 
 // OpenSearchClientRetriever defines the interface for OpenSearch operations
@@ -303,7 +303,13 @@ func (os *OpenSearchSearcher) walkCardinality(ctx context.Context, base countAgg
 			slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
 			return 0, false, fmt.Errorf("failed to render query: %w", err)
 		}
-		slog.DebugContext(ctx, "cardinality walk query", "page", page, "query", string(query))
+		// The rendered body is not logged: its "after" cursor carries a tag
+		// value (for metric=cardinality:email, an address).
+		slog.DebugContext(ctx, "cardinality walk page",
+			"prefix", aggregation.CardinalityPrefix,
+			"page", page,
+			"size", pageSize,
+		)
 
 		response, err := os.aggregationSearch(ctx, query)
 		if err != nil {
@@ -377,62 +383,68 @@ func luceneQuoteMeta(s string) string {
 	return b.String()
 }
 
-// resolveAccessKeyField decides, once, which indexed field the access-key
-// walk aggregates on, by reading the live index mapping:
+// resolveAccessKeyField decides which indexed field the access-key walk
+// aggregates on, by reading the live index mapping:
 //
 //   - access_check_query mapped as keyword          -> "access_check_query"
 //   - text with a keyword subfield                  -> "access_check_query.keyword"
-//   - anything else, or the mapping call fails      -> "access_check_query.keyword"
+//   - anything else                                 -> "access_check_query.keyword"
 //     (the pre-existing behaviour), with a warning.
+//
+// A successful read is memoized for the life of the process. A failed
+// mapping call is not: the default is used for this request with a warning
+// and the next request retries, so a transient OpenSearch error at boot
+// cannot pin the wrong field (and the silent zero buckets it produces on a
+// plain-keyword index) until a restart.
 //
 // It also warns when tags is not keyword or data is not flat_object, since
 // the grouped count and the cardinality metric depend on both.
 func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string {
-	os.accessKeyFieldOnce.Do(func() {
-		if os.accessKeyField != "" {
-			return
-		}
-		os.accessKeyField = accessCheckQueryKeywordField
+	os.accessKeyFieldMu.Lock()
+	defer os.accessKeyFieldMu.Unlock()
 
-		mapping, err := os.client.GetMapping(ctx, os.index)
-		if err != nil {
-			slog.WarnContext(ctx, "could not read index mapping; using default access key field",
-				"index", os.index,
-				"access_key_field", os.accessKeyField,
-				"error", err,
-			)
-			return
-		}
+	if os.accessKeyField != "" {
+		return os.accessKeyField
+	}
 
-		field, resolved := accessKeyFieldFromMapping(mapping)
-		if !resolved {
-			observed, _ := json.Marshal(mapping.Properties[accessCheckQueryField])
-			slog.WarnContext(ctx, "unexpected access_check_query mapping; using default access key field",
-				"index", os.index,
-				"access_key_field", field,
-				"observed_mapping", string(observed),
-			)
-		}
-		os.accessKeyField = field
-
-		if tags, ok := mapping.Properties["tags"]; !ok || tags.Type != "keyword" {
-			slog.WarnContext(ctx, "tags is not mapped as keyword; grouped counts and cardinality metrics may not work",
-				"index", os.index,
-				"observed_type", tags.Type,
-			)
-		}
-		if data, ok := mapping.Properties["data"]; !ok || data.Type != "flat_object" {
-			slog.WarnContext(ctx, "data is not mapped as flat_object; the count route assumes data fields are not aggregatable",
-				"index", os.index,
-				"observed_type", data.Type,
-			)
-		}
-
-		slog.InfoContext(ctx, "resolved access key field",
+	mapping, err := os.client.GetMapping(ctx, os.index)
+	if err != nil {
+		slog.WarnContext(ctx, "could not read index mapping; using default access key field for this request",
 			"index", os.index,
-			"access_key_field", os.accessKeyField,
+			"access_key_field", accessCheckQueryKeywordField,
+			"error", err,
 		)
-	})
+		return accessCheckQueryKeywordField
+	}
+
+	field, resolved := accessKeyFieldFromMapping(mapping)
+	if !resolved {
+		observed, _ := json.Marshal(mapping.Properties[accessCheckQueryField])
+		slog.WarnContext(ctx, "unexpected access_check_query mapping; using default access key field",
+			"index", os.index,
+			"access_key_field", field,
+			"observed_mapping", string(observed),
+		)
+	}
+	os.accessKeyField = field
+
+	if tags, ok := mapping.Properties["tags"]; !ok || tags.Type != "keyword" {
+		slog.WarnContext(ctx, "tags is not mapped as keyword; grouped counts and cardinality metrics may not work",
+			"index", os.index,
+			"observed_type", tags.Type,
+		)
+	}
+	if data, ok := mapping.Properties["data"]; !ok || data.Type != "flat_object" {
+		slog.WarnContext(ctx, "data is not mapped as flat_object; the count route assumes data fields are not aggregatable",
+			"index", os.index,
+			"observed_type", data.Type,
+		)
+	}
+
+	slog.InfoContext(ctx, "resolved access key field",
+		"index", os.index,
+		"access_key_field", os.accessKeyField,
+	)
 	return os.accessKeyField
 }
 

@@ -5,8 +5,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	server "github.com/linuxfoundation/lfx-v2-query-service/gen/http/query_svc/server"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
@@ -1406,10 +1408,18 @@ func TestDomainCountResultToResponse(t *testing.T) {
 		assert.Equal(t, boolPtr(true), response.GroupsComplete)
 	})
 
-	t.Run("grouped count with no groups renders an empty array, not null", func(t *testing.T) {
+	t.Run("grouped count with no groups: groups_complete is the presence signal on the wire", func(t *testing.T) {
+		// Goa renders optional arrays with omitempty, so an empty groups slice
+		// is dropped from the JSON body; groups_complete (a pointer) survives
+		// and tells the client group_by was honoured. Pin that wire shape.
 		response := svc.domainCountResultToResponse(&model.CountResult{GroupsComplete: boolPtr(true)})
-		assert.NotNil(t, response.Groups)
 		assert.Len(t, response.Groups, 0)
+		assert.NotNil(t, response.GroupsComplete)
+
+		body := server.NewQueryResourcesCountResponseBody(response)
+		encoded, err := json.Marshal(body)
+		assert.NoError(t, err)
+		assert.JSONEq(t, `{"count":0,"has_more":false,"groups_complete":true}`, string(encoded))
 	})
 
 	t.Run("metric renders value and completeness", func(t *testing.T) {

@@ -421,14 +421,16 @@ func (s *ResourceSearch) QueryResourcesCount(
 		)
 		return nil, fmt.Errorf("search operation failed: %w", err)
 	}
+	// When the walk stopped at the cap, AuthorizedKeys is a truncated view of
+	// what the caller may see, so neither aggregation can claim completeness.
 	if aggregation.GroupByPrefix != "" {
 		result.Groups = aggregationResult.Groups
-		groupsComplete := aggregationResult.GroupsComplete
+		groupsComplete := aggregationResult.GroupsComplete && !result.HasMore
 		result.GroupsComplete = &groupsComplete
 	}
 	if aggregation.CardinalityPrefix != "" {
 		metricValue := aggregationResult.MetricValue
-		metricComplete := aggregationResult.MetricComplete
+		metricComplete := aggregationResult.MetricComplete && !result.HasMore
 		result.MetricValue = &metricValue
 		result.MetricComplete = &metricComplete
 	}
@@ -504,7 +506,13 @@ func (s *ResourceSearch) walkAccessBuckets(ctx context.Context, principal string
 			break
 		}
 		if page.AfterKey == nil {
-			// Defensive: a full page without a cursor cannot be continued.
+			// A full page that cannot be continued: the count is not known
+			// to be exhaustive, so say so rather than stop silently.
+			slog.WarnContext(ctx, "access bucket page was full but carried no cursor; reporting has_more",
+				"page", pages,
+				"buckets", walked,
+			)
+			hasMore = true
 			break
 		}
 		after = page.AfterKey
