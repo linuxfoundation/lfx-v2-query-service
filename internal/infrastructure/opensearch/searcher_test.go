@@ -950,6 +950,21 @@ func TestQueryResourcesPassesPageSizeToClient(t *testing.T) {
 	}
 }
 
+// ctxAwareMappingClient fails GetMapping when the context it receives is
+// already done, so a test can tell whether the caller's cancellation reached
+// the read.
+type ctxAwareMappingClient struct {
+	*MockOpenSearchClient
+}
+
+func (c *ctxAwareMappingClient) GetMapping(ctx context.Context, index string) (*IndexMapping, error) {
+	if err := ctx.Err(); err != nil {
+		c.mappingCalls++
+		return nil, err
+	}
+	return c.MockOpenSearchClient.GetMapping(ctx, index)
+}
+
 // lockedMappingClient makes the mock safe for concurrent GetMapping calls.
 type lockedMappingClient struct {
 	*MockOpenSearchClient
@@ -1150,6 +1165,20 @@ func TestResolveAccessKeyField(t *testing.T) {
 		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
 		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
 		assert.Equal(t, 3, client.mappingCalls)
+	})
+
+	t.Run("a cancelled caller context does not poison the retry window", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetMappingResponse(&IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}}})
+		// The mock ignores ctx, so make cancellation observable: fail only
+		// when the context handed to GetMapping is already done.
+		searcher := &OpenSearchSearcher{client: &ctxAwareMappingClient{MockOpenSearchClient: client}, index: "test-index"}
+
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(cancelled),
+			"the read runs on a context decoupled from the caller, so it succeeds")
+		assert.Equal(t, 1, client.mappingCalls)
 	})
 
 	t.Run("concurrent first use resolves once", func(t *testing.T) {
