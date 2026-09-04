@@ -7,12 +7,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/global"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
 )
@@ -237,46 +239,115 @@ func (s *querySvcsrvc) domainResultToResponse(result *model.SearchResult) *query
 	return response
 }
 
+// countCommonParams extracts the shared search parameters of a count payload.
+func countCommonParams(payload *querysvc.QueryResourcesCountPayload) commonQueryParams {
+	return commonQueryParams{
+		Name: payload.Name, Parent: payload.Parent, Type: payload.Type,
+		Tags: payload.Tags, TagsAll: payload.TagsAll,
+		Filters: payload.Filters, FiltersAll: payload.FiltersAll, FiltersOr: payload.FiltersOr,
+		DateField: payload.DateField, DateFrom: payload.DateFrom, DateTo: payload.DateTo,
+	}
+}
+
+// payloadToCountPublicCriteria builds the criteria of the public /_count.
 func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	criteria := model.SearchCriteria{
-		GroupBySize: constants.DefaultBucketSize,
-		PageSize:    -1,  // page size is not used for _count
-		PublicOnly:  true, // _count only counts public resources
+		PageSize:   -1,   // page size is not used for _count
+		PublicOnly: true, // _count only counts public resources
 	}
-	params := commonQueryParams{
-		Name: payload.Name, Parent: payload.Parent, Type: payload.Type,
-		Tags: payload.Tags, TagsAll: payload.TagsAll,
-		Filters: payload.Filters, FiltersAll: payload.FiltersAll, FiltersOr: payload.FiltersOr,
-		DateField: payload.DateField, DateFrom: payload.DateFrom, DateTo: payload.DateTo,
-	}
-	err := applyCommonFields(&criteria, params)
+	err := applyCommonFields(&criteria, countCommonParams(payload))
 	return criteria, err
 }
 
-func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
+// payloadToCountPrivateCriteria builds the criteria of the access-key walk
+// over private resources. The field aggregated on is resolved by the searcher
+// from the live index mapping, not chosen here.
+func (s *querySvcsrvc) payloadToCountPrivateCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	criteria := model.SearchCriteria{
-		GroupBySize: constants.DefaultBucketSize,
 		PageSize:    0,    // aggregation only; no result hits needed
-		PrivateOnly: true, // aggregation counts only private resources
-		// Use .keyword subfield for aggregation on text fields.
-		GroupBy: "access_check_query.keyword",
+		PrivateOnly: true, // the walk covers private resources only
 	}
-	params := commonQueryParams{
-		Name: payload.Name, Parent: payload.Parent, Type: payload.Type,
-		Tags: payload.Tags, TagsAll: payload.TagsAll,
-		Filters: payload.Filters, FiltersAll: payload.FiltersAll, FiltersOr: payload.FiltersOr,
-		DateField: payload.DateField, DateFrom: payload.DateFrom, DateTo: payload.DateTo,
-	}
-	err := applyCommonFields(&criteria, params)
+	err := applyCommonFields(&criteria, countCommonParams(payload))
 	return criteria, err
 }
 
-func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *querysvc.QueryResourcesCountResult {
-	return &querysvc.QueryResourcesCountResult{
-		Count:        uint64(result.Count),
-		HasMore:      result.HasMore,
-		CacheControl: result.CacheControl,
+// tagPrefixPattern is the shape of a group_by prefix and of the prefix inside
+// a cardinality metric. It matches the Goa pattern on group_by.
+var tagPrefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+const (
+	// metricCardinalityPrefix is the only metric family the count route
+	// supports: "cardinality:<tag_prefix>".
+	metricCardinalityPrefix = "cardinality:"
+	// errMetricShape is returned for any metric that is not
+	// cardinality:<tag_prefix>. Sums are named explicitly because they are
+	// the obvious next ask and impossible on this index: data is a
+	// flat_object, whose subfields cannot be aggregated.
+	errMetricShape = "metric must be cardinality:<tag_prefix>; sum is not available on this index (data fields are flat_object)"
+	// errMetricPerGroup is returned when group_by and metric are combined.
+	errMetricPerGroup = "metric per group is not supported; group first, then count each group with tags"
+)
+
+// payloadToCountAggregation validates group_by, group_by_size and metric and
+// builds the aggregation the count route computes over authorized resources.
+func (s *querySvcsrvc) payloadToCountAggregation(payload *querysvc.QueryResourcesCountPayload) (model.CountAggregation, error) {
+	aggregation := model.CountAggregation{
+		GroupBySize: constants.DefaultGroupBySize,
 	}
+
+	if payload.GroupBy != nil && payload.Metric != nil {
+		return aggregation, errors.NewValidation(errMetricPerGroup)
+	}
+
+	if payload.GroupBy != nil {
+		if !tagPrefixPattern.MatchString(*payload.GroupBy) {
+			return aggregation, errors.NewValidation("group_by must match ^[a-z][a-z0-9_]*$")
+		}
+		aggregation.GroupByPrefix = *payload.GroupBy
+	}
+	if payload.GroupBySize != nil {
+		if *payload.GroupBySize < 1 || *payload.GroupBySize > constants.MaxGroupBySize {
+			return aggregation, errors.NewValidation(fmt.Sprintf("group_by_size must be between 1 and %d", constants.MaxGroupBySize))
+		}
+		aggregation.GroupBySize = *payload.GroupBySize
+	}
+
+	if payload.Metric != nil {
+		metric := *payload.Metric
+		if !strings.HasPrefix(metric, metricCardinalityPrefix) {
+			return aggregation, errors.NewValidation(errMetricShape)
+		}
+		prefix := strings.TrimPrefix(metric, metricCardinalityPrefix)
+		if !tagPrefixPattern.MatchString(prefix) {
+			return aggregation, errors.NewValidation(errMetricShape)
+		}
+		aggregation.CardinalityPrefix = prefix
+	}
+
+	return aggregation, nil
+}
+
+// domainCountResultToResponse converts the domain count result; the group and
+// metric attributes are present only when they were requested.
+func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *querysvc.QueryResourcesCountResult {
+	response := &querysvc.QueryResourcesCountResult{
+		Count:          uint64(result.Count),
+		HasMore:        result.HasMore,
+		GroupsComplete: result.GroupsComplete,
+		MetricValue:    result.MetricValue,
+		MetricComplete: result.MetricComplete,
+		CacheControl:   result.CacheControl,
+	}
+	if result.GroupsComplete != nil {
+		response.Groups = make([]*querysvc.CountGroup, 0, len(result.Groups))
+		for _, group := range result.Groups {
+			response.Groups = append(response.Groups, &querysvc.CountGroup{
+				Key:   group.Key,
+				Count: group.Count,
+			})
+		}
+	}
+	return response
 }
 
 // payloadToOrganizationCriteria converts the generated payload to domain organization search criteria

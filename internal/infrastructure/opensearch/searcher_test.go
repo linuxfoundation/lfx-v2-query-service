@@ -16,13 +16,20 @@ import (
 
 // MockOpenSearchClient is a mock implementation of OpenSearchClientRetriever
 type MockOpenSearchClient struct {
-	searchResponse      *SearchResponse
-	searchError         error
-	countResponse       *CountResponse
-	countError          error
-	aggregationResponse *AggregationResponse
-	aggregationError    error
-	lastPageSize        int
+	searchResponse *SearchResponse
+	searchError    error
+	countResponse  *CountResponse
+	countError     error
+	// aggregationResponses are returned in order by successive
+	// AggregationSearch calls; the last one repeats once exhausted.
+	aggregationResponses []json.RawMessage
+	aggregationError     error
+	aggregationCalls     int
+	aggregationQueries   [][]byte
+	mappingResponse      *IndexMapping
+	mappingError         error
+	mappingCalls         int
+	lastPageSize         int
 }
 
 func NewMockOpenSearchClient() *MockOpenSearchClient {
@@ -44,11 +51,28 @@ func (m *MockOpenSearchClient) Count(ctx context.Context, index string, query []
 	return m.countResponse, nil
 }
 
-func (m *MockOpenSearchClient) AggregationSearch(ctx context.Context, index string, query []byte) (*AggregationResponse, error) {
+func (m *MockOpenSearchClient) AggregationSearch(ctx context.Context, index string, query []byte) (json.RawMessage, error) {
+	m.aggregationCalls++
+	m.aggregationQueries = append(m.aggregationQueries, query)
 	if m.aggregationError != nil {
 		return nil, m.aggregationError
 	}
-	return m.aggregationResponse, nil
+	if len(m.aggregationResponses) == 0 {
+		return nil, nil
+	}
+	idx := m.aggregationCalls - 1
+	if idx >= len(m.aggregationResponses) {
+		idx = len(m.aggregationResponses) - 1
+	}
+	return m.aggregationResponses[idx], nil
+}
+
+func (m *MockOpenSearchClient) GetMapping(ctx context.Context, index string) (*IndexMapping, error) {
+	m.mappingCalls++
+	if m.mappingError != nil {
+		return nil, m.mappingError
+	}
+	return m.mappingResponse, nil
 }
 
 func (m *MockOpenSearchClient) SetSearchResponse(response *SearchResponse) {
@@ -67,12 +91,31 @@ func (m *MockOpenSearchClient) SetCountError(err error) {
 	m.countError = err
 }
 
-func (m *MockOpenSearchClient) SetAggregationResponse(response *AggregationResponse) {
-	m.aggregationResponse = response
+// SetAggregationResponse sets a single aggregations payload returned by every
+// AggregationSearch call.
+func (m *MockOpenSearchClient) SetAggregationResponse(response any) {
+	m.aggregationResponses = []json.RawMessage{mustMarshal(response)}
+}
+
+// SetAggregationResponses sets the aggregations payloads returned by
+// successive AggregationSearch calls, in order.
+func (m *MockOpenSearchClient) SetAggregationResponses(responses ...any) {
+	m.aggregationResponses = m.aggregationResponses[:0]
+	for _, response := range responses {
+		m.aggregationResponses = append(m.aggregationResponses, mustMarshal(response))
+	}
 }
 
 func (m *MockOpenSearchClient) SetAggregationError(err error) {
 	m.aggregationError = err
+}
+
+func (m *MockOpenSearchClient) SetMappingResponse(response *IndexMapping) {
+	m.mappingResponse = response
+}
+
+func (m *MockOpenSearchClient) SetMappingError(err error) {
+	m.mappingError = err
 }
 
 func (m *MockOpenSearchClient) IsReady(ctx context.Context) error {
@@ -905,138 +948,6 @@ func TestQueryResourcesPassesPageSizeToClient(t *testing.T) {
 	}
 }
 
-func TestOpenSearchSearcherQueryResourcesCount(t *testing.T) {
-	tests := []struct {
-		name                   string
-		countCriteria          model.SearchCriteria
-		aggregationCriteria    model.SearchCriteria
-		publicOnly             bool
-		setupMock              func(*MockOpenSearchClient)
-		expectedError          bool
-		expectedCount          int
-		expectedAggregationLen int
-	}{
-		{
-			name: "successful public only count",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("project"),
-				PageSize:     -1,
-				PublicOnly:   true,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          true,
-			setupMock: func(mock *MockOpenSearchClient) {
-				mock.SetCountResponse(&CountResponse{
-					Count: 5,
-				})
-			},
-			expectedError: false,
-			expectedCount: 5,
-		},
-		{
-			name: "successful count with aggregation",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("committee"),
-				PageSize:     -1,
-				PublicOnly:   true,
-			},
-			aggregationCriteria: model.SearchCriteria{
-				GroupBy:     "access_check_query.keyword",
-				PageSize:    0,
-				PrivateOnly: true,
-			},
-			publicOnly: false,
-			setupMock: func(mock *MockOpenSearchClient) {
-				mock.SetCountResponse(&CountResponse{
-					Count: 3,
-				})
-				mock.SetAggregationResponse(&AggregationResponse{
-					GroupBy: TermsAggregation{
-						DocCountErrorUpperBound: 0,
-						SumOtherDocCount:        0,
-						Buckets: []AggregationBucket{
-							{
-								Key:      "committee:123#viewer@user:test-user",
-								DocCount: 2,
-							},
-							{
-								Key:      "committee:456#member@user:test-user",
-								DocCount: 1,
-							},
-						},
-					},
-				})
-			},
-			expectedError:          false,
-			expectedCount:          3,
-			expectedAggregationLen: 2,
-		},
-		{
-			name: "count error",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("project"),
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          true,
-			setupMock: func(mock *MockOpenSearchClient) {
-				mock.SetCountError(errors.New("opensearch count failed"))
-			},
-			expectedError: true,
-		},
-		{
-			name: "aggregation error",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("committee"),
-			},
-			aggregationCriteria: model.SearchCriteria{
-				GroupBy: "access_check_query.keyword",
-			},
-			publicOnly: false,
-			setupMock: func(mock *MockOpenSearchClient) {
-				mock.SetCountResponse(&CountResponse{
-					Count: 2,
-				})
-				mock.SetAggregationError(errors.New("opensearch aggregation failed"))
-			},
-			expectedError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assertion := assert.New(t)
-
-			// Setup mock
-			mockClient := NewMockOpenSearchClient()
-			tc.setupMock(mockClient)
-
-			// Create searcher
-			searcher := &OpenSearchSearcher{
-				client: mockClient,
-				index:  "test-index",
-			}
-
-			// Execute
-			ctx := context.Background()
-			result, err := searcher.QueryResourcesCount(ctx, tc.countCriteria, tc.aggregationCriteria, tc.publicOnly)
-
-			// Verify
-			if tc.expectedError {
-				assertion.Error(err)
-				assertion.Nil(result)
-			} else {
-				assertion.NoError(err)
-				assertion.NotNil(result)
-				assertion.Equal(tc.expectedCount, result.Count)
-
-				if tc.expectedAggregationLen > 0 {
-					assertion.Equal(tc.expectedAggregationLen, len(result.Aggregation.Buckets))
-				}
-			}
-		})
-	}
-}
-
 // Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s
@@ -1049,4 +960,373 @@ func mustMarshal(v any) []byte {
 		panic(err)
 	}
 	return b
+}
+
+// publicCountBodies pins the /_count request body byte-for-byte to the output
+// of the template before the count route was extended (captured from main at
+// 7faf1ac). Existing callers must keep receiving the same public count.
+var publicCountBodies = []struct {
+	name     string
+	criteria model.SearchCriteria
+	expected string
+}{
+	{
+		name:     "type only",
+		criteria: model.SearchCriteria{PageSize: -1, PublicOnly: true, ResourceType: stringPtr("v1_past_meeting")},
+		expected: `{"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"public":true}},{"term":{"object_type":"v1_past_meeting"}}]}}}`,
+	},
+	{
+		name: "every criterion",
+		criteria: model.SearchCriteria{
+			PageSize: -1, PublicOnly: true,
+			ResourceType: stringPtr("committee"), Parent: stringPtr("project:123"), Name: stringPtr("gov"),
+			Tags: []string{"a", "b"}, TagsAll: []string{"c"},
+			Filters:    []model.FieldFilter{{Field: "data.status", Value: "active"}},
+			FiltersAll: []model.FieldFilter{{Field: "data.x", Value: "y"}},
+			FiltersOr:  []model.FieldFilter{{Field: "data.m", Value: "1"}, {Field: "data.m", Value: "2"}},
+			DateField:  stringPtr("data.start_time"), DateFrom: stringPtr("2026-08-01T00:00:00Z"), DateTo: stringPtr("2026-08-31T23:59:59Z"),
+		},
+		expected: `{"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"public":true}},{"term":{"object_type":"committee"}},{"term":{"parent_refs":"project:123"}},{"multi_match":{"query":"gov","type":"bool_prefix","fields":["name_and_aliases","name_and_aliases._2gram","name_and_aliases._3gram"]}},{"term":{"tags":"c"}},{"range":{"data.start_time":{"gte":"2026-08-01T00:00:00Z","lte":"2026-08-31T23:59:59Z"}}},{"term":{"data.status":"active"}},{"term":{"data.x":"y"}},{"bool":{"should":[{"term":{"data.m":"1"}},{"term":{"data.m":"2"}}],"minimum_should_match":1}}],"minimum_should_match":1,"should":[{"term":{"tags":"a"}},{"term":{"tags":"b"}}]}}}`,
+	},
+}
+
+func TestOpenSearchSearcherRenderPublicCountIsUnchanged(t *testing.T) {
+	searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index"}
+	for _, tc := range publicCountBodies {
+		t.Run(tc.name, func(t *testing.T) {
+			query, err := searcher.Render(context.Background(), tc.criteria)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, string(query))
+		})
+	}
+}
+
+func TestOpenSearchSearcherRenderCountAggregation(t *testing.T) {
+	searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index", accessKeyField: accessCheckQueryField}
+	private := model.SearchCriteria{PrivateOnly: true, ResourceType: stringPtr("v1_past_meeting"), Tags: []string{"x"}}
+	plain := model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")}
+
+	tests := []struct {
+		name     string
+		params   countAggregationParams
+		expected string
+	}{
+		{
+			name:     "access walk first page",
+			params:   countAggregationParams{Criteria: private, AccessKeyField: accessCheckQueryField, AccessWalk: true, PageSize: 100},
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"bool":{"must_not":{"term":{"public":true}}}},{"term":{"object_type":"v1_past_meeting"}}],"minimum_should_match":1,"should":[{"term":{"tags":"x"}}]}},"aggs":{"access_keys":{"composite":{"size":100,"sources":[{"access_key":{"terms":{"field":"access_check_query"}}}]}}}}`,
+		},
+		{
+			name:     "access walk later page carries after",
+			params:   countAggregationParams{Criteria: private, AccessKeyField: accessCheckQueryKeywordField, AccessWalk: true, PageSize: 2, After: "v1_past_meeting:m2#viewer"},
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"bool":{"must_not":{"term":{"public":true}}}},{"term":{"object_type":"v1_past_meeting"}}],"minimum_should_match":1,"should":[{"term":{"tags":"x"}}]}},"aggs":{"access_keys":{"composite":{"size":2,"sources":[{"access_key":{"terms":{"field":"access_check_query.keyword"}}}],"after":{"access_key":"v1_past_meeting:m2#viewer"}}}}}`,
+		},
+		{
+			name: "grouped count over public plus granted keys",
+			params: countAggregationParams{
+				Criteria: plain, AccessKeyField: accessCheckQueryField,
+				AuthorizedFilter: true, IncludePublic: true, AuthorizedKeys: []string{"k1", "k2"},
+				GroupByPrefix: "project_uid", GroupBySize: 100, GroupByInclude: "project_uid:.*",
+			},
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}},{"terms":{"access_check_query":["k1","k2"]}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":100,"include":"project_uid:.*"}}}}`,
+		},
+		{
+			name: "grouped count for anonymous is public only",
+			params: countAggregationParams{
+				Criteria: plain, AccessKeyField: accessCheckQueryField,
+				AuthorizedFilter: true, IncludePublic: true,
+				GroupByPrefix: "meeting_type", GroupBySize: 1, GroupByInclude: "meeting_type:.*",
+			},
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":1,"include":"meeting_type:.*"}}}}`,
+		},
+		{
+			name: "cardinality walk first page starts after the bare prefix",
+			params: countAggregationParams{
+				Criteria: plain, AccessKeyField: accessCheckQueryField,
+				AuthorizedFilter: true, AuthorizedKeys: []string{"k1"},
+				CardinalityPrefix: "email", PageSize: 100, After: "email:",
+			},
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"terms":{"access_check_query":["k1"]}}],"minimum_should_match":1}}}},"aggs":{"tags":{"composite":{"size":100,"sources":[{"tag":{"terms":{"field":"tags"}}}],"after":{"tag":"email:"}}}}}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			query, err := searcher.RenderCountAggregation(context.Background(), tc.params)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, string(query))
+		})
+	}
+}
+
+func TestTagPrefixInclude(t *testing.T) {
+	assert.Equal(t, "project_uid:.*", tagPrefixInclude("project_uid"))
+	// Defensive escaping of Lucene operators, even though the API pattern excludes them.
+	assert.Equal(t, `a\.b\*:.*`, tagPrefixInclude("a.b*"))
+}
+
+func TestResolveAccessKeyField(t *testing.T) {
+	tests := []struct {
+		name     string
+		mapping  *IndexMapping
+		err      error
+		expected string
+	}{
+		{
+			name:     "keyword mapping uses the field itself",
+			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}}},
+			expected: accessCheckQueryField,
+		},
+		{
+			name: "text with keyword subfield uses the subfield",
+			mapping: &IndexMapping{Properties: map[string]FieldMapping{
+				"access_check_query": {Type: "text", Fields: map[string]FieldMapping{"keyword": {Type: "keyword"}}},
+			}},
+			expected: accessCheckQueryKeywordField,
+		},
+		{
+			name:     "text without keyword subfield falls back to the subfield with a warning",
+			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "text"}}},
+			expected: accessCheckQueryKeywordField,
+		},
+		{
+			name:     "missing field falls back",
+			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"tags": {Type: "keyword"}}},
+			expected: accessCheckQueryKeywordField,
+		},
+		{
+			name:     "mapping call failure falls back",
+			err:      errors.New("boom"),
+			expected: accessCheckQueryKeywordField,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := NewMockOpenSearchClient()
+			client.SetMappingResponse(tc.mapping)
+			client.SetMappingError(tc.err)
+			searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+
+			assert.Equal(t, tc.expected, searcher.resolveAccessKeyField(context.Background()))
+			// Resolution happens once.
+			assert.Equal(t, tc.expected, searcher.resolveAccessKeyField(context.Background()))
+			assert.Equal(t, 1, client.mappingCalls)
+		})
+	}
+
+	t.Run("preset field skips the mapping call", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: "preset"}
+		assert.Equal(t, "preset", searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, 0, client.mappingCalls)
+	})
+}
+
+func TestOpenSearchSearcherCountPublic(t *testing.T) {
+	t.Run("returns the count", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetCountResponse(&CountResponse{Count: 5})
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+		count, err := searcher.CountPublic(context.Background(), model.SearchCriteria{PublicOnly: true, PageSize: -1})
+		assert.NoError(t, err)
+		assert.Equal(t, 5, count)
+	})
+	t.Run("propagates count errors", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetCountError(errors.New("opensearch count failed"))
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+		_, err := searcher.CountPublic(context.Background(), model.SearchCriteria{PublicOnly: true, PageSize: -1})
+		assert.Error(t, err)
+	})
+	t.Run("rejects non-public criteria", func(t *testing.T) {
+		searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index"}
+		_, err := searcher.CountPublic(context.Background(), model.SearchCriteria{})
+		assert.Error(t, err)
+	})
+}
+
+func TestOpenSearchSearcherAccessBuckets(t *testing.T) {
+	private := model.SearchCriteria{PrivateOnly: true, ResourceType: stringPtr("v1_past_meeting")}
+
+	t.Run("converts composite buckets and the after key", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponse(map[string]any{
+			"access_keys": map[string]any{
+				"after_key": map[string]string{"access_key": "v1_past_meeting:m3#viewer"},
+				"buckets": []map[string]any{
+					{"key": map[string]string{"access_key": "v1_past_meeting:m2#viewer"}, "doc_count": 1},
+					{"key": map[string]string{"access_key": "v1_past_meeting:m3#viewer"}, "doc_count": 4},
+				},
+			},
+		})
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		page, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
+		assert.NoError(t, err)
+		assert.Equal(t, []model.AggregationBucket{
+			{Key: "v1_past_meeting:m2#viewer", DocCount: 1},
+			{Key: "v1_past_meeting:m3#viewer", DocCount: 4},
+		}, page.Buckets)
+		assert.NotNil(t, page.AfterKey)
+		assert.Equal(t, "v1_past_meeting:m3#viewer", *page.AfterKey)
+	})
+
+	t.Run("last page has no after key", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponse(map[string]any{"access_keys": map[string]any{"buckets": []map[string]any{}}})
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		page, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
+		assert.NoError(t, err)
+		assert.Empty(t, page.Buckets)
+		assert.Nil(t, page.AfterKey)
+	})
+
+	t.Run("missing aggregation on a 200 is an error, not zero buckets", func(t *testing.T) {
+		// A silent zero here is exactly what the mapping resolution guards
+		// against; the response shape must be present.
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponse(map[string]any{})
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		_, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
+		assert.Error(t, err)
+	})
+
+	t.Run("propagates search errors", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationError(errors.New("opensearch aggregation failed"))
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+		_, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
+		assert.Error(t, err)
+	})
+
+	t.Run("rejects non-private criteria", func(t *testing.T) {
+		searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index", accessKeyField: accessCheckQueryField}
+		_, err := searcher.AccessBuckets(context.Background(), model.SearchCriteria{}, model.AccessBucketRequest{PageSize: 2})
+		assert.Error(t, err)
+	})
+}
+
+func TestGroupByStripsPrefix(t *testing.T) {
+	client := NewMockOpenSearchClient()
+	client.SetAggregationResponse(map[string]any{
+		"group_by": map[string]any{
+			"doc_count_error_upper_bound": 0,
+			"sum_other_doc_count":         3,
+			"buckets": []map[string]any{
+				{"key": "project_uid:P1", "doc_count": 2},
+				{"key": "project_uid:P2", "doc_count": 2},
+			},
+		},
+	})
+	searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+	result, err := searcher.AuthorizedAggregation(context.Background(),
+		model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")},
+		model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 2, IncludePublic: true, AuthorizedKeys: []string{"k"}},
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, []model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 2}}, result.Groups)
+	assert.False(t, result.GroupsComplete, "sum_other_doc_count > 0 means more groups exist")
+	assert.Equal(t, 1, client.aggregationCalls)
+	assert.Contains(t, string(client.aggregationQueries[0]), `"include":"project_uid:.*"`)
+}
+
+func TestCardinalityWalkStopsAtPrefixBoundary(t *testing.T) {
+	compositePage := func(after string, keys ...string) map[string]any {
+		buckets := make([]map[string]any, 0, len(keys))
+		for _, key := range keys {
+			buckets = append(buckets, map[string]any{"key": map[string]string{"tag": key}, "doc_count": 1})
+		}
+		page := map[string]any{"buckets": buckets}
+		if after != "" {
+			page["after_key"] = map[string]string{"tag": after}
+		}
+		return map[string]any{"tags": page}
+	}
+	criteria := model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting_participant")}
+	aggregation := func(pageSize, maxDistinct int) model.CountAggregation {
+		return model.CountAggregation{CardinalityPrefix: "email", IncludePublic: true, PageSize: pageSize, MaxDistinct: maxDistinct}
+	}
+
+	t.Run("stops at the first key outside the prefix; emailx and emai are not counted", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		// Ascending key order: "emai:bar" < "email:" (the walk starts after
+		// "email:" so it is never returned), "emailx:foo" > every "email:…".
+		client.SetAggregationResponses(
+			compositePage("emailx:foo", "email:a@x.org", "email:b@y.org", "emailx:foo"),
+		)
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		result, err := searcher.AuthorizedAggregation(context.Background(), criteria, aggregation(3, 5000))
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(2), result.MetricValue)
+		assert.True(t, result.MetricComplete)
+		assert.Equal(t, 1, client.aggregationCalls)
+		assert.Contains(t, string(client.aggregationQueries[0]), `"after":{"tag":"email:"}`)
+	})
+
+	t.Run("pages until a short page and carries the after key", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponses(
+			compositePage("email:b@y.org", "email:a@x.org", "email:b@y.org"),
+			compositePage("email:c@z.org", "email:c@z.org"),
+		)
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		result, err := searcher.AuthorizedAggregation(context.Background(), criteria, aggregation(2, 5000))
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(3), result.MetricValue)
+		assert.True(t, result.MetricComplete)
+		assert.Equal(t, 2, client.aggregationCalls)
+		assert.Contains(t, string(client.aggregationQueries[1]), `"after":{"tag":"email:b@y.org"}`)
+	})
+
+	t.Run("cap stops the walk and flags the metric incomplete", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponses(
+			compositePage("email:b@y.org", "email:a@x.org", "email:b@y.org"),
+			compositePage("email:d@z.org", "email:c@z.org", "email:d@z.org"),
+		)
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		result, err := searcher.AuthorizedAggregation(context.Background(), criteria, aggregation(2, 3))
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(3), result.MetricValue)
+		assert.False(t, result.MetricComplete)
+		assert.Equal(t, 2, client.aggregationCalls)
+	})
+
+	t.Run("no matching tags is zero and complete", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponses(compositePage(""))
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		result, err := searcher.AuthorizedAggregation(context.Background(), criteria, aggregation(100, 5000))
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(0), result.MetricValue)
+		assert.True(t, result.MetricComplete)
+	})
+}
+
+func TestAuthorizedAggregationSkipsWhenNothingIsVisible(t *testing.T) {
+	client := NewMockOpenSearchClient()
+	searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+	t.Run("no public, no granted keys: no query", func(t *testing.T) {
+		result, err := searcher.AuthorizedAggregation(context.Background(), model.SearchCriteria{}, model.CountAggregation{GroupByPrefix: "x", GroupBySize: 10})
+		assert.NoError(t, err)
+		assert.Empty(t, result.Groups)
+		assert.True(t, result.GroupsComplete)
+		assert.Equal(t, 0, client.aggregationCalls)
+	})
+
+	t.Run("nothing requested: no query", func(t *testing.T) {
+		result, err := searcher.AuthorizedAggregation(context.Background(), model.SearchCriteria{}, model.CountAggregation{IncludePublic: true})
+		assert.NoError(t, err)
+		assert.Empty(t, result.Groups)
+		assert.Equal(t, 0, client.aggregationCalls)
+	})
 }

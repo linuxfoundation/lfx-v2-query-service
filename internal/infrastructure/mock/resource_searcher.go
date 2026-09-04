@@ -6,6 +6,7 @@ package mock
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -14,10 +15,15 @@ import (
 // MockResourceSearcher is a mock implementation of ResourceSearcher for testing
 // This demonstrates how the clean architecture allows easy swapping of implementations
 type MockResourceSearcher struct {
-	resources                   []model.Resource
-	queryResourcesCountResponse *model.CountResult
-	queryResourcesCountError    error
-	isReadyError                error
+	resources                     []model.Resource
+	countPublicResponse           *int
+	countPublicError              error
+	accessBucketPages             []*model.AccessBucketPage
+	accessBucketCalls             int
+	accessBucketsError            error
+	authorizedAggregationResponse *model.CountAggregationResult
+	authorizedAggregationError    error
+	isReadyError                  error
 }
 
 // NewMockResourceSearcher creates a new mock searcher with some sample data
@@ -259,153 +265,255 @@ func (m *MockResourceSearcher) QueryResources(ctx context.Context, criteria mode
 	return result, nil
 }
 
-// QueryResourcesCount implements the ResourceSearcher interface with mock data
-func (m *MockResourceSearcher) QueryResourcesCount(ctx context.Context, countCriteria model.SearchCriteria, aggregationCriteria model.SearchCriteria, publicOnly bool) (*model.CountResult, error) {
-	slog.DebugContext(ctx, "executing mock count search", "countCriteria", countCriteria, "aggregationCriteria", aggregationCriteria, "publicOnly", publicOnly)
-
-	// If test has set a mock error, return it
-	if m.queryResourcesCountError != nil {
-		return nil, m.queryResourcesCountError
-	}
-
-	// If test has set a mock response, return it
-	if m.queryResourcesCountResponse != nil {
-		return m.queryResourcesCountResponse, nil
-	}
-
-	// Filter resources based on countCriteria
-	var filteredResources []model.Resource
-
-	// Filter by public only if requested
+// filterForCount applies the count-route criteria (type, name, tags,
+// tags_all, public/private) to the in-memory resources.
+func (m *MockResourceSearcher) filterForCount(criteria model.SearchCriteria) []model.Resource {
+	var filtered []model.Resource
 	for _, resource := range m.resources {
-		if publicOnly && !resource.Public {
+		if criteria.PublicOnly && !resource.Public {
 			continue
 		}
-		filteredResources = append(filteredResources, resource)
+		if criteria.PrivateOnly && resource.Public {
+			continue
+		}
+		if criteria.ResourceType != nil && resource.Type != *criteria.ResourceType {
+			continue
+		}
+		if criteria.Name != nil && !m.nameMatches(resource, *criteria.Name) {
+			continue
+		}
+		tags := resourceTags(resource)
+		if len(criteria.Tags) > 0 && !anyTag(tags, criteria.Tags) {
+			continue
+		}
+		if len(criteria.TagsAll) > 0 && !allTags(tags, criteria.TagsAll) {
+			continue
+		}
+		filtered = append(filtered, resource)
 	}
+	return filtered
+}
 
-	// Apply count criteria filters
-	// Filter by type
-	if countCriteria.ResourceType != nil {
-		var typeFiltered []model.Resource
-		for _, resource := range filteredResources {
-			if resource.Type == *countCriteria.ResourceType {
-				typeFiltered = append(typeFiltered, resource)
+func (m *MockResourceSearcher) nameMatches(resource model.Resource, search string) bool {
+	data, ok := resource.Data.(map[string]any)
+	if !ok {
+		return false
+	}
+	search = strings.ToLower(search)
+	if name, ok := data["name"].(string); ok && strings.Contains(strings.ToLower(name), search) {
+		return true
+	}
+	if resource.Type == "project" {
+		if slug, ok := data["slug"].(string); ok && strings.Contains(strings.ToLower(slug), search) {
+			return true
+		}
+	}
+	return false
+}
+
+// resourceTags reads the tags slice the mock keeps under Data["tags"].
+func resourceTags(resource model.Resource) []string {
+	data, ok := resource.Data.(map[string]any)
+	if !ok {
+		return nil
+	}
+	switch tags := data["tags"].(type) {
+	case []string:
+		return tags
+	case []any:
+		out := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			if str, ok := tag.(string); ok {
+				out = append(out, str)
 			}
 		}
-		filteredResources = typeFiltered
+		return out
+	}
+	return nil
+}
+
+func anyTag(have, want []string) bool {
+	for _, w := range want {
+		for _, h := range have {
+			if h == w {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func allTags(have, want []string) bool {
+	for _, w := range want {
+		found := false
+		for _, h := range have {
+			if h == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// accessKey mirrors the indexed access_check_query field.
+func accessKey(resource model.Resource) string {
+	if resource.AccessCheckObject == "" || resource.AccessCheckRelation == "" {
+		return ""
+	}
+	return resource.AccessCheckObject + "#" + resource.AccessCheckRelation
+}
+
+// CountPublic implements the ResourceSearcher interface with mock data
+func (m *MockResourceSearcher) CountPublic(ctx context.Context, criteria model.SearchCriteria) (int, error) {
+	slog.DebugContext(ctx, "executing mock public count", "criteria", criteria)
+	if m.countPublicError != nil {
+		return 0, m.countPublicError
+	}
+	if m.countPublicResponse != nil {
+		return *m.countPublicResponse, nil
+	}
+	criteria.PublicOnly = true
+	return len(m.filterForCount(criteria)), nil
+}
+
+// AccessBuckets implements the ResourceSearcher interface with mock data:
+// private resources grouped by access key, sorted by key, paged like a
+// composite aggregation.
+func (m *MockResourceSearcher) AccessBuckets(ctx context.Context, criteria model.SearchCriteria, request model.AccessBucketRequest) (*model.AccessBucketPage, error) {
+	slog.DebugContext(ctx, "executing mock access bucket page", "criteria", criteria, "request", request)
+	if m.accessBucketsError != nil {
+		return nil, m.accessBucketsError
+	}
+	m.accessBucketCalls++
+	if len(m.accessBucketPages) > 0 {
+		idx := m.accessBucketCalls - 1
+		if idx >= len(m.accessBucketPages) {
+			idx = len(m.accessBucketPages) - 1
+		}
+		return m.accessBucketPages[idx], nil
 	}
 
-	// Filter by name
-	if countCriteria.Name != nil {
-		var nameFiltered []model.Resource
-		searchName := strings.ToLower(*countCriteria.Name)
-		for _, resource := range filteredResources {
-			if data, ok := resource.Data.(map[string]interface{}); ok {
-				nameMatch := false
-				if name, ok := data["name"].(string); ok {
-					if strings.Contains(strings.ToLower(name), searchName) {
-						nameMatch = true
-					}
-				}
-				if !nameMatch && resource.Type == "project" {
-					if slug, ok := data["slug"].(string); ok {
-						if strings.Contains(strings.ToLower(slug), searchName) {
-							nameMatch = true
-						}
-					}
-				}
-				if nameMatch {
-					nameFiltered = append(nameFiltered, resource)
+	criteria.PrivateOnly = true
+	counts := make(map[string]uint64)
+	for _, resource := range m.filterForCount(criteria) {
+		key := accessKey(resource)
+		if key == "" {
+			continue
+		}
+		counts[key]++
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		if request.After != nil && key <= *request.After {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	pageSize := request.PageSize
+	if pageSize <= 0 {
+		pageSize = len(keys)
+	}
+	page := &model.AccessBucketPage{Buckets: []model.AggregationBucket{}}
+	for i, key := range keys {
+		if i >= pageSize {
+			break
+		}
+		page.Buckets = append(page.Buckets, model.AggregationBucket{Key: key, DocCount: counts[key]})
+	}
+	if len(page.Buckets) > 0 {
+		last := page.Buckets[len(page.Buckets)-1].Key
+		page.AfterKey = &last
+	}
+	return page, nil
+}
+
+// AuthorizedAggregation implements the ResourceSearcher interface with mock
+// data: groups and distinct tag values over public resources and private
+// resources whose access key was granted.
+func (m *MockResourceSearcher) AuthorizedAggregation(ctx context.Context, criteria model.SearchCriteria, aggregation model.CountAggregation) (*model.CountAggregationResult, error) {
+	slog.DebugContext(ctx, "executing mock authorized aggregation", "criteria", criteria, "aggregation", aggregation)
+	if m.authorizedAggregationError != nil {
+		return nil, m.authorizedAggregationError
+	}
+	if m.authorizedAggregationResponse != nil {
+		return m.authorizedAggregationResponse, nil
+	}
+
+	granted := make(map[string]struct{}, len(aggregation.AuthorizedKeys))
+	for _, key := range aggregation.AuthorizedKeys {
+		granted[key] = struct{}{}
+	}
+	criteria.PublicOnly = false
+	criteria.PrivateOnly = false
+	var authorized []model.Resource
+	for _, resource := range m.filterForCount(criteria) {
+		if resource.Public {
+			if aggregation.IncludePublic {
+				authorized = append(authorized, resource)
+			}
+			continue
+		}
+		if _, ok := granted[accessKey(resource)]; ok {
+			authorized = append(authorized, resource)
+		}
+	}
+
+	result := &model.CountAggregationResult{
+		Groups:         []model.CountGroup{},
+		GroupsComplete: true,
+		MetricComplete: true,
+	}
+
+	if aggregation.GroupByPrefix != "" {
+		prefix := aggregation.GroupByPrefix + ":"
+		counts := make(map[string]uint64)
+		for _, resource := range authorized {
+			for _, tag := range resourceTags(resource) {
+				if strings.HasPrefix(tag, prefix) {
+					counts[strings.TrimPrefix(tag, prefix)]++
 				}
 			}
 		}
-		filteredResources = nameFiltered
-	}
-
-	// Filter by tags (OR logic - any tag matches)
-	if len(countCriteria.Tags) > 0 {
-		var tagFiltered []model.Resource
-		for _, resource := range filteredResources {
-			if data, ok := resource.Data.(map[string]interface{}); ok {
-				if resourceTags, ok := data["tags"].([]string); ok {
-					// OR logic: resource must have any of the requested tags
-					for _, requestedTag := range countCriteria.Tags {
-						for _, resourceTag := range resourceTags {
-							if requestedTag == resourceTag {
-								tagFiltered = append(tagFiltered, resource)
-								goto nextResourceCountOR
-							}
-						}
-					}
-				}
+		groups := make([]model.CountGroup, 0, len(counts))
+		for key, count := range counts {
+			groups = append(groups, model.CountGroup{Key: key, Count: count})
+		}
+		sort.Slice(groups, func(i, j int) bool {
+			if groups[i].Count != groups[j].Count {
+				return groups[i].Count > groups[j].Count
 			}
-		nextResourceCountOR:
-		}
-		filteredResources = tagFiltered
-	}
-
-	// Filter by tags_all (AND logic - all tags must match)
-	if len(countCriteria.TagsAll) > 0 {
-		var tagAllFiltered []model.Resource
-		for _, resource := range filteredResources {
-			if data, ok := resource.Data.(map[string]interface{}); ok {
-				if resourceTags, ok := data["tags"].([]string); ok {
-					// AND logic: resource must have all requested tags
-					matchCount := 0
-					for _, requestedTag := range countCriteria.TagsAll {
-						for _, resourceTag := range resourceTags {
-							if requestedTag == resourceTag {
-								matchCount++
-								break
-							}
-						}
-					}
-					if matchCount == len(countCriteria.TagsAll) {
-						tagAllFiltered = append(tagAllFiltered, resource)
-					}
-				}
-			}
-		}
-		filteredResources = tagAllFiltered
-	}
-
-	// Build aggregation based on aggregationCriteria
-	aggregationBuckets := make(map[string]uint64)
-
-	// If aggregation criteria has a resource type, group by that type
-	if aggregationCriteria.ResourceType != nil && *aggregationCriteria.ResourceType != "" {
-		// Group resources by type
-		for _, resource := range filteredResources {
-			aggregationBuckets[resource.Type]++
-		}
-	} else {
-		// Default aggregation by resource type
-		for _, resource := range filteredResources {
-			aggregationBuckets[resource.Type]++
-		}
-	}
-
-	// Convert map to buckets slice
-	var buckets []model.AggregationBucket
-	for key, count := range aggregationBuckets {
-		buckets = append(buckets, model.AggregationBucket{
-			Key:      key,
-			DocCount: count,
+			return groups[i].Key < groups[j].Key
 		})
+		if aggregation.GroupBySize > 0 && len(groups) > aggregation.GroupBySize {
+			groups = groups[:aggregation.GroupBySize]
+			result.GroupsComplete = false
+		}
+		result.Groups = groups
 	}
 
-	result := &model.CountResult{
-		Count: len(filteredResources),
-		Aggregation: model.TermsAggregation{
-			DocCountErrorUpperBound: 0,
-			SumOtherDocCount:        0,
-			Buckets:                 buckets,
-		},
-		HasMore: false,
+	if aggregation.CardinalityPrefix != "" {
+		prefix := aggregation.CardinalityPrefix + ":"
+		distinct := make(map[string]struct{})
+		for _, resource := range authorized {
+			for _, tag := range resourceTags(resource) {
+				if strings.HasPrefix(tag, prefix) {
+					distinct[tag] = struct{}{}
+				}
+			}
+		}
+		result.MetricValue = uint64(len(distinct))
+		if aggregation.MaxDistinct > 0 && len(distinct) >= aggregation.MaxDistinct {
+			result.MetricValue = uint64(aggregation.MaxDistinct)
+			result.MetricComplete = false
+		}
 	}
 
-	slog.DebugContext(ctx, "mock count search completed", "total_count", result.Count, "buckets", len(buckets))
 	return result, nil
 }
 
@@ -514,14 +622,41 @@ func (m *MockResourceSearcher) GetResourceCount() int {
 
 // Test helper methods for setting up mock responses
 
-// SetQueryResourcesCountResponse sets the mock response for QueryResourcesCount calls
-func (m *MockResourceSearcher) SetQueryResourcesCountResponse(response *model.CountResult) {
-	m.queryResourcesCountResponse = response
+// SetCountPublicResponse forces the value returned by CountPublic.
+func (m *MockResourceSearcher) SetCountPublicResponse(count int) {
+	m.countPublicResponse = &count
 }
 
-// SetQueryResourcesCountError sets the mock error for QueryResourcesCount calls
-func (m *MockResourceSearcher) SetQueryResourcesCountError(err error) {
-	m.queryResourcesCountError = err
+// SetCountPublicError forces CountPublic to fail.
+func (m *MockResourceSearcher) SetCountPublicError(err error) {
+	m.countPublicError = err
+}
+
+// SetAccessBucketPages forces the pages returned by successive AccessBuckets
+// calls, in order; the last page repeats once exhausted.
+func (m *MockResourceSearcher) SetAccessBucketPages(pages ...*model.AccessBucketPage) {
+	m.accessBucketPages = pages
+	m.accessBucketCalls = 0
+}
+
+// AccessBucketCalls returns how many AccessBuckets pages were requested.
+func (m *MockResourceSearcher) AccessBucketCalls() int {
+	return m.accessBucketCalls
+}
+
+// SetAccessBucketsError forces AccessBuckets to fail.
+func (m *MockResourceSearcher) SetAccessBucketsError(err error) {
+	m.accessBucketsError = err
+}
+
+// SetAuthorizedAggregationResponse forces the value returned by AuthorizedAggregation.
+func (m *MockResourceSearcher) SetAuthorizedAggregationResponse(response *model.CountAggregationResult) {
+	m.authorizedAggregationResponse = response
+}
+
+// SetAuthorizedAggregationError forces AuthorizedAggregation to fail.
+func (m *MockResourceSearcher) SetAuthorizedAggregationError(err error) {
+	m.authorizedAggregationError = err
 }
 
 // SetIsReadyError sets the mock error for IsReady calls

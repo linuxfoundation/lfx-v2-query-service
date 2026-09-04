@@ -11,6 +11,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/service"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/log"
 
 	"goa.design/goa/v3/security"
@@ -76,17 +77,21 @@ func (s *querySvcsrvc) QueryResourcesCount(ctx context.Context, p *querysvc.Quer
 	)
 
 	// Convert payload to domain criteria
-	countCriteria, errCountCriteria := s.payloadToCountPublicCriteria(p)
-	if errCountCriteria != nil {
-		return nil, wrapError(ctx, errCountCriteria)
+	publicCriteria, errPublicCriteria := s.payloadToCountPublicCriteria(p)
+	if errPublicCriteria != nil {
+		return nil, wrapError(ctx, errors.NewValidation("invalid count criteria", errPublicCriteria))
 	}
-	aggregationCriteria, errAggCriteria := s.payloadToCountAggregationCriteria(p)
-	if errAggCriteria != nil {
-		return nil, wrapError(ctx, errAggCriteria)
+	privateCriteria, errPrivateCriteria := s.payloadToCountPrivateCriteria(p)
+	if errPrivateCriteria != nil {
+		return nil, wrapError(ctx, errors.NewValidation("invalid count criteria", errPrivateCriteria))
+	}
+	aggregation, errAggregation := s.payloadToCountAggregation(p)
+	if errAggregation != nil {
+		return nil, wrapError(ctx, errAggregation)
 	}
 
 	// Execute search using the service layer
-	result, errQueryResources := s.resourceService.QueryResourcesCount(ctx, countCriteria, aggregationCriteria)
+	result, errQueryResources := s.resourceService.QueryResourcesCount(ctx, publicCriteria, privateCriteria, aggregation)
 	if errQueryResources != nil {
 		return nil, wrapError(ctx, errQueryResources)
 	}
@@ -163,12 +168,16 @@ func NewQuerySvc(resourceSearcher port.ResourceSearcher,
 	resourceFilter port.ResourceFilter,
 	organizationSearcher port.OrganizationSearcher,
 	auth port.Authenticator,
-) querysvc.Service {
-	resourceService := service.NewResourceSearch(resourceSearcher, accessControlChecker, resourceFilter)
+	config service.Config,
+) (querysvc.Service, error) {
+	resourceService, err := service.NewResourceSearch(resourceSearcher, accessControlChecker, resourceFilter, config)
+	if err != nil {
+		return nil, err
+	}
 	organizationService := service.NewOrganizationSearch(organizationSearcher)
 	return &querySvcsrvc{
 		resourceService:     resourceService,
 		organizationService: organizationService,
 		auth:                auth,
-	}
+	}, nil
 }

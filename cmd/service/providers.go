@@ -18,7 +18,66 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/nats"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/opensearch"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/service"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 )
+
+// ResourceSearchConfigImpl reads the count-walk and access-check tunables
+// from the environment. Every variable has a safe default so an unconfigured
+// deployment behaves like the defaults in pkg/constants.
+//
+//   - ACCESS_CHECK_TIMEOUT   (default 15s)   timeout of each batched access check
+//   - READ_TUPLES_TIMEOUT    (default 15s)   timeout of the filter_grants=direct tuple read
+//   - COUNT_ACCESS_BUCKET_PAGE (default 100) access-key buckets fetched and checked per page
+//   - COUNT_MAX_ACCESS_BUCKETS (default 5000) buckets walked before a count reports has_more
+func ResourceSearchConfigImpl(ctx context.Context) service.Config {
+	config := service.DefaultConfig()
+
+	config.AccessCheckTimeout = envDuration("ACCESS_CHECK_TIMEOUT", config.AccessCheckTimeout)
+	config.ReadTuplesTimeout = envDuration("READ_TUPLES_TIMEOUT", config.ReadTuplesTimeout)
+	config.AccessBucketPage = envInt("COUNT_ACCESS_BUCKET_PAGE", constants.DefaultAccessBucketPage)
+	config.MaxAccessBuckets = envInt("COUNT_MAX_ACCESS_BUCKETS", constants.DefaultMaxAccessBuckets)
+
+	if err := config.Validate(); err != nil {
+		log.Fatalf("invalid resource search configuration: %v", err)
+	}
+
+	slog.InfoContext(ctx, "resource search configuration",
+		"access_check_timeout", config.AccessCheckTimeout,
+		"read_tuples_timeout", config.ReadTuplesTimeout,
+		"count_access_bucket_page", config.AccessBucketPage,
+		"count_max_access_buckets", config.MaxAccessBuckets,
+	)
+	return config
+}
+
+// envDuration reads a duration from the environment, falling back to def
+// when unset and fatally rejecting an unparsable value.
+func envDuration(name string, def time.Duration) time.Duration {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return def
+	}
+	value, err := time.ParseDuration(raw)
+	if err != nil {
+		log.Fatalf("invalid %s duration %q: %v", name, raw, err)
+	}
+	return value
+}
+
+// envInt reads an integer from the environment, falling back to def when
+// unset and fatally rejecting an unparsable value.
+func envInt(name string, def int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return def
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		log.Fatalf("invalid %s value %q: %v", name, raw, err)
+	}
+	return value
+}
 
 // AuthServiceImpl initializes the authentication service implementation
 func AuthServiceImpl(ctx context.Context) port.Authenticator {

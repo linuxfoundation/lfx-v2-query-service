@@ -5,12 +5,16 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -152,10 +156,7 @@ func TestResourceSearchQueryResources(t *testing.T) {
 			tc.setupMocks(mockSearcher, mockAccessChecker)
 
 			// Create service
-			service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
-			if !ok {
-				t.Fatal("failed to create ResourceSearch service")
-			}
+			service := newTestResourceSearch(t, mockSearcher, mockAccessChecker)
 
 			// Setup context
 			ctx := context.Background()
@@ -831,55 +832,70 @@ func TestResourceSearchCheckAccess(t *testing.T) {
 }
 
 func TestNewResourceSearch(t *testing.T) {
-	tests := []struct {
-		name         string
-		setupMocks   func() (*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
-		expectNonNil bool
-		expectType   string
-	}{
-		{
-			name: "creates new resource search with valid dependencies",
-			setupMocks: func() (*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {
-				return mock.NewMockResourceSearcher(), mock.NewMockAccessControlChecker()
-			},
-			expectNonNil: true,
-			expectType:   "*service.ResourceSearch",
-		},
-		{
-			name: "creates new resource search with nil dependencies",
-			setupMocks: func() (*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {
-				return nil, nil
-			},
-			expectNonNil: true,
-			expectType:   "*service.ResourceSearch",
-		},
-	}
-
 	assertion := assert.New(t)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Setup
-			searcher, accessChecker := tc.setupMocks()
+	t.Run("creates new resource search with valid dependencies and defaults", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		accessChecker := mock.NewMockAccessControlChecker()
 
-			// Execute
-			result := NewResourceSearch(searcher, accessChecker, mock.NewMockResourceFilter())
+		result, err := NewResourceSearch(searcher, accessChecker, mock.NewMockResourceFilter(), Config{})
+		assertion.NoError(err)
+		assertion.IsType(&ResourceSearch{}, result)
 
-			// Verify
-			if tc.expectNonNil {
-				assertion.NotNil(result)
-				assertion.IsType(&ResourceSearch{}, result)
+		resourceSearch := result.(*ResourceSearch)
+		assertion.Equal(searcher, resourceSearch.resourceSearcher)
+		assertion.Equal(accessChecker, resourceSearch.accessChecker)
+		assertion.Equal(DefaultConfig(), resourceSearch.config)
+	})
 
-				// Cast to concrete type to verify internal fields
-				if resourceSearch, ok := result.(*ResourceSearch); ok {
-					assertion.Equal(searcher, resourceSearch.resourceSearcher)
-					assertion.Equal(accessChecker, resourceSearch.accessChecker)
-				}
-			} else {
-				assertion.Nil(result)
-			}
+	t.Run("creates new resource search with nil dependencies", func(t *testing.T) {
+		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), DefaultConfig())
+		assertion.NoError(err)
+		assertion.NotNil(result)
+	})
+
+	t.Run("explicit config is kept", func(t *testing.T) {
+		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3}
+		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), config)
+		assertion.NoError(err)
+		assertion.Equal(config, result.(*ResourceSearch).config)
+	})
+
+	invalid := []struct {
+		name   string
+		config Config
+		text   string
+	}{
+		{"negative access check timeout", Config{AccessCheckTimeout: -time.Second}, "access check timeout"},
+		{"negative read tuples timeout", Config{ReadTuplesTimeout: -time.Second}, "read tuples timeout"},
+		{"page above the maximum", Config{AccessBucketPage: constants.MaxAccessBucketPage + 1}, "access bucket page"},
+		{"negative page", Config{AccessBucketPage: -1}, "access bucket page"},
+		{"max below page", Config{AccessBucketPage: 100, MaxAccessBuckets: 50}, "max access buckets"},
+	}
+	for _, tc := range invalid {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), tc.config)
+			assertion.Error(err)
+			assertion.Contains(err.Error(), tc.text)
+			assertion.Nil(result)
 		})
 	}
+}
+
+// newTestResourceSearch wires the service with the default config.
+func newTestResourceSearch(t *testing.T, searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) *ResourceSearch {
+	t.Helper()
+	return newTestResourceSearchWithConfig(t, searcher, accessChecker, DefaultConfig())
+}
+
+// newTestResourceSearchWithConfig wires the service with an explicit config.
+func newTestResourceSearchWithConfig(t *testing.T, searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker, config Config) *ResourceSearch {
+	t.Helper()
+	result, err := NewResourceSearch(searcher, accessChecker, mock.NewMockResourceFilter(), config)
+	if err != nil {
+		t.Fatalf("NewResourceSearch: %v", err)
+	}
+	return result.(*ResourceSearch)
 }
 
 func TestResourceSearchQueryResourcesEdgeCases(t *testing.T) {
@@ -889,10 +905,7 @@ func TestResourceSearchQueryResourcesEdgeCases(t *testing.T) {
 		// Setup
 		mockSearcher := mock.NewMockResourceSearcher()
 		mockAccessChecker := mock.NewMockAccessControlChecker()
-		service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
-		if !ok {
-			t.Fatal("failed to create ResourceSearch service")
-		}
+		service := newTestResourceSearch(t, mockSearcher, mockAccessChecker)
 
 		// Add test data
 		mockSearcher.AddResource(model.Resource{
@@ -935,10 +948,7 @@ func TestResourceSearchQueryResourcesEdgeCases(t *testing.T) {
 		// Setup
 		mockSearcher := mock.NewMockResourceSearcher()
 		mockAccessChecker := mock.NewMockAccessControlChecker()
-		service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
-		if !ok {
-			t.Fatal("failed to create ResourceSearch service")
-		}
+		service := newTestResourceSearch(t, mockSearcher, mockAccessChecker)
 
 		criteria := model.SearchCriteria{
 			Name:      stringPtr("test"),
@@ -958,135 +968,191 @@ func TestResourceSearchQueryResourcesEdgeCases(t *testing.T) {
 }
 
 func TestResourceCountQueryResourcesCount(t *testing.T) {
+	publicCriteria := model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting"), PageSize: -1, PublicOnly: true}
+	privateCriteria := model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting"), PageSize: 0, PrivateOnly: true}
+
+	// Five past meetings: m1 public, m2..m5 private, one bucket each.
+	seed := func(searcher *mock.MockResourceSearcher) {
+		searcher.ClearResources()
+		searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"project_uid:P1", "meeting_type:recurring"}}, true))
+		searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m2", map[string]any{"tags": []string{"project_uid:P1", "meeting_type:single"}}, false))
+		searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m3", map[string]any{"tags": []string{"project_uid:P2", "meeting_type:recurring"}}, false))
+		searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m4", map[string]any{"tags": []string{"project_uid:P2", "meeting_type:recurring"}}, false))
+		searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m5", map[string]any{"tags": []string{"project_uid:P3", "meeting_type:single"}}, false))
+	}
+
 	tests := []struct {
 		name                 string
-		countCriteria        model.SearchCriteria
-		aggregationCriteria  model.SearchCriteria
 		principal            string
+		config               Config
+		aggregation          model.CountAggregation
 		setupMocks           func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
 		expectedError        bool
+		expectedUnavailable  bool
 		expectedCount        int
+		expectedHasMore      bool
+		expectedPages        int
 		expectedCacheControl bool
+		check                func(*testing.T, *model.CountResult)
 	}{
 		{
-			name: "successful count with anonymous user",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("project"),
-				PageSize:     -1,
-				PublicOnly:   true,
+			name:      "anonymous user gets the public count only, cacheable, no walk",
+			principal: constants.AnonymousPrincipal,
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
 			},
-			aggregationCriteria: model.SearchCriteria{},
-			principal:           constants.AnonymousPrincipal,
-			setupMocks: func(resourceSearcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				resourceSearcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count:   3,
-					HasMore: false,
-				})
-			},
-			expectedError:        false,
-			expectedCount:        3,
+			expectedCount:        1,
+			expectedPages:        0,
 			expectedCacheControl: true,
 		},
 		{
-			name: "successful count with authenticated user - public only",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("project"),
-				PageSize:     -1,
-				PublicOnly:   true,
+			name:      "authenticated user, allow-all, walk of two pages is exhaustive",
+			principal: "dev_user",
+			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 5000},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "allowed"
 			},
-			aggregationCriteria: model.SearchCriteria{
-				GroupBy:     "access_check_query.keyword",
-				PageSize:    0,
-				PrivateOnly: true,
-			},
-			principal: "user:test-user",
-			setupMocks: func(resourceSearcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				resourceSearcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count: 2,
-					Aggregation: model.TermsAggregation{
-						Buckets: []model.AggregationBucket{
-							{Key: "project:123#viewer", DocCount: 1},
-							{Key: "project:456#contributor", DocCount: 2},
-						},
-					},
-					HasMore: false,
-				})
-				accessChecker.SetCheckAccessResponse(map[string]string{
-					"project:123#viewer@user:test-user":      "true",
-					"project:456#contributor@user:test-user": "false",
-				})
-			},
-			expectedError:        false,
-			expectedCount:        2,
-			expectedCacheControl: false,
+			expectedCount:   5,
+			expectedHasMore: false,
+			// page 1: 2 buckets (full), page 2: 2 buckets (full), page 3: 0 buckets (short)
+			expectedPages: 3,
 		},
 		{
-			name: "successful count with authenticated user - with private access",
-			countCriteria: model.SearchCriteria{
-				PageSize:   -1,
-				PublicOnly: true,
+			name:      "cap reached after a full page stops the walk with has_more",
+			principal: "dev_user",
+			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 3},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "allowed"
 			},
-			aggregationCriteria: model.SearchCriteria{
-				GroupBy:     "access_check_query.keyword",
-				PageSize:    0,
-				PrivateOnly: true,
-			},
-			principal: "user:admin",
-			setupMocks: func(resourceSearcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				resourceSearcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count: 5,
-					Aggregation: model.TermsAggregation{
-						Buckets: []model.AggregationBucket{
-							{Key: "committee:789#member", DocCount: 3},
-							{Key: "project:101#viewer", DocCount: 2},
-						},
-					},
-					HasMore: false,
-				})
-				accessChecker.SetCheckAccessResponse(map[string]string{
-					"committee:789#member@user:admin": "true",
-					"project:101#viewer@user:admin":   "true",
-				})
-			},
-			expectedError:        false,
-			expectedCount:        5,
-			expectedCacheControl: false,
+			// page 1 walks 2 (< 3, continue), page 2 walks 4 (>= 3, stop): all 4 private counted
+			expectedCount:   5,
+			expectedHasMore: true,
+			expectedPages:   2,
 		},
 		{
-			name: "search error",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("invalid"),
+			name:      "denied buckets are not counted",
+			principal: "dev_user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.SetCheckAccessResponse(map[string]string{
+					"v1_past_meeting:m2#viewer@user:dev_user": "true",
+					"v1_past_meeting:m3#viewer@user:dev_user": "false",
+					"v1_past_meeting:m4#viewer@user:dev_user": "true",
+				})
 			},
-			aggregationCriteria: model.SearchCriteria{},
-			principal:           "user:test-user",
-			setupMocks: func(resourceSearcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				resourceSearcher.SetQueryResourcesCountError(assert.AnError)
+			expectedCount: 3,
+			expectedPages: 1,
+		},
+		{
+			name:      "deny-all yields the public count",
+			principal: "dev_user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "denied"
+			},
+			expectedCount: 1,
+			expectedPages: 1,
+		},
+		{
+			name:      "public count error propagates",
+			principal: "dev_user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				searcher.SetCountPublicError(assert.AnError)
 			},
 			expectedError: true,
 		},
 		{
-			name: "access control check error",
-			countCriteria: model.SearchCriteria{
-				PageSize:   -1,
-				PublicOnly: true,
+			name:      "access bucket error propagates",
+			principal: "dev_user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				searcher.SetAccessBucketsError(assert.AnError)
 			},
-			aggregationCriteria: model.SearchCriteria{
-				GroupBy:     "access_check_query.keyword",
-				PageSize:    0,
-				PrivateOnly: true,
-			},
-			principal: "user:test-user",
-			setupMocks: func(resourceSearcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				resourceSearcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count: 2,
-					Aggregation: model.TermsAggregation{
-						Buckets: []model.AggregationBucket{
-							{Key: "project:123#viewer", DocCount: 1},
-						},
-					},
-					HasMore: false,
-				})
+			expectedError: true,
+		},
+		{
+			name:      "access check failure mid-walk is service unavailable, not a partial count",
+			principal: "dev_user",
+			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 5000},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
 				accessChecker.SetCheckAccessError(assert.AnError)
+			},
+			expectedError:       true,
+			expectedUnavailable: true,
+		},
+		{
+			name:        "group_by runs over public plus granted resources",
+			principal:   "dev_user",
+			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "allowed"
+			},
+			expectedCount: 5,
+			expectedPages: 1,
+			check: func(t *testing.T, result *model.CountResult) {
+				assert.Equal(t, []model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 2}, {Key: "P3", Count: 1}}, result.Groups)
+				assert.NotNil(t, result.GroupsComplete)
+				assert.True(t, *result.GroupsComplete)
+				assert.Nil(t, result.MetricValue)
+			},
+		},
+		{
+			name:        "group_by for an anonymous user covers public resources only",
+			principal:   constants.AnonymousPrincipal,
+			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+			},
+			expectedCount:        1,
+			expectedCacheControl: true,
+			check: func(t *testing.T, result *model.CountResult) {
+				assert.Equal(t, []model.CountGroup{{Key: "P1", Count: 1}}, result.Groups)
+			},
+		},
+		{
+			name:        "group_by with everything denied and no public documents skips the aggregation",
+			principal:   "dev_user",
+			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "denied"
+				// A forced aggregation response proves the searcher was consulted
+				// (the service does not short-circuit): public documents may exist.
+				searcher.SetAuthorizedAggregationResponse(&model.CountAggregationResult{Groups: []model.CountGroup{{Key: "P1", Count: 1}}, GroupsComplete: true})
+			},
+			expectedCount: 1,
+			check: func(t *testing.T, result *model.CountResult) {
+				assert.Equal(t, []model.CountGroup{{Key: "P1", Count: 1}}, result.Groups)
+			},
+		},
+		{
+			name:        "cardinality metric is reported with completeness",
+			principal:   "dev_user",
+			aggregation: model.CountAggregation{CardinalityPrefix: "project_uid"},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "allowed"
+			},
+			expectedCount: 5,
+			check: func(t *testing.T, result *model.CountResult) {
+				assert.Nil(t, result.GroupsComplete)
+				assert.NotNil(t, result.MetricValue)
+				assert.Equal(t, uint64(3), *result.MetricValue)
+				assert.True(t, *result.MetricComplete)
+			},
+		},
+		{
+			name:        "aggregation error propagates",
+			principal:   "dev_user",
+			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "allowed"
+				searcher.SetAuthorizedAggregationError(assert.AnError)
 			},
 			expectedError: true,
 		},
@@ -1096,134 +1162,206 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assertion := assert.New(t)
 
-			// Setup mocks
 			resourceSearcher := mock.NewMockResourceSearcher()
 			accessChecker := mock.NewMockAccessControlChecker()
 			tc.setupMocks(resourceSearcher, accessChecker)
 
-			// Create service
-			service := NewResourceSearch(resourceSearcher, accessChecker, mock.NewMockResourceFilter())
+			config := tc.config
+			if config == (Config{}) {
+				config = DefaultConfig()
+			}
+			service := newTestResourceSearchWithConfig(t, resourceSearcher, accessChecker, config)
 
-			// Create context with principal
 			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, tc.principal)
+			result, err := service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, tc.aggregation)
 
-			// Execute
-			result, err := service.QueryResourcesCount(ctx, tc.countCriteria, tc.aggregationCriteria)
-
-			// Verify
 			if tc.expectedError {
 				assertion.Error(err)
 				assertion.Nil(result)
-			} else {
-				assertion.NoError(err)
-				assertion.NotNil(result)
-				assertion.Equal(tc.expectedCount, result.Count)
+				var unavailable errors.ServiceUnavailable
+				assertion.Equal(tc.expectedUnavailable, stderrors.As(err, &unavailable), "service unavailable classification")
+				return
+			}
 
-				if tc.expectedCacheControl {
-					assertion.NotNil(result.CacheControl)
-				}
+			assertion.NoError(err)
+			assertion.NotNil(result)
+			assertion.Equal(tc.expectedCount, result.Count)
+			assertion.Equal(tc.expectedHasMore, result.HasMore)
+			if tc.expectedPages > 0 || tc.principal == constants.AnonymousPrincipal {
+				assertion.Equal(tc.expectedPages, resourceSearcher.AccessBucketCalls(), "pages walked")
+			}
+			if tc.expectedCacheControl {
+				assertion.NotNil(result.CacheControl)
+				assertion.Equal(constants.AnonymousCacheControlHeader, *result.CacheControl)
+			} else {
+				assertion.Nil(result.CacheControl)
+			}
+			if tc.check != nil {
+				tc.check(t, result)
 			}
 		})
 	}
 }
 
+func TestAccessBucketWalkPagesAndCaps(t *testing.T) {
+	// Drive the walk with forced pages so the stopping rule is tested on its
+	// own: three full pages of 100 followed by a short page of 50 at the
+	// default cap is exhaustive; a cap of 100 stops after one full page.
+	buckets := func(from, n int) []model.AggregationBucket {
+		out := make([]model.AggregationBucket, 0, n)
+		for i := from; i < from+n; i++ {
+			out = append(out, model.AggregationBucket{Key: fmt.Sprintf("v1_past_meeting:m%03d#viewer", i), DocCount: 1})
+		}
+		return out
+	}
+	after := func(page []model.AggregationBucket) *string {
+		last := page[len(page)-1].Key
+		return &last
+	}
+	p1, p2, p3, p4 := buckets(0, 100), buckets(100, 100), buckets(200, 50), buckets(250, 0)
+	publicCriteria := model.SearchCriteria{PublicOnly: true, PageSize: -1}
+	privateCriteria := model.SearchCriteria{PrivateOnly: true}
+
+	t.Run("250 buckets, default cap: three pages, exact, no has_more", func(t *testing.T) {
+		assertion := assert.New(t)
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetCountPublicResponse(0)
+		searcher.SetAccessBucketPages(
+			&model.AccessBucketPage{Buckets: p1, AfterKey: after(p1)},
+			&model.AccessBucketPage{Buckets: p2, AfterKey: after(p2)},
+			&model.AccessBucketPage{Buckets: p3, AfterKey: after(p3)}, // short page with an after_key: must still stop
+			&model.AccessBucketPage{Buckets: p4},
+		)
+		checker := mock.NewMockAccessControlChecker()
+		checker.DefaultResult = "allowed"
+		service := newTestResourceSearch(t, searcher, checker)
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+		result, err := service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, model.CountAggregation{})
+		assertion.NoError(err)
+		assertion.Equal(250, result.Count)
+		assertion.False(result.HasMore)
+		assertion.Equal(3, searcher.AccessBucketCalls())
+	})
+
+	t.Run("cap of 100: one full page, stop, has_more, private part exactly 100", func(t *testing.T) {
+		assertion := assert.New(t)
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetCountPublicResponse(7)
+		searcher.SetAccessBucketPages(
+			&model.AccessBucketPage{Buckets: p1, AfterKey: after(p1)},
+			&model.AccessBucketPage{Buckets: p2, AfterKey: after(p2)},
+		)
+		checker := mock.NewMockAccessControlChecker()
+		checker.DefaultResult = "allowed"
+		service := newTestResourceSearchWithConfig(t, searcher, checker, Config{AccessBucketPage: 100, MaxAccessBuckets: 100})
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+		result, err := service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, model.CountAggregation{})
+		assertion.NoError(err)
+		assertion.Equal(107, result.Count)
+		assertion.True(result.HasMore)
+		assertion.Equal(1, searcher.AccessBucketCalls())
+	})
+
+	t.Run("full page without a cursor ends the walk defensively", func(t *testing.T) {
+		assertion := assert.New(t)
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetCountPublicResponse(0)
+		searcher.SetAccessBucketPages(&model.AccessBucketPage{Buckets: p1})
+		checker := mock.NewMockAccessControlChecker()
+		checker.DefaultResult = "allowed"
+		service := newTestResourceSearch(t, searcher, checker)
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+		result, err := service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, model.CountAggregation{})
+		assertion.NoError(err)
+		assertion.Equal(100, result.Count)
+		assertion.Equal(1, searcher.AccessBucketCalls())
+	})
+}
+
 func TestResourceCountBuildMessage(t *testing.T) {
 	assertion := assert.New(t)
 
-	// Setup
-	resourceSearcher := mock.NewMockResourceSearcher()
-	accessChecker := mock.NewMockAccessControlChecker()
-	service := &ResourceSearch{
-		resourceSearcher: resourceSearcher,
-		accessChecker:    accessChecker,
+	service := newTestResourceSearch(t, mock.NewMockResourceSearcher(), mock.NewMockAccessControlChecker())
+
+	buckets := []model.AggregationBucket{
+		{Key: "committee:123#member", DocCount: 2},
+		{Key: "project:456#viewer", DocCount: 3},
 	}
 
-	// Test data
-	result := &model.CountResult{
-		Aggregation: model.TermsAggregation{
-			Buckets: []model.AggregationBucket{
-				{Key: "committee:123#member", DocCount: 2},
-				{Key: "project:456#viewer", DocCount: 3},
-			},
-		},
-	}
-
-	criteria := model.SearchCriteria{
-		PageSize: 10,
-	}
-
-	// Execute
 	ctx := context.Background()
-	message := service.BuildCountMessage(ctx, "test-user", result, criteria)
+	message := service.BuildCountMessage(ctx, "test-user", buckets)
 
-	// Verify
-	assertion.NotNil(message)
-	messageStr := string(message)
-	assertion.Contains(messageStr, "committee:123#member@user:test-user")
-	assertion.Contains(messageStr, "project:456#viewer@user:test-user")
-	assertion.Contains(messageStr, "\n")
+	// The wire format fga-sync parses: one "<key>@user:<principal>" line each,
+	// newline-terminated (CheckCountAccess trims the trailing newline).
+	assertion.Equal("committee:123#member@user:test-user\nproject:456#viewer@user:test-user\n", string(message))
+
+	assertion.Empty(service.BuildCountMessage(ctx, "test-user", nil))
 }
 
 func TestResourceCountCheckAccess(t *testing.T) {
+	buckets := []model.AggregationBucket{
+		{Key: "committee:123#member", DocCount: 2},
+		{Key: "project:456#viewer", DocCount: 3},
+	}
+
 	tests := []struct {
 		name               string
-		result             *model.CountResult
-		accessResponses    map[string]string
-		expectedCount      uint64
-		expectedError      bool
+		buckets            []model.AggregationBucket
 		setupAccessChecker func(*mock.MockAccessControlChecker)
+		expectedCount      uint64
+		expectedGranted    []string
+		expectedError      bool
 	}{
 		{
-			name: "successful access check with allowed resources",
-			result: &model.CountResult{
-				Aggregation: model.TermsAggregation{
-					Buckets: []model.AggregationBucket{
-						{Key: "committee:123#member", DocCount: 2},
-						{Key: "project:456#viewer", DocCount: 3},
-					},
-				},
-			},
+			name:    "successful access check with allowed resources",
+			buckets: buckets,
 			setupAccessChecker: func(checker *mock.MockAccessControlChecker) {
 				checker.SetCheckAccessResponse(map[string]string{
 					"committee:123#member@user:test-user": "true",
 					"project:456#viewer@user:test-user":   "false",
 				})
 			},
-			expectedCount: 2, // Only committee:123#member is allowed
-			expectedError: false,
+			expectedCount:   2, // Only committee:123#member is allowed
+			expectedGranted: []string{"committee:123#member"},
 		},
 		{
-			name: "successful access check with all denied",
-			result: &model.CountResult{
-				Aggregation: model.TermsAggregation{
-					Buckets: []model.AggregationBucket{
-						{Key: "committee:123#member", DocCount: 2},
-						{Key: "project:456#viewer", DocCount: 3},
-					},
-				},
-			},
+			name:    "successful access check with all denied",
+			buckets: buckets,
 			setupAccessChecker: func(checker *mock.MockAccessControlChecker) {
 				checker.SetCheckAccessResponse(map[string]string{
 					"committee:123#member@user:test-user": "false",
 					"project:456#viewer@user:test-user":   "false",
 				})
 			},
-			expectedCount: 0,
-			expectedError: false,
+			expectedCount:   0,
+			expectedGranted: []string{},
 		},
 		{
-			name: "access check error",
-			result: &model.CountResult{
-				Aggregation: model.TermsAggregation{
-					Buckets: []model.AggregationBucket{
-						{Key: "committee:123#member", DocCount: 2},
-					},
-				},
+			name:    "missing responses count as denied",
+			buckets: buckets,
+			setupAccessChecker: func(checker *mock.MockAccessControlChecker) {
+				checker.SetCheckAccessResponse(map[string]string{})
 			},
+			expectedCount:   0,
+			expectedGranted: []string{},
+		},
+		{
+			name:    "access check error is service unavailable",
+			buckets: buckets[:1],
 			setupAccessChecker: func(checker *mock.MockAccessControlChecker) {
 				checker.SetCheckAccessError(assert.AnError)
 			},
 			expectedError: true,
+		},
+		{
+			name:               "empty page issues no check",
+			buckets:            nil,
+			setupAccessChecker: func(checker *mock.MockAccessControlChecker) { checker.SetCheckAccessError(assert.AnError) },
+			expectedCount:      0,
+			expectedGranted:    []string{},
 		},
 	}
 
@@ -1231,30 +1369,23 @@ func TestResourceCountCheckAccess(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			assertion := assert.New(t)
 
-			// Setup
-			resourceSearcher := mock.NewMockResourceSearcher()
 			accessChecker := mock.NewMockAccessControlChecker()
 			tc.setupAccessChecker(accessChecker)
+			service := newTestResourceSearch(t, mock.NewMockResourceSearcher(), accessChecker)
 
-			service := &ResourceSearch{
-				resourceSearcher: resourceSearcher,
-				accessChecker:    accessChecker,
-			}
-
-			// Build message
 			ctx := context.Background()
-			message := service.BuildCountMessage(ctx, "test-user", tc.result, model.SearchCriteria{PageSize: 10})
+			message := service.BuildCountMessage(ctx, "test-user", tc.buckets)
+			count, granted, err := service.CheckCountAccess(ctx, "test-user", tc.buckets, message)
 
-			// Execute
-			count, err := service.CheckCountAccess(ctx, "test-user", tc.result, message)
-
-			// Verify
 			if tc.expectedError {
 				assertion.Error(err)
-			} else {
-				assertion.NoError(err)
-				assertion.Equal(tc.expectedCount, count)
+				var unavailable errors.ServiceUnavailable
+				assertion.True(stderrors.As(err, &unavailable))
+				return
 			}
+			assertion.NoError(err)
+			assertion.Equal(tc.expectedCount, count)
+			assertion.Equal(tc.expectedGranted, granted)
 		})
 	}
 }
@@ -1363,10 +1494,7 @@ func TestResourceSearchFilterGrants(t *testing.T) {
 			mockAccessChecker := mock.NewMockAccessControlChecker()
 			tc.setupMocks(mockSearcher, mockAccessChecker)
 
-			service, ok := NewResourceSearch(mockSearcher, mockAccessChecker, mock.NewMockResourceFilter()).(*ResourceSearch)
-			if !ok {
-				t.Fatal("failed to create ResourceSearch service")
-			}
+			service := newTestResourceSearch(t, mockSearcher, mockAccessChecker)
 
 			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, tc.principal)
 			result, err := service.QueryResources(ctx, tc.criteria)

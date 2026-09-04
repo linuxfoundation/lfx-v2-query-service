@@ -3,13 +3,17 @@
 
 package opensearch
 
-const queryResourceSource = `{
-  {{- if ge .PageSize 0 }}
-  "size": {{ .PageSize }},
-  {{- end }}
-  "query": {
-    "bool": {
-      "must": [
+// criteriaSource holds the bool-query clauses shared by every request the
+// searcher renders. It is a named sub-template: queryResourceSource embeds
+// it for /_search and /_count, and countAggregationSource embeds it for the
+// aggregation-only bodies of the count route, so the criteria are rendered
+// byte-identically on every path.
+//
+// The "criteriaMust" block renders the members of "must" (starting with the
+// fixed latest:true clause); "criteriaShould" renders the optional
+// should/minimum_should_match pair used by the OR-tags parameter.
+const criteriaSource = `
+{{- define "criteriaMust" }}
         {
           "term": {"latest": true}
         }
@@ -130,7 +134,8 @@ const queryResourceSource = `{
           }
         }
         {{- end }}
-      ]
+{{- end }}
+{{- define "criteriaShould" }}
       {{- if .Tags }},
       "minimum_should_match": 1,
       "should": [
@@ -148,6 +153,20 @@ const queryResourceSource = `{
         {{- end }}
       ]
       {{- end }}
+{{- end }}`
+
+// queryResourceSource renders the /_search and /_count bodies from a
+// model.SearchCriteria.
+const queryResourceSource = `{
+  {{- if ge .PageSize 0 }}
+  "size": {{ .PageSize }},
+  {{- end }}
+  "query": {
+    "bool": {
+      "must": [
+        {{- template "criteriaMust" . }}
+      ]
+      {{- template "criteriaShould" . }}
     }
   }
   {{- if .SearchAfter }},
@@ -166,14 +185,110 @@ const queryResourceSource = `{
     {"_id": "asc"}
   ]
   {{- end }}
-  {{- if .GroupBy }},
+}`
+
+// countAggregationSource renders the size-0 aggregation bodies of the count
+// route from a countAggregationParams. Three shapes are possible:
+//
+//   - the access-key walk: composite over the access-check field over
+//     private resources (Criteria.PrivateOnly), paged with "after";
+//   - the grouped count: terms over tags restricted to one prefix;
+//   - the cardinality walk: composite over tags starting just after the bare
+//     prefix, paged with "after".
+//
+// The last two run over the authorized set: public resources and/or private
+// resources whose access-check key is in AuthorizedKeys, expressed as a
+// "filter" bool with should/minimum_should_match so it does not interact
+// with the OR-tags should clause on the outer bool.
+const countAggregationSource = `{
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [
+        {{- template "criteriaMust" .Criteria }}
+      ]
+      {{- template "criteriaShould" .Criteria }}
+      {{- if .AuthorizedFilter }},
+      "filter": {
+        "bool": {
+          "should": [
+            {{- $first := true -}}
+            {{- if .IncludePublic -}}
+            {{- $first = false }}
+            {
+              "term": {"public": true}
+            }
+            {{- end }}
+            {{- if .AuthorizedKeys }}
+            {{- if not $first }},{{- end }}
+            {
+              "terms": {
+                {{ .AccessKeyField | quote }}: [
+                  {{- $firstKey := true -}}
+                  {{- range .AuthorizedKeys -}}
+                  {{- if $firstKey -}}{{- $firstKey = false -}}{{- else }},{{- end }}
+                  {{ . | quote }}
+                  {{- end }}
+                ]
+              }
+            }
+            {{- end }}
+          ],
+          "minimum_should_match": 1
+        }
+      }
+      {{- end }}
+    }
+  },
   "aggs": {
-    "group_by": {
-      "terms": {
-        "field": {{ .GroupBy | quote }},
-        "size": {{ .GroupBySize }}
+    {{- if .AccessWalk }}
+    "access_keys": {
+      "composite": {
+        "size": {{ .PageSize }},
+        "sources": [
+          {
+            "access_key": {
+              "terms": {
+                "field": {{ .AccessKeyField | quote }}
+              }
+            }
+          }
+        ]
+        {{- if .After }},
+        "after": {
+          "access_key": {{ .After | quote }}
+        }
+        {{- end }}
       }
     }
+    {{- end }}
+    {{- if .GroupByPrefix }}
+    "group_by": {
+      "terms": {
+        "field": "tags",
+        "size": {{ .GroupBySize }},
+        "include": {{ .GroupByInclude | quote }}
+      }
+    }
+    {{- end }}
+    {{- if .CardinalityPrefix }}
+    "tags": {
+      "composite": {
+        "size": {{ .PageSize }},
+        "sources": [
+          {
+            "tag": {
+              "terms": {
+                "field": "tags"
+              }
+            }
+          }
+        ],
+        "after": {
+          "tag": {{ .After | quote }}
+        }
+      }
+    }
+    {{- end }}
   }
-  {{- end }}
 }`

@@ -90,13 +90,19 @@ func main() {
 	organizationSearcher := service.OrganizationSearcherImpl(ctx)
 	authService := service.AuthServiceImpl(ctx)
 	resourceFilter := service.ResourceFilterImpl(ctx)
+	resourceSearchConfig := service.ResourceSearchConfigImpl(ctx)
 
 	// Initialize the services.
 	var (
 		querySvcSvc querysvc.Service
 	)
 	{
-		querySvcSvc = service.NewQuerySvc(resourceSearcher, accessControlChecker, resourceFilter, organizationSearcher, authService)
+		var errQuerySvc error
+		querySvcSvc, errQuerySvc = service.NewQuerySvc(resourceSearcher, accessControlChecker, resourceFilter, organizationSearcher, authService, resourceSearchConfig)
+		if errQuerySvc != nil {
+			slog.ErrorContext(ctx, "failed to initialize query service", "error", errQuerySvc)
+			os.Exit(1)
+		}
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
