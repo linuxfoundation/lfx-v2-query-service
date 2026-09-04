@@ -134,22 +134,32 @@ GET /query/resources?v=1&type=v1_past_meeting_participant&tags=meeting_and_occur
 GET /query/resources?v=1&type=v1_past_meeting_participant&tags_all=meeting_and_occurrence_id:<meeting_and_occurrence_id>&tags_all=is_attended:true
 ```
 
-### Count attendances per project over a window, and distinct attendees
+### Count past meetings per project over a window
 
 ```bash
-# attendances grouped by project (one group per project_uid: tag)
-GET /query/resources/count?v=1&type=v1_past_meeting_participant&tags_all=is_attended:true&group_by=project_uid&date_field=created_at&date_from=2026-06-01&date_to=2026-08-31
-
-# distinct attendees over the same window (exact, prefix-bounded)
-GET /query/resources/count?v=1&type=v1_past_meeting_participant&tags_all=is_attended:true&metric=cardinality:email&date_field=created_at&date_from=2026-06-01&date_to=2026-08-31
+# past meetings held between 1 June and 31 August, grouped by project
+GET /query/resources/count?v=1&type=v1_past_meeting&date_field=start_time&date_from=2026-06-01&date_to=2026-08-31&group_by=project_uid
 ```
 
-The count is computed only over the documents the caller may see; `has_more`
-stays `false` for any number of meetings unless the walk exceeds
+`start_time` is the occurrence's start, so the window is "when the meeting
+happened". The count is computed only over the meetings the caller may see;
+`has_more` stays `false` for any number of meetings unless the walk exceeds
 `COUNT_MAX_ACCESS_BUCKETS`. `group_by` and `metric` cannot be combined: call
 `group_by` once, then `metric` per group with `tags=project_uid:<uid>`. See
 [Mapping the count route depends on](query-service-contract.md#mapping-the-count-route-depends-on)
 for why only tag prefixes can be grouped on.
+
+### Count distinct attendees of one past meeting
+
+```bash
+GET /query/resources/count?v=1&type=v1_past_meeting_participant&tags_all=meeting_and_occurrence_id:<meeting_and_occurrence_id>&tags_all=is_attended:true&metric=cardinality:email
+```
+
+Do **not** date-filter participant records by `created_at` to mean "attended in
+a window": a participant record's `created_at` is when the record was written,
+not when the meeting happened. Scope participants by meeting (as above) or by
+`project_uid:` tag instead; the meeting's start time is not on the participant
+document today.
 
 ### Find all mailing lists for a project
 
