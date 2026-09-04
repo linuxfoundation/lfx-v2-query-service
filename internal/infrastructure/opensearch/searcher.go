@@ -94,6 +94,10 @@ const (
 	// account without indices:admin/mappings/get) costs one extra round-trip
 	// per interval instead of one per request.
 	accessKeyFieldRetryInterval = 30 * time.Second
+	// accessKeyFieldReadTimeout bounds the mapping read itself. The read is
+	// decoupled from the caller's context so one cancelled request cannot
+	// open the retry window for every other request.
+	accessKeyFieldReadTimeout = 5 * time.Second
 )
 
 // OpenSearchSearcher implements the ResourceSearcher interface for OpenSearch
@@ -430,7 +434,13 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string 
 	}
 	os.accessKeyFieldMu.Unlock()
 
-	mapping, err := os.client.GetMapping(ctx, os.index)
+	// The outcome is process-wide, so the read must not inherit the
+	// caller's cancellation or deadline: a client that hangs up mid-read
+	// would otherwise open the retry window for everyone. Trace values are
+	// kept; only cancellation is dropped.
+	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accessKeyFieldReadTimeout)
+	mapping, err := os.client.GetMapping(readCtx, os.index)
+	cancel()
 
 	os.accessKeyFieldMu.Lock()
 	defer os.accessKeyFieldMu.Unlock()
