@@ -38,7 +38,7 @@ excluded from results (it does not bypass access filtering).
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `v` | int (required) | API version, must be `1` |
-| `name` | string | Typeahead/prefix search on `name_and_aliases` |
+| `name` | string | Typeahead/prefix search on `name_and_aliases`. Every term must match; the last term matches as a prefix. See [Name Search](#name-search) |
 | `type` | string | Filter by `object_type` (e.g. `committee`) |
 | `parent` | string | Filter by `parent_refs` (format: `project:uuid`) |
 | `tags` | []string | OR filter, any tag matches |
@@ -193,6 +193,27 @@ curl "$OPENSEARCH_URL/$OPENSEARCH_INDEX/_search" -H 'Content-Type: application/j
   "_source": ["access_check_object", "access_check_relation", "public"]
 }'
 ```
+
+## Name Search
+
+The `name` parameter runs a `multi_match` of type `bool_prefix` with
+`operator: and` against `name_and_aliases` and its `_2gram` / `_3gram` shingle
+subfields. Every term in the query must match the document; the final term
+matches as a prefix so the field behaves as a typeahead while the user types.
+
+Because terms are AND-ed, adding a word can only narrow the result set. A query
+of `Cloud Native Computing` matches strictly fewer documents than `Cloud Native`.
+
+Two consequences are worth knowing before you build on this:
+
+- **Pass `sort=best_match` when you care about ordering.** `sort` defaults to
+  `name_asc`, which maps to `sort_name: asc`. When OpenSearch receives an
+  explicit non-`_score` sort it discards relevance entirely, so a caller that
+  passes `name` without `sort` gets alphabetical results and the closest match
+  can land on any page.
+- **There is no synonym or acronym expansion.** Matching is limited to the
+  strings a resource service puts in `name_and_aliases`. An acronym resolves
+  only when the owning service indexes it as an alias.
 
 ## tags vs filters vs cel_filter
 

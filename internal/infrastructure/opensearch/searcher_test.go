@@ -464,6 +464,16 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			expectedFields:   []string{"sort_name"},
 			unexpectedFields: []string{"\"_score\""},
 		},
+		{
+			// Without an explicit operator, match_bool_prefix defaults to OR, so each
+			// extra word widens the result set instead of narrowing it.
+			name: "render name query requires every term to match",
+			criteria: model.SearchCriteria{
+				Name: stringPtr("Cloud Native Computing"),
+			},
+			expectedError:  false,
+			expectedFields: []string{"\"operator\":\"and\"", "\"type\":\"bool_prefix\""},
+		},
 	}
 
 	assertion := assert.New(t)
