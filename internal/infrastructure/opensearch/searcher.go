@@ -89,6 +89,11 @@ const (
 	// accessCheckQueryKeywordField is the multi-field subfield produced by a
 	// dynamic text mapping of accessCheckQueryField.
 	accessCheckQueryKeywordField = accessCheckQueryField + ".keyword"
+	// accessKeyFieldRetryInterval bounds how often a failed mapping read is
+	// retried, so a persistently unreadable mapping (for example a service
+	// account without indices:admin/mappings/get) costs one extra round-trip
+	// per interval instead of one per request.
+	accessKeyFieldRetryInterval = 30 * time.Second
 )
 
 // OpenSearchSearcher implements the ResourceSearcher interface for OpenSearch
@@ -98,8 +103,13 @@ type OpenSearchSearcher struct {
 
 	// accessKeyField is resolved from the live index mapping on first use
 	// (see resolveAccessKeyField). Tests may preset it to skip resolution.
-	accessKeyField   string
-	accessKeyFieldMu sync.Mutex
+	accessKeyField string
+	// accessKeyFieldRetryAt is the earliest time a failed mapping read is
+	// retried; zero means "retry now".
+	accessKeyFieldRetryAt time.Time
+	accessKeyFieldMu      sync.Mutex
+	// now is the clock used for the retry window; tests may override it.
+	now func() time.Time
 }
 
 // OpenSearchClientRetriever defines the interface for OpenSearch operations
@@ -392,26 +402,48 @@ func luceneQuoteMeta(s string) string {
 //     (the pre-existing behaviour), with a warning.
 //
 // A successful read is memoized for the life of the process. A failed
-// mapping call is not: the default is used for this request with a warning
-// and the next request retries, so a transient OpenSearch error at boot
-// cannot pin the wrong field (and the silent zero buckets it produces on a
-// plain-keyword index) until a restart.
+// mapping call is not: the default is used with a warning and the read is
+// retried after accessKeyFieldRetryInterval, so a transient OpenSearch error
+// at boot cannot pin the wrong field (and the silent zero buckets it
+// produces on a plain-keyword index) until a restart, while a persistent
+// failure does not put a network call on every request. The mapping call
+// itself runs outside the lock so concurrent requests are not serialized
+// behind it.
 //
 // It also warns when tags is not keyword or data is not flat_object, since
 // the grouped count and the cardinality metric depend on both.
 func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string {
-	os.accessKeyFieldMu.Lock()
-	defer os.accessKeyFieldMu.Unlock()
-
-	if os.accessKeyField != "" {
-		return os.accessKeyField
+	now := time.Now
+	if os.now != nil {
+		now = os.now
 	}
 
+	os.accessKeyFieldMu.Lock()
+	if os.accessKeyField != "" {
+		field := os.accessKeyField
+		os.accessKeyFieldMu.Unlock()
+		return field
+	}
+	if !os.accessKeyFieldRetryAt.IsZero() && now().Before(os.accessKeyFieldRetryAt) {
+		os.accessKeyFieldMu.Unlock()
+		return accessCheckQueryKeywordField
+	}
+	os.accessKeyFieldMu.Unlock()
+
 	mapping, err := os.client.GetMapping(ctx, os.index)
+
+	os.accessKeyFieldMu.Lock()
+	defer os.accessKeyFieldMu.Unlock()
+	if os.accessKeyField != "" {
+		// Another request resolved it while this one was on the wire.
+		return os.accessKeyField
+	}
 	if err != nil {
-		slog.WarnContext(ctx, "could not read index mapping; using default access key field for this request",
+		os.accessKeyFieldRetryAt = now().Add(accessKeyFieldRetryInterval)
+		slog.WarnContext(ctx, "could not read index mapping; using default access key field until the next retry",
 			"index", os.index,
 			"access_key_field", accessCheckQueryKeywordField,
+			"retry_after", accessKeyFieldRetryInterval,
 			"error", err,
 		)
 		return accessCheckQueryKeywordField
@@ -427,6 +459,7 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string 
 		)
 	}
 	os.accessKeyField = field
+	os.accessKeyFieldRetryAt = time.Time{}
 
 	if tags, ok := mapping.Properties["tags"]; !ok || tags.Type != "keyword" {
 		slog.WarnContext(ctx, "tags is not mapped as keyword; grouped counts and cardinality metrics may not work",

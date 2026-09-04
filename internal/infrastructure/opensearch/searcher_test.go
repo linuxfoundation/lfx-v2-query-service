@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/stretchr/testify/assert"
@@ -948,6 +950,18 @@ func TestQueryResourcesPassesPageSizeToClient(t *testing.T) {
 	}
 }
 
+// lockedMappingClient makes the mock safe for concurrent GetMapping calls.
+type lockedMappingClient struct {
+	*MockOpenSearchClient
+	mu sync.Mutex
+}
+
+func (l *lockedMappingClient) GetMapping(ctx context.Context, index string) (*IndexMapping, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.MockOpenSearchClient.GetMapping(ctx, index)
+}
+
 // Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s
@@ -1109,21 +1123,55 @@ func TestResolveAccessKeyField(t *testing.T) {
 		})
 	}
 
-	t.Run("mapping call failure falls back for the request and retries next time", func(t *testing.T) {
+	t.Run("mapping call failure falls back, retries after the interval, and is never memoized", func(t *testing.T) {
 		client := NewMockOpenSearchClient()
 		client.SetMappingError(errors.New("boom"))
-		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+		clock := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", now: func() time.Time { return clock }}
 
+		// First failure: one call, default field, retry window opens.
 		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, 1, client.mappingCalls)
+
+		// Inside the window: no network call, still the default.
+		clock = clock.Add(accessKeyFieldRetryInterval / 2)
+		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, 1, client.mappingCalls, "a persistent failure must not cost a call per request")
+
+		// After the window: retried, still failing, window reopens.
+		clock = clock.Add(accessKeyFieldRetryInterval)
 		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
 		assert.Equal(t, 2, client.mappingCalls, "a failure must not be memoized")
 
 		// Once the mapping is readable the real field is resolved and kept.
+		clock = clock.Add(accessKeyFieldRetryInterval)
 		client.SetMappingError(nil)
 		client.SetMappingResponse(&IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}}})
 		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
 		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
 		assert.Equal(t, 3, client.mappingCalls)
+	})
+
+	t.Run("concurrent first use resolves once", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetMappingResponse(&IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}}})
+		searcher := &OpenSearchSearcher{client: &lockedMappingClient{MockOpenSearchClient: client}, index: "test-index"}
+
+		var wg sync.WaitGroup
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
+			}()
+		}
+		wg.Wait()
+		// The mapping call runs outside the searcher lock, so several requests
+		// may race it on first use; every one of them must agree afterwards,
+		// and it must not be called again.
+		before := client.mappingCalls
+		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
+		assert.Equal(t, before, client.mappingCalls)
 	})
 
 	t.Run("preset field skips the mapping call", func(t *testing.T) {
