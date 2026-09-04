@@ -11,161 +11,181 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMockResourceSearcherQueryResourcesCount(t *testing.T) {
+func TestMockResourceSearcherCountPublic(t *testing.T) {
 	tests := []struct {
-		name                string
-		countCriteria       model.SearchCriteria
-		aggregationCriteria model.SearchCriteria
-		publicOnly          bool
-		expectedCount       int
-		expectedError       bool
+		name          string
+		criteria      model.SearchCriteria
+		setup         func(*MockResourceSearcher)
+		expectedCount int
+		expectedError bool
 	}{
 		{
-			name: "count all resources",
-			countCriteria: model.SearchCriteria{
-				PageSize: -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          false,
-			expectedCount:       5, // Total resources in mock data
-			expectedError:       false,
+			name:          "counts public resources only",
+			criteria:      model.SearchCriteria{PublicOnly: true},
+			expectedCount: 1,
 		},
 		{
-			name: "count public only resources",
-			countCriteria: model.SearchCriteria{
-				PageSize: -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          true,
-			expectedCount:       1, // Only one public resource in mock data
-			expectedError:       false,
+			name:          "type filter applies",
+			criteria:      model.SearchCriteria{PublicOnly: true, ResourceType: stringPtr("committee")},
+			expectedCount: 0,
 		},
 		{
-			name: "count resources by type",
-			countCriteria: model.SearchCriteria{
-				ResourceType: stringPtr("committee"),
-				PageSize:     -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          false,
-			expectedCount:       2, // Two committees in mock data
-			expectedError:       false,
+			name:          "forced response wins",
+			criteria:      model.SearchCriteria{PublicOnly: true},
+			setup:         func(m *MockResourceSearcher) { m.SetCountPublicResponse(42) },
+			expectedCount: 42,
 		},
 		{
-			name: "count resources by name",
-			countCriteria: model.SearchCriteria{
-				Name:     stringPtr("Security"),
-				PageSize: -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          false,
-			expectedCount:       2, // Resources containing "Security" in name
-			expectedError:       false,
-		},
-		{
-			name: "count resources by tags",
-			countCriteria: model.SearchCriteria{
-				Tags:     []string{"active"},
-				PageSize: -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          false,
-			expectedCount:       5, // All resources have "active" tag
-			expectedError:       false,
-		},
-		{
-			name: "count resources by tags_all (AND logic)",
-			countCriteria: model.SearchCriteria{
-				TagsAll:  []string{"active", "security"},
-				PageSize: -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          false,
-			expectedCount:       2, // Resources with both "active" AND "security" tags
-			expectedError:       false,
-		},
-		{
-			name: "count resources by tags (OR logic)",
-			countCriteria: model.SearchCriteria{
-				Tags:     []string{"governance", "security"},
-				PageSize: -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          false,
-			expectedCount:       4, // Resources with "governance" OR "security" tags
-			expectedError:       false,
-		},
-		{
-			name: "count resources with both tags and tags_all",
-			countCriteria: model.SearchCriteria{
-				Tags:     []string{"public"},
-				TagsAll:  []string{"active", "security"},
-				PageSize: -1,
-			},
-			aggregationCriteria: model.SearchCriteria{},
-			publicOnly:          false,
-			expectedCount:       0, // Resources with (public) AND (active AND security) - no matches in test data
-			expectedError:       false,
+			name:          "forced error wins",
+			criteria:      model.SearchCriteria{PublicOnly: true},
+			setup:         func(m *MockResourceSearcher) { m.SetCountPublicError(assert.AnError) },
+			expectedError: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			assertion := assert.New(t)
-
-			// Create mock searcher
 			searcher := NewMockResourceSearcher()
-
-			// Execute
-			ctx := context.Background()
-			result, err := searcher.QueryResourcesCount(ctx, tc.countCriteria, tc.aggregationCriteria, tc.publicOnly)
-
-			// Verify
+			if tc.setup != nil {
+				tc.setup(searcher)
+			}
+			count, err := searcher.CountPublic(context.Background(), tc.criteria)
 			if tc.expectedError {
 				assertion.Error(err)
-				assertion.Nil(result)
-			} else {
-				assertion.NoError(err)
-				assertion.NotNil(result)
-				assertion.Equal(tc.expectedCount, result.Count)
-				assertion.NotNil(result.Aggregation)
-				assertion.False(result.HasMore) // Mock always returns false for HasMore
+				return
 			}
+			assertion.NoError(err)
+			assertion.Equal(tc.expectedCount, count)
 		})
 	}
 }
 
-func TestMockResourceSearcherQueryResourcesCountWithAggregation(t *testing.T) {
+func TestMockResourceSearcherAccessBuckets(t *testing.T) {
 	assertion := assert.New(t)
-
-	// Create mock searcher
-	searcher := NewMockResourceSearcher()
-
-	// Test aggregation by resource type
-	countCriteria := model.SearchCriteria{
-		PageSize: -1,
-	}
-	aggregationCriteria := model.SearchCriteria{
-		ResourceType: stringPtr(""),
-	}
-
 	ctx := context.Background()
-	result, err := searcher.QueryResourcesCount(ctx, countCriteria, aggregationCriteria, false)
 
-	assertion.NoError(err)
-	assertion.NotNil(result)
-	assertion.Equal(5, result.Count) // Total count
-	assertion.NotNil(result.Aggregation)
-	assertion.Greater(len(result.Aggregation.Buckets), 0) // Should have aggregation buckets
+	t.Run("groups private resources by access key in key order and pages", func(t *testing.T) {
+		searcher := NewMockResourceSearcher()
+		criteria := model.SearchCriteria{PrivateOnly: true}
 
-	// Verify aggregation buckets contain expected types
-	bucketKeys := make([]string, len(result.Aggregation.Buckets))
-	for i, bucket := range result.Aggregation.Buckets {
-		bucketKeys[i] = bucket.Key
+		page1, err := searcher.AccessBuckets(ctx, criteria, model.AccessBucketRequest{PageSize: 2})
+		assertion.NoError(err)
+		assertion.Len(page1.Buckets, 2)
+		assertion.Equal("committee:123#member", page1.Buckets[0].Key)
+		assertion.Equal(uint64(1), page1.Buckets[0].DocCount)
+		assertion.Equal("committee:567#member", page1.Buckets[1].Key)
+		assertion.NotNil(page1.AfterKey)
+
+		page2, err := searcher.AccessBuckets(ctx, criteria, model.AccessBucketRequest{PageSize: 2, After: page1.AfterKey})
+		assertion.NoError(err)
+		// The private resource with empty access fields has no key and is skipped.
+		assertion.Len(page2.Buckets, 1)
+		assertion.Equal("project:789#contributor", page2.Buckets[0].Key)
+		assertion.Equal(2, searcher.AccessBucketCalls())
+	})
+
+	t.Run("forced pages are returned in order and the last repeats", func(t *testing.T) {
+		searcher := NewMockResourceSearcher()
+		first := &model.AccessBucketPage{Buckets: []model.AggregationBucket{{Key: "a", DocCount: 1}}}
+		second := &model.AccessBucketPage{Buckets: []model.AggregationBucket{}}
+		searcher.SetAccessBucketPages(first, second)
+
+		p, _ := searcher.AccessBuckets(ctx, model.SearchCriteria{PrivateOnly: true}, model.AccessBucketRequest{PageSize: 1})
+		assertion.Equal(first, p)
+		p, _ = searcher.AccessBuckets(ctx, model.SearchCriteria{PrivateOnly: true}, model.AccessBucketRequest{PageSize: 1})
+		assertion.Equal(second, p)
+		p, _ = searcher.AccessBuckets(ctx, model.SearchCriteria{PrivateOnly: true}, model.AccessBucketRequest{PageSize: 1})
+		assertion.Equal(second, p)
+	})
+
+	t.Run("forced error wins", func(t *testing.T) {
+		searcher := NewMockResourceSearcher()
+		searcher.SetAccessBucketsError(assert.AnError)
+		_, err := searcher.AccessBuckets(ctx, model.SearchCriteria{PrivateOnly: true}, model.AccessBucketRequest{PageSize: 1})
+		assertion.Error(err)
+	})
+}
+
+func TestMockResourceSearcherAuthorizedAggregation(t *testing.T) {
+	assertion := assert.New(t)
+	ctx := context.Background()
+
+	newSearcher := func() *MockResourceSearcher {
+		searcher := NewMockResourceSearcher()
+		searcher.ClearResources()
+		searcher.AddResource(NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"project_uid:P1", "meeting_type:recurring"}}, true))
+		searcher.AddResource(NewResourceWithDefaults("v1_past_meeting", "m2", map[string]any{"tags": []string{"project_uid:P1", "meeting_type:single"}}, false))
+		searcher.AddResource(NewResourceWithDefaults("v1_past_meeting", "m3", map[string]any{"tags": []string{"project_uid:P2", "meeting_type:recurring"}}, false))
+		searcher.AddResource(NewResourceWithDefaults("v1_past_meeting_participant", "p1", map[string]any{"tags": []string{"email:a@x.org"}}, false))
+		searcher.AddResource(NewResourceWithDefaults("v1_past_meeting_participant", "p2", map[string]any{"tags": []string{"email:a@x.org"}}, false))
+		searcher.AddResource(NewResourceWithDefaults("v1_past_meeting_participant", "p3", map[string]any{"tags": []string{"email:b@y.org", "emailx:zzz"}}, false))
+		return searcher
 	}
-	assertion.Contains(bucketKeys, "committee")
-	assertion.Contains(bucketKeys, "project")
-	assertion.Contains(bucketKeys, "meeting")
+
+	t.Run("groups over public plus granted resources, count desc then key asc", func(t *testing.T) {
+		searcher := newSearcher()
+		result, err := searcher.AuthorizedAggregation(ctx,
+			model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")},
+			model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100, IncludePublic: true, AuthorizedKeys: []string{"v1_past_meeting:m2#viewer", "v1_past_meeting:m3#viewer"}},
+		)
+		assertion.NoError(err)
+		assertion.True(result.GroupsComplete)
+		assertion.Equal([]model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 1}}, result.Groups)
+	})
+
+	t.Run("denied private resources are excluded", func(t *testing.T) {
+		searcher := newSearcher()
+		result, err := searcher.AuthorizedAggregation(ctx,
+			model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")},
+			model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100, IncludePublic: true},
+		)
+		assertion.NoError(err)
+		assertion.Equal([]model.CountGroup{{Key: "P1", Count: 1}}, result.Groups)
+	})
+
+	t.Run("group_by_size truncates and flags incompleteness", func(t *testing.T) {
+		searcher := newSearcher()
+		result, err := searcher.AuthorizedAggregation(ctx,
+			model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")},
+			model.CountAggregation{GroupByPrefix: "meeting_type", GroupBySize: 1, IncludePublic: true, AuthorizedKeys: []string{"v1_past_meeting:m2#viewer", "v1_past_meeting:m3#viewer"}},
+		)
+		assertion.NoError(err)
+		assertion.False(result.GroupsComplete)
+		assertion.Equal([]model.CountGroup{{Key: "recurring", Count: 2}}, result.Groups)
+	})
+
+	t.Run("cardinality counts distinct values with an exact prefix boundary", func(t *testing.T) {
+		searcher := newSearcher()
+		result, err := searcher.AuthorizedAggregation(ctx,
+			model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting_participant")},
+			model.CountAggregation{CardinalityPrefix: "email", AuthorizedKeys: []string{"v1_past_meeting_participant:p1#viewer", "v1_past_meeting_participant:p2#viewer", "v1_past_meeting_participant:p3#viewer"}},
+		)
+		assertion.NoError(err)
+		assertion.True(result.MetricComplete)
+		assertion.Equal(uint64(2), result.MetricValue)
+	})
+
+	t.Run("nothing requested returns the empty result", func(t *testing.T) {
+		searcher := newSearcher()
+		result, err := searcher.AuthorizedAggregation(ctx, model.SearchCriteria{}, model.CountAggregation{})
+		assertion.NoError(err)
+		assertion.Empty(result.Groups)
+		assertion.Equal(uint64(0), result.MetricValue)
+	})
+
+	t.Run("forced response and error win", func(t *testing.T) {
+		searcher := newSearcher()
+		forced := &model.CountAggregationResult{MetricValue: 7}
+		searcher.SetAuthorizedAggregationResponse(forced)
+		result, err := searcher.AuthorizedAggregation(ctx, model.SearchCriteria{}, model.CountAggregation{CardinalityPrefix: "x"})
+		assertion.NoError(err)
+		assertion.Equal(forced, result)
+
+		searcher.SetAuthorizedAggregationError(assert.AnError)
+		_, err = searcher.AuthorizedAggregation(ctx, model.SearchCriteria{}, model.CountAggregation{CardinalityPrefix: "x"})
+		assertion.Error(err)
+	})
 }
 
 func TestMockResourceSearcherQueryResourcesWithTags(t *testing.T) {

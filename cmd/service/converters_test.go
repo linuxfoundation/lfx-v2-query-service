@@ -9,8 +9,11 @@ import (
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/service"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,8 +23,7 @@ func TestPayloadToCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	// Setup environment variable for page token secret
 	t.Setenv("PAGE_TOKEN_SECRET", "12345678901234567890123456789012") // 32 chars
@@ -201,8 +203,7 @@ func TestDomainResultToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -326,8 +327,7 @@ func TestPayloadToOrganizationCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -393,8 +393,7 @@ func TestDomainOrganizationToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -473,8 +472,7 @@ func TestPayloadToOrganizationSuggestionCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -529,8 +527,7 @@ func TestDomainOrganizationSuggestionsToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -828,8 +825,7 @@ func TestPayloadToCriteriaWithDateFilters(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name          string
@@ -1115,8 +1111,7 @@ func TestPayloadToCountPublicCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name          string
@@ -1130,8 +1125,8 @@ func TestPayloadToCountPublicCriteria(t *testing.T) {
 			payload: &querysvc.QueryResourcesCountPayload{},
 			check: func(t *testing.T, c model.SearchCriteria) {
 				assert.True(t, c.PublicOnly)
+				assert.False(t, c.PrivateOnly)
 				assert.Equal(t, -1, c.PageSize)
-				assert.Equal(t, constants.DefaultBucketSize, c.GroupBySize)
 			},
 		},
 		{
@@ -1192,13 +1187,12 @@ func TestPayloadToCountPublicCriteria(t *testing.T) {
 	}
 }
 
-func TestPayloadToCountAggregationCriteria(t *testing.T) {
+func TestPayloadToCountPrivateCriteria(t *testing.T) {
 	mockResourceSearcher := mock.NewMockResourceSearcher()
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name          string
@@ -1208,13 +1202,12 @@ func TestPayloadToCountAggregationCriteria(t *testing.T) {
 		check         func(*testing.T, model.SearchCriteria)
 	}{
 		{
-			name:    "empty payload sets private-only aggregation defaults",
+			name:    "empty payload sets private-only defaults",
 			payload: &querysvc.QueryResourcesCountPayload{},
 			check: func(t *testing.T, c model.SearchCriteria) {
 				assert.True(t, c.PrivateOnly)
+				assert.False(t, c.PublicOnly)
 				assert.Equal(t, 0, c.PageSize)
-				assert.Equal(t, "access_check_query.keyword", c.GroupBy)
-				assert.Equal(t, constants.DefaultBucketSize, c.GroupBySize)
 			},
 		},
 		{
@@ -1258,7 +1251,7 @@ func TestPayloadToCountAggregationCriteria(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := svc.payloadToCountAggregationCriteria(tc.payload)
+			result, err := svc.payloadToCountPrivateCriteria(tc.payload)
 			if tc.expectError {
 				assert.Error(t, err)
 				if tc.errorContains != "" {
@@ -1272,6 +1265,173 @@ func TestPayloadToCountAggregationCriteria(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPayloadToCountAggregation(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+
+	intPtr := func(v int) *int { return &v }
+
+	tests := []struct {
+		name          string
+		payload       *querysvc.QueryResourcesCountPayload
+		expectError   bool
+		errorContains string
+		expected      model.CountAggregation
+	}{
+		{
+			name:     "empty payload asks for nothing",
+			payload:  &querysvc.QueryResourcesCountPayload{},
+			expected: model.CountAggregation{GroupBySize: constants.DefaultGroupBySize},
+		},
+		{
+			name:     "group_by sets the prefix with the default size",
+			payload:  &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("project_uid")},
+			expected: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: constants.DefaultGroupBySize},
+		},
+		{
+			name:     "group_by_size overrides the default",
+			payload:  &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("meeting_type"), GroupBySize: intPtr(1)},
+			expected: model.CountAggregation{GroupByPrefix: "meeting_type", GroupBySize: 1},
+		},
+		{
+			name:          "group_by_size above the maximum is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("x"), GroupBySize: intPtr(constants.MaxGroupBySize + 1)},
+			expectError:   true,
+			errorContains: "group_by_size must be between 1 and 1000",
+		},
+		{
+			name:          "group_by_size below one is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("x"), GroupBySize: intPtr(0)},
+			expectError:   true,
+			errorContains: "group_by_size must be between 1 and 1000",
+		},
+		{
+			name:          "group_by outside the tag prefix pattern is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("Project-UID")},
+			expectError:   true,
+			errorContains: "group_by must match",
+		},
+		{
+			name:     "cardinality metric sets the prefix",
+			payload:  &querysvc.QueryResourcesCountPayload{Metric: stringPtr("cardinality:email")},
+			expected: model.CountAggregation{CardinalityPrefix: "email", GroupBySize: constants.DefaultGroupBySize},
+		},
+		{
+			name:          "sum metric is declined with the flat_object reason",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("sum:duration")},
+			expectError:   true,
+			errorContains: "sum is not available on this index",
+		},
+		{
+			name:          "unknown metric family is declined",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("avg:duration")},
+			expectError:   true,
+			errorContains: "metric must be cardinality:<tag_prefix>",
+		},
+		{
+			name:          "cardinality with an invalid prefix is declined",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("cardinality:E-Mail")},
+			expectError:   true,
+			errorContains: "metric must be cardinality:<tag_prefix>",
+		},
+		{
+			name:          "cardinality with an empty prefix is declined",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("cardinality:")},
+			expectError:   true,
+			errorContains: "metric must be cardinality:<tag_prefix>",
+		},
+		{
+			name:          "group_by and metric together are rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("project_uid"), Metric: stringPtr("cardinality:email")},
+			expectError:   true,
+			errorContains: "metric per group is not supported",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.payloadToCountAggregation(tc.payload)
+			if tc.expectError {
+				assert.Error(t, err)
+				var validation errors.Validation
+				assert.ErrorAs(t, err, &validation, "count parameter errors must map to 400")
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestDomainCountResultToResponse(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+
+	boolPtr := func(v bool) *bool { return &v }
+	uint64Ptr := func(v uint64) *uint64 { return &v }
+	cacheControl := "public, max-age=300"
+
+	t.Run("plain count omits groups and metric", func(t *testing.T) {
+		response := svc.domainCountResultToResponse(&model.CountResult{Count: 5, HasMore: true, CacheControl: &cacheControl})
+		assert.Equal(t, uint64(5), response.Count)
+		assert.True(t, response.HasMore)
+		assert.Nil(t, response.Groups)
+		assert.Nil(t, response.GroupsComplete)
+		assert.Nil(t, response.MetricValue)
+		assert.Nil(t, response.MetricComplete)
+		assert.Equal(t, &cacheControl, response.CacheControl)
+	})
+
+	t.Run("grouped count renders groups in domain order", func(t *testing.T) {
+		response := svc.domainCountResultToResponse(&model.CountResult{
+			Count:          5,
+			Groups:         []model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 2}, {Key: "P3", Count: 1}},
+			GroupsComplete: boolPtr(true),
+		})
+		assert.Len(t, response.Groups, 3)
+		assert.Equal(t, "P1", response.Groups[0].Key)
+		assert.Equal(t, uint64(2), response.Groups[0].Count)
+		assert.Equal(t, "P3", response.Groups[2].Key)
+		assert.Equal(t, boolPtr(true), response.GroupsComplete)
+	})
+
+	t.Run("grouped count with no groups renders an empty array, not null", func(t *testing.T) {
+		response := svc.domainCountResultToResponse(&model.CountResult{GroupsComplete: boolPtr(true)})
+		assert.NotNil(t, response.Groups)
+		assert.Len(t, response.Groups, 0)
+	})
+
+	t.Run("metric renders value and completeness", func(t *testing.T) {
+		response := svc.domainCountResultToResponse(&model.CountResult{
+			Count:          4,
+			MetricValue:    uint64Ptr(2),
+			MetricComplete: boolPtr(false),
+		})
+		assert.Equal(t, uint64Ptr(2), response.MetricValue)
+		assert.Equal(t, boolPtr(false), response.MetricComplete)
+		assert.Nil(t, response.Groups)
+	})
+}
+
+// newTestQuerySvc wires the service with the default resource search config.
+func newTestQuerySvc(t *testing.T, searcher port.ResourceSearcher, checker port.AccessControlChecker, orgs port.OrganizationSearcher, auth port.Authenticator) *querySvcsrvc {
+	t.Helper()
+	svc, err := NewQuerySvc(searcher, checker, mock.NewMockResourceFilter(), orgs, auth, service.DefaultConfig())
+	if err != nil {
+		t.Fatalf("NewQuerySvc: %v", err)
+	}
+	return svc.(*querySvcsrvc)
 }
 
 // Helper function to create string pointers

@@ -12,11 +12,14 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
+	"sync"
 	"text/template"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 
 	"github.com/opensearch-project/opensearch-go/v4"
@@ -27,17 +30,76 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// templateFuncs are the helpers available to every query template.
+var templateFuncs = template.FuncMap{
+	"quote": strconv.Quote,
+}
+
+// queryResourceTemplate renders /_search and /_count bodies. The shared
+// criteria sub-templates are parsed first so both templates embed the same
+// definitions.
 var queryResourceTemplate = template.Must(
-	template.New("queryResource").
-		Funcs(template.FuncMap{
-			"quote": strconv.Quote,
-		}).
-		Parse(queryResourceSource))
+	template.Must(
+		template.New("queryResource").Funcs(templateFuncs).Parse(criteriaSource),
+	).Parse(queryResourceSource))
+
+// countAggregationTemplate renders the aggregation-only bodies of the count
+// route (access-key walk, grouped count, cardinality walk).
+var countAggregationTemplate = template.Must(
+	template.Must(
+		template.New("countAggregation").Funcs(templateFuncs).Parse(criteriaSource),
+	).Parse(countAggregationSource))
+
+// countAggregationParams is the data passed to countAggregationTemplate.
+type countAggregationParams struct {
+	// Criteria carries the caller's search parameters plus the
+	// PublicOnly/PrivateOnly switches for the outer bool query.
+	Criteria model.SearchCriteria
+	// AccessKeyField is the resolved access-check field (see
+	// resolveAccessKeyField).
+	AccessKeyField string
+
+	// AccessWalk renders the composite aggregation over the access field.
+	AccessWalk bool
+	// PageSize is the composite page size (access walk and cardinality walk).
+	PageSize int
+	// After is the composite cursor: the previous page's after_key, or, for
+	// the cardinality walk's first page, the bare "<prefix>:" string.
+	After string
+
+	// AuthorizedFilter adds the "filter" bool restricting documents to the
+	// authorized set; IncludePublic and AuthorizedKeys are its two branches.
+	AuthorizedFilter bool
+	IncludePublic    bool
+	AuthorizedKeys   []string
+
+	// GroupByPrefix renders the prefix-restricted terms aggregation over tags.
+	GroupByPrefix  string
+	GroupBySize    int
+	GroupByInclude string
+
+	// CardinalityPrefix renders the composite walk over tags.
+	CardinalityPrefix string
+}
+
+const (
+	// accessCheckQueryField is the indexed field holding
+	// "{access_check_object}#{access_check_relation}".
+	accessCheckQueryField = "access_check_query"
+	// accessCheckQueryKeywordField is the multi-field subfield produced by a
+	// dynamic text mapping of accessCheckQueryField.
+	accessCheckQueryKeywordField = accessCheckQueryField + ".keyword"
+)
 
 // OpenSearchSearcher implements the ResourceSearcher interface for OpenSearch
 type OpenSearchSearcher struct {
 	client OpenSearchClientRetriever
 	index  string
+
+	// accessKeyField is resolved from the live index mapping on first use
+	// (see resolveAccessKeyField). Tests may preset it to skip resolution.
+	accessKeyField     string
+	accessKeyFieldOnce sync.Once
 }
 
 // OpenSearchClientRetriever defines the interface for OpenSearch operations
@@ -45,7 +107,8 @@ type OpenSearchSearcher struct {
 type OpenSearchClientRetriever interface {
 	Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error)
 	Count(ctx context.Context, index string, query []byte) (*CountResponse, error)
-	AggregationSearch(ctx context.Context, index string, query []byte) (*AggregationResponse, error)
+	AggregationSearch(ctx context.Context, index string, query []byte) (json.RawMessage, error)
+	GetMapping(ctx context.Context, index string) (*IndexMapping, error)
 	IsReady(ctx context.Context) error
 }
 
@@ -79,60 +142,337 @@ func (os *OpenSearchSearcher) QueryResources(ctx context.Context, criteria model
 	return result, nil
 }
 
-func (os *OpenSearchSearcher) QueryResourcesCount(
-	ctx context.Context,
-	publicCountCriteria model.SearchCriteria,
-	aggregationCriteria model.SearchCriteria,
-	publicOnly bool,
-) (*model.CountResult, error) {
-	slog.DebugContext(ctx, "executing opensearch query for criteria",
-		"public_count_criteria", publicCountCriteria,
-		"aggregation_criteria", aggregationCriteria,
-	)
-
-	parsedCount, err := os.Render(ctx, publicCountCriteria)
+// CountPublic implements port.ResourceSearcher: a /_count over the public
+// resources matching the criteria.
+func (os *OpenSearchSearcher) CountPublic(ctx context.Context, criteria model.SearchCriteria) (int, error) {
+	if !criteria.PublicOnly {
+		// Not expected: the converter always builds the public criteria with PublicOnly.
+		return 0, fmt.Errorf("CountPublic requires PublicOnly criteria")
+	}
+	query, err := os.Render(ctx, criteria)
 	if err != nil {
 		// Not expected to happen: this is an error with our interpolation logic.
 		slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
-		return nil, fmt.Errorf("failed to render query: %w", err)
+		return 0, fmt.Errorf("failed to render query: %w", err)
 	}
-	slog.DebugContext(ctx, "public resource count query", "query", string(parsedCount))
+	slog.DebugContext(ctx, "public resource count query", "query", string(query))
 
-	// Execute the search
-	countResponse, err := os.client.Count(ctx, os.index, parsedCount)
+	countResponse, err := os.client.Count(ctx, os.index, query)
 	if err != nil {
-		return nil, fmt.Errorf("opensearch search failed: %w", err)
+		return 0, fmt.Errorf("opensearch count failed: %w", err)
 	}
+	return countResponse.Count, nil
+}
 
-	if publicOnly {
-		return &model.CountResult{
-			Count: countResponse.Count,
-		}, nil
+// AccessBuckets implements port.ResourceSearcher: one composite page of the
+// private resources matching the criteria, grouped by access-check key.
+func (os *OpenSearchSearcher) AccessBuckets(ctx context.Context, criteria model.SearchCriteria, request model.AccessBucketRequest) (*model.AccessBucketPage, error) {
+	if !criteria.PrivateOnly {
+		// Not expected: the converter always builds the walk criteria with PrivateOnly.
+		return nil, fmt.Errorf("AccessBuckets requires PrivateOnly criteria")
 	}
-
-	parsedSearch, err := os.Render(ctx, aggregationCriteria)
+	params := countAggregationParams{
+		Criteria:       criteria,
+		AccessKeyField: os.resolveAccessKeyField(ctx),
+		AccessWalk:     true,
+		PageSize:       request.PageSize,
+	}
+	if request.After != nil {
+		params.After = *request.After
+	}
+	query, err := os.RenderCountAggregation(ctx, params)
 	if err != nil {
-		// Not expected to happen: this is an error with our interpolation logic.
 		slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
 		return nil, fmt.Errorf("failed to render query: %w", err)
 	}
-	slog.DebugContext(ctx, "resource aggregation query", "query", string(parsedSearch))
+	slog.DebugContext(ctx, "access bucket walk query", "query", string(query))
 
-	aggregationResponse, err := os.client.AggregationSearch(ctx, os.index, parsedSearch)
+	response, err := os.aggregationSearch(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("opensearch search failed: %w", err)
+		return nil, err
+	}
+	if response.AccessKeys == nil {
+		return nil, fmt.Errorf("opensearch response is missing the access_keys aggregation")
 	}
 
-	slog.DebugContext(ctx, "aggregation response", "response", aggregationResponse)
+	page := &model.AccessBucketPage{
+		Buckets: make([]model.AggregationBucket, 0, len(response.AccessKeys.Buckets)),
+	}
+	for _, bucket := range response.AccessKeys.Buckets {
+		page.Buckets = append(page.Buckets, model.AggregationBucket{
+			Key:      bucket.Key["access_key"],
+			DocCount: bucket.DocCount,
+		})
+	}
+	if after, ok := response.AccessKeys.AfterKey["access_key"]; ok {
+		page.AfterKey = &after
+	}
+	return page, nil
+}
 
-	result, err := os.convertCountResponse(countResponse, aggregationResponse)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert count response: %w", err)
+// AuthorizedAggregation implements port.ResourceSearcher: the grouped count
+// and/or the distinct tag-value metric over the authorized resources.
+func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteria model.SearchCriteria, aggregation model.CountAggregation) (*model.CountAggregationResult, error) {
+	result := &model.CountAggregationResult{
+		Groups:         []model.CountGroup{},
+		GroupsComplete: true,
+		MetricComplete: true,
+	}
+	if !aggregation.HasWork() {
+		return result, nil
+	}
+	if !aggregation.IncludePublic && len(aggregation.AuthorizedKeys) == 0 {
+		// Nothing is visible to the caller: no query needed.
+		return result, nil
 	}
 
-	slog.DebugContext(ctx, "converted count response", "response", result)
+	base := countAggregationParams{
+		Criteria:         criteria,
+		AccessKeyField:   os.resolveAccessKeyField(ctx),
+		AuthorizedFilter: true,
+		IncludePublic:    aggregation.IncludePublic,
+		AuthorizedKeys:   aggregation.AuthorizedKeys,
+	}
+
+	if aggregation.GroupByPrefix != "" {
+		params := base
+		params.GroupByPrefix = aggregation.GroupByPrefix
+		params.GroupBySize = aggregation.GroupBySize
+		params.GroupByInclude = tagPrefixInclude(aggregation.GroupByPrefix)
+		query, err := os.RenderCountAggregation(ctx, params)
+		if err != nil {
+			slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
+			return nil, fmt.Errorf("failed to render query: %w", err)
+		}
+		slog.DebugContext(ctx, "grouped count query", "query", string(query))
+
+		response, err := os.aggregationSearch(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		if response.GroupBy == nil {
+			return nil, fmt.Errorf("opensearch response is missing the group_by aggregation")
+		}
+		prefix := aggregation.GroupByPrefix + ":"
+		result.Groups = make([]model.CountGroup, 0, len(response.GroupBy.Buckets))
+		for _, bucket := range response.GroupBy.Buckets {
+			result.Groups = append(result.Groups, model.CountGroup{
+				Key:   strings.TrimPrefix(bucket.Key, prefix),
+				Count: bucket.DocCount,
+			})
+		}
+		result.GroupsComplete = response.GroupBy.SumOtherDocCount == 0
+	}
+
+	if aggregation.CardinalityPrefix != "" {
+		value, complete, err := os.walkCardinality(ctx, base, aggregation)
+		if err != nil {
+			return nil, err
+		}
+		result.MetricValue = value
+		result.MetricComplete = complete
+	}
 
 	return result, nil
+}
+
+// walkCardinality counts the distinct "<prefix>:…" tags in the authorized set
+// by paging a composite aggregation over tags in ascending key order,
+// starting just after the bare "<prefix>:" string and stopping at the first
+// key outside the prefix, at a short page, or at aggregation.MaxDistinct.
+func (os *OpenSearchSearcher) walkCardinality(ctx context.Context, base countAggregationParams, aggregation model.CountAggregation) (uint64, bool, error) {
+	prefix := aggregation.CardinalityPrefix + ":"
+	pageSize := aggregation.PageSize
+	if pageSize <= 0 {
+		pageSize = constants.DefaultAccessBucketPage
+	}
+	maxDistinct := aggregation.MaxDistinct
+	if maxDistinct <= 0 {
+		maxDistinct = constants.DefaultMaxAccessBuckets
+	}
+
+	var distinct uint64
+	after := prefix
+	for page := 1; ; page++ {
+		params := base
+		params.CardinalityPrefix = aggregation.CardinalityPrefix
+		params.PageSize = pageSize
+		params.After = after
+		query, err := os.RenderCountAggregation(ctx, params)
+		if err != nil {
+			slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
+			return 0, false, fmt.Errorf("failed to render query: %w", err)
+		}
+		slog.DebugContext(ctx, "cardinality walk query", "page", page, "query", string(query))
+
+		response, err := os.aggregationSearch(ctx, query)
+		if err != nil {
+			return 0, false, err
+		}
+		if response.Tags == nil {
+			return 0, false, fmt.Errorf("opensearch response is missing the tags aggregation")
+		}
+
+		for _, bucket := range response.Tags.Buckets {
+			key := bucket.Key["tag"]
+			if !strings.HasPrefix(key, prefix) {
+				// Composite terms sources page in ascending key order, so the
+				// first key outside the prefix ends the prefix range.
+				return distinct, true, nil
+			}
+			distinct++
+			if distinct >= uint64(maxDistinct) {
+				return distinct, false, nil
+			}
+		}
+		if len(response.Tags.Buckets) < pageSize {
+			return distinct, true, nil
+		}
+		next, ok := response.Tags.AfterKey["tag"]
+		if !ok {
+			return distinct, true, nil
+		}
+		after = next
+	}
+}
+
+// aggregationSearch runs an aggregation body and decodes the count-route
+// aggregation shape.
+func (os *OpenSearchSearcher) aggregationSearch(ctx context.Context, query []byte) (*CountAggregationResponse, error) {
+	raw, err := os.client.AggregationSearch(ctx, os.index, query)
+	if err != nil {
+		return nil, fmt.Errorf("opensearch search failed: %w", err)
+	}
+	var response CountAggregationResponse
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &response); err != nil {
+			slog.ErrorContext(ctx, "failed to unmarshal aggregations", "error", err)
+			return nil, fmt.Errorf("unrecoverable aggregation processing error: %w", err)
+		}
+	}
+	return &response, nil
+}
+
+// tagPrefixInclude builds the Lucene regular expression that restricts a
+// terms aggregation over tags to one prefix. The prefix is validated by the
+// API to [a-z][a-z0-9_]*, so no character needs escaping; regexp.QuoteMeta
+// is still applied defensively (its escapes are also Lucene escapes for
+// these characters).
+func tagPrefixInclude(prefix string) string {
+	return luceneQuoteMeta(prefix) + ":.*"
+}
+
+// luceneQuoteMeta escapes the Lucene regular-expression operators. Go's
+// regexp.QuoteMeta is not used because it also escapes characters Lucene
+// treats literally.
+func luceneQuoteMeta(s string) string {
+	const operators = `.?+*|{}[]()"\#@&<>~`
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune(operators, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// resolveAccessKeyField decides, once, which indexed field the access-key
+// walk aggregates on, by reading the live index mapping:
+//
+//   - access_check_query mapped as keyword          -> "access_check_query"
+//   - text with a keyword subfield                  -> "access_check_query.keyword"
+//   - anything else, or the mapping call fails      -> "access_check_query.keyword"
+//     (the pre-existing behaviour), with a warning.
+//
+// It also warns when tags is not keyword or data is not flat_object, since
+// the grouped count and the cardinality metric depend on both.
+func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string {
+	os.accessKeyFieldOnce.Do(func() {
+		if os.accessKeyField != "" {
+			return
+		}
+		os.accessKeyField = accessCheckQueryKeywordField
+
+		mapping, err := os.client.GetMapping(ctx, os.index)
+		if err != nil {
+			slog.WarnContext(ctx, "could not read index mapping; using default access key field",
+				"index", os.index,
+				"access_key_field", os.accessKeyField,
+				"error", err,
+			)
+			return
+		}
+
+		field, resolved := accessKeyFieldFromMapping(mapping)
+		if !resolved {
+			observed, _ := json.Marshal(mapping.Properties[accessCheckQueryField])
+			slog.WarnContext(ctx, "unexpected access_check_query mapping; using default access key field",
+				"index", os.index,
+				"access_key_field", field,
+				"observed_mapping", string(observed),
+			)
+		}
+		os.accessKeyField = field
+
+		if tags, ok := mapping.Properties["tags"]; !ok || tags.Type != "keyword" {
+			slog.WarnContext(ctx, "tags is not mapped as keyword; grouped counts and cardinality metrics may not work",
+				"index", os.index,
+				"observed_type", tags.Type,
+			)
+		}
+		if data, ok := mapping.Properties["data"]; !ok || data.Type != "flat_object" {
+			slog.WarnContext(ctx, "data is not mapped as flat_object; the count route assumes data fields are not aggregatable",
+				"index", os.index,
+				"observed_type", data.Type,
+			)
+		}
+
+		slog.InfoContext(ctx, "resolved access key field",
+			"index", os.index,
+			"access_key_field", os.accessKeyField,
+		)
+	})
+	return os.accessKeyField
+}
+
+// accessKeyFieldFromMapping applies the resolution table of
+// resolveAccessKeyField to a mapping. The boolean is false when the mapping
+// did not match a known shape and the default is being returned.
+func accessKeyFieldFromMapping(mapping *IndexMapping) (string, bool) {
+	if mapping == nil {
+		return accessCheckQueryKeywordField, false
+	}
+	field, ok := mapping.Properties[accessCheckQueryField]
+	if !ok {
+		return accessCheckQueryKeywordField, false
+	}
+	switch field.Type {
+	case "keyword":
+		return accessCheckQueryField, true
+	case "text":
+		if sub, ok := field.Fields["keyword"]; ok && sub.Type == "keyword" {
+			return accessCheckQueryKeywordField, true
+		}
+	}
+	return accessCheckQueryKeywordField, false
+}
+
+// RenderCountAggregation generates an aggregation-only body for the count route.
+func (os *OpenSearchSearcher) RenderCountAggregation(ctx context.Context, params countAggregationParams) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := countAggregationTemplate.Execute(&buf, params); err != nil {
+		slog.ErrorContext(ctx, "failed to render count aggregation template", "error", err)
+		return nil, err
+	}
+	query := json.RawMessage(buf.Bytes())
+
+	parsed, err := json.Marshal(query)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to marshal rendered count aggregation", "error", err, "body", buf.String())
+		return nil, err
+	}
+	return parsed, nil
 }
 
 // Render generates the OpenSearch query based on the provided search criteria
@@ -207,25 +547,6 @@ func (os *OpenSearchSearcher) convertHit(hit Hit) (model.Resource, error) {
 	}
 
 	return resource, nil
-}
-
-func (os *OpenSearchSearcher) convertCountResponse(response *CountResponse, aggregationResponse *AggregationResponse) (*model.CountResult, error) {
-	aggregation := model.TermsAggregation{
-		DocCountErrorUpperBound: aggregationResponse.GroupBy.DocCountErrorUpperBound,
-		SumOtherDocCount:        aggregationResponse.GroupBy.SumOtherDocCount,
-	}
-	aggregationBuckets := make([]model.AggregationBucket, len(aggregationResponse.GroupBy.Buckets))
-	for i, bucket := range aggregationResponse.GroupBy.Buckets {
-		aggregationBuckets[i] = model.AggregationBucket{
-			Key:      bucket.Key,
-			DocCount: bucket.DocCount,
-		}
-	}
-	aggregation.Buckets = aggregationBuckets
-	return &model.CountResult{
-		Count:       response.Count,
-		Aggregation: aggregation,
-	}, nil
 }
 
 func (o *OpenSearchSearcher) IsReady(ctx context.Context) error {

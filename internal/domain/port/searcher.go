@@ -16,8 +16,22 @@ type ResourceSearcher interface {
 	// QueryResources searches for resources based on the provided criteria
 	QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error)
 
-	// QueryResourcesCount searches for resources based on the provided criteria
-	QueryResourcesCount(ctx context.Context, countCriteria model.SearchCriteria, aggregationCriteria model.SearchCriteria, publicOnly bool) (*model.CountResult, error)
+	// CountPublic counts the public resources matching the criteria.
+	// The criteria must carry PublicOnly = true.
+	CountPublic(ctx context.Context, criteria model.SearchCriteria) (int, error)
+
+	// AccessBuckets returns one page of the private resources matching the
+	// criteria, grouped by access-check key. The criteria must carry
+	// PrivateOnly = true. Callers page with request.After until a page is
+	// short (fewer buckets than request.PageSize).
+	AccessBuckets(ctx context.Context, criteria model.SearchCriteria, request model.AccessBucketRequest) (*model.AccessBucketPage, error)
+
+	// AuthorizedAggregation computes the grouped count and/or the distinct
+	// tag-value metric described by aggregation over the resources matching
+	// the criteria that the caller may see: public ones when
+	// aggregation.IncludePublic is set, plus private ones whose access-check
+	// key is in aggregation.AuthorizedKeys.
+	AuthorizedAggregation(ctx context.Context, criteria model.SearchCriteria, aggregation model.CountAggregation) (*model.CountAggregationResult, error)
 
 	// IsReady checks if the search service is ready
 	IsReady(ctx context.Context) error

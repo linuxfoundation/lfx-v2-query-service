@@ -11,6 +11,7 @@ import (
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/service"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/stretchr/testify/assert"
 	"goa.design/goa/v3/security"
@@ -59,9 +60,7 @@ func TestQuerySvcsrvc_JWTAuth(t *testing.T) {
 			mockResourceSearcher := mock.NewMockResourceSearcher()
 			mockAccessChecker := mock.NewMockAccessControlChecker()
 			mockOrgSearcher := mock.NewMockOrganizationSearcher()
-			service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
-			svc, ok := service.(*querySvcsrvc)
-			assert.True(t, ok)
+			svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
 			ctx := context.Background()
 
@@ -148,9 +147,7 @@ func TestQuerySvcsrvc_QueryResources(t *testing.T) {
 			mockOrgSearcher := mock.NewMockOrganizationSearcher()
 			tc.setupMocks(mockResourceSearcher, mockAccessChecker)
 
-			service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
-			svc, ok := service.(*querySvcsrvc)
-			assert.True(t, ok)
+			svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
 			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "test-user")
 
@@ -174,46 +171,65 @@ func TestQuerySvcsrvc_QueryResources(t *testing.T) {
 }
 
 func TestQuerySvcsrvc_QueryResourcesCount(t *testing.T) {
+	intPtr := func(v int) *int { return &v }
+
+	// The default mock searcher carries one public project and two private
+	// committees (committee:123#member, committee:567#member); see
+	// mock.NewMockResourceSearcher.
 	tests := []struct {
 		name              string
 		payload           *querysvc.QueryResourcesCountPayload
+		principal         string
 		setupMocks        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
 		expectedError     bool
 		expectedErrorType interface{}
+		expectedErrorText string
 		expectedCount     uint64
+		check             func(*testing.T, *querysvc.QueryResourcesCountResult)
 	}{
 		{
-			name: "successful count query",
+			name: "authenticated count adds granted private buckets to the public count",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Type:    stringPtr("committee"),
+			},
+			principal: "test-user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				accessChecker.DefaultResult = "allowed"
+			},
+			expectedCount: 2,
+			check: func(t *testing.T, result *querysvc.QueryResourcesCountResult) {
+				assert.False(t, result.HasMore)
+				assert.Nil(t, result.Groups)
+				assert.Nil(t, result.MetricValue)
+				assert.Nil(t, result.CacheControl)
+			},
+		},
+		{
+			name: "denied private buckets are not counted",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Type:    stringPtr("committee"),
+			},
+			principal: "test-user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				accessChecker.DefaultResult = "denied"
+			},
+			expectedCount: 0,
+		},
+		{
+			name: "anonymous count is public only and cacheable",
 			payload: &querysvc.QueryResourcesCountPayload{
 				Version: "1",
 				Type:    stringPtr("project"),
 			},
-			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				searcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count:   5,
-					HasMore: false,
-				})
-				accessChecker.DefaultResult = "allowed"
+			principal:     constants.AnonymousPrincipal,
+			setupMocks:    func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {},
+			expectedCount: 1,
+			check: func(t *testing.T, result *querysvc.QueryResourcesCountResult) {
+				assert.NotNil(t, result.CacheControl)
+				assert.Equal(t, constants.AnonymousCacheControlHeader, *result.CacheControl)
 			},
-			expectedError: false,
-			expectedCount: 5,
-		},
-		{
-			name: "successful count query with name filter",
-			payload: &querysvc.QueryResourcesCountPayload{
-				Version: "1",
-				Name:    stringPtr("Test"),
-				Type:    stringPtr("committee"),
-			},
-			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				searcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count:   2,
-					HasMore: false,
-				})
-				accessChecker.DefaultResult = "allowed"
-			},
-			expectedError: false,
-			expectedCount: 2,
 		},
 		{
 			name: "count query with tags",
@@ -221,43 +237,143 @@ func TestQuerySvcsrvc_QueryResourcesCount(t *testing.T) {
 				Version: "1",
 				Tags:    []string{"active", "governance"},
 			},
+			principal: "test-user",
 			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				searcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count:   10,
-					HasMore: true,
-				})
 				accessChecker.DefaultResult = "allowed"
 			},
-			expectedError: false,
-			expectedCount: 10,
+			// Every default mock resource carries the "active" tag; the one
+			// private resource with no access fields has no access key, so it
+			// cannot be counted (same as a malformed legacy document in the index).
+			expectedCount: 4,
 		},
 		{
-			name: "count query with parent filter",
+			name: "group_by returns groups over authorized resources",
 			payload: &querysvc.QueryResourcesCountPayload{
 				Version: "1",
-				Parent:  stringPtr("project:123"),
+				GroupBy: stringPtr("status"),
 			},
+			principal: "test-user",
 			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				searcher.SetQueryResourcesCountResponse(&model.CountResult{
-					Count:   3,
-					HasMore: false,
-				})
+				searcher.ClearResources()
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"status:a"}}, true))
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m2", map[string]any{"tags": []string{"status:a"}}, false))
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m3", map[string]any{"tags": []string{"status:b"}}, false))
 				accessChecker.DefaultResult = "allowed"
 			},
-			expectedError: false,
 			expectedCount: 3,
+			check: func(t *testing.T, result *querysvc.QueryResourcesCountResult) {
+				assert.NotNil(t, result.GroupsComplete)
+				assert.True(t, *result.GroupsComplete)
+				assert.Len(t, result.Groups, 2)
+				assert.Equal(t, "a", result.Groups[0].Key)
+				assert.Equal(t, uint64(2), result.Groups[0].Count)
+				assert.Equal(t, "b", result.Groups[1].Key)
+				assert.Equal(t, uint64(1), result.Groups[1].Count)
+			},
 		},
 		{
-			name: "count query with service error",
+			name: "group_by_size truncates and flags incomplete groups",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version:     "1",
+				GroupBy:     stringPtr("status"),
+				GroupBySize: intPtr(1),
+			},
+			principal: "test-user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				searcher.ClearResources()
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"status:a"}}, true))
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m3", map[string]any{"tags": []string{"status:b"}}, true))
+			},
+			expectedCount: 2,
+			check: func(t *testing.T, result *querysvc.QueryResourcesCountResult) {
+				assert.Len(t, result.Groups, 1)
+				assert.False(t, *result.GroupsComplete)
+			},
+		},
+		{
+			name: "cardinality metric counts distinct tag values over authorized resources",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Metric:  stringPtr("cardinality:email"),
+			},
+			principal: "test-user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				searcher.ClearResources()
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting_participant", "p1", map[string]any{"tags": []string{"email:a@x.org"}}, false))
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting_participant", "p2", map[string]any{"tags": []string{"email:a@x.org"}}, false))
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting_participant", "p3", map[string]any{"tags": []string{"email:b@y.org"}}, false))
+				accessChecker.DefaultResult = "allowed"
+			},
+			expectedCount: 3,
+			check: func(t *testing.T, result *querysvc.QueryResourcesCountResult) {
+				assert.Nil(t, result.Groups)
+				assert.NotNil(t, result.MetricValue)
+				assert.Equal(t, uint64(2), *result.MetricValue)
+				assert.True(t, *result.MetricComplete)
+			},
+		},
+		{
+			name: "sum metric is a 400 naming the reason",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Type:    stringPtr("v1_past_meeting"),
+				Metric:  stringPtr("sum:duration"),
+			},
+			principal:         "test-user",
+			setupMocks:        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {},
+			expectedError:     true,
+			expectedErrorType: &querysvc.BadRequestError{},
+			expectedErrorText: "sum is not available on this index",
+		},
+		{
+			name: "group_by with metric is a 400",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				GroupBy: stringPtr("project_uid"),
+				Metric:  stringPtr("cardinality:email"),
+			},
+			principal:         "test-user",
+			setupMocks:        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {},
+			expectedError:     true,
+			expectedErrorType: &querysvc.BadRequestError{},
+			expectedErrorText: "metric per group is not supported",
+		},
+		{
+			name: "invalid filter is a 400",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Filters: []string{"no-colon"},
+			},
+			principal:         "test-user",
+			setupMocks:        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {},
+			expectedError:     true,
+			expectedErrorType: &querysvc.BadRequestError{},
+		},
+		{
+			name: "public count failure is a 500",
 			payload: &querysvc.QueryResourcesCountPayload{
 				Version: "1",
 				Type:    stringPtr("invalid"),
 			},
+			principal: "test-user",
 			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
-				searcher.SetQueryResourcesCountError(fmt.Errorf("service error"))
+				searcher.SetCountPublicError(fmt.Errorf("service error"))
 			},
 			expectedError:     true,
 			expectedErrorType: &querysvc.InternalServerError{},
+		},
+		{
+			name: "access check failure during the walk is a 503, never a partial count",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Type:    stringPtr("committee"),
+			},
+			principal: "test-user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				accessChecker.SetCheckAccessError(fmt.Errorf("nats: no responders"))
+			},
+			expectedError:     true,
+			expectedErrorType: &querysvc.ServiceUnavailableError{},
 		},
 	}
 
@@ -269,11 +385,9 @@ func TestQuerySvcsrvc_QueryResourcesCount(t *testing.T) {
 			mockOrgSearcher := mock.NewMockOrganizationSearcher()
 			tc.setupMocks(mockResourceSearcher, mockAccessChecker)
 
-			service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
-			svc, ok := service.(*querySvcsrvc)
-			assert.True(t, ok)
+			svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
-			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "test-user")
+			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, tc.principal)
 
 			// Execute
 			result, err := svc.QueryResourcesCount(ctx, tc.payload)
@@ -284,13 +398,21 @@ func TestQuerySvcsrvc_QueryResourcesCount(t *testing.T) {
 				if tc.expectedErrorType != nil {
 					assert.IsType(t, tc.expectedErrorType, err)
 				}
+				if tc.expectedErrorText != "" {
+					// Goa error types return "" from Error(); the caller-facing text is Message.
+					badRequest, ok := err.(*querysvc.BadRequestError)
+					if assert.True(t, ok, "expected a BadRequestError") {
+						assert.Contains(t, badRequest.Message, tc.expectedErrorText)
+					}
+				}
 				assert.Nil(t, result)
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, result)
 				assert.Equal(t, tc.expectedCount, result.Count)
-				// HasMore is returned from the service
-				assert.NotNil(t, result.HasMore)
+				if tc.check != nil {
+					tc.check(t, result)
+				}
 			}
 		})
 	}
@@ -359,9 +481,7 @@ func TestQuerySvcsrvc_QueryOrgs(t *testing.T) {
 			mockOrgSearcher := mock.NewMockOrganizationSearcher()
 			tc.setupMocks(mockOrgSearcher)
 
-			service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
-			svc, ok := service.(*querySvcsrvc)
-			assert.True(t, ok)
+			svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
 			ctx := context.Background()
 
@@ -426,9 +546,7 @@ func TestQuerySvcsrvc_SuggestOrgs(t *testing.T) {
 			mockOrgSearcher := mock.NewMockOrganizationSearcher()
 			tc.setupMocks(mockOrgSearcher)
 
-			service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
-			svc, ok := service.(*querySvcsrvc)
-			assert.True(t, ok)
+			svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
 			ctx := context.Background()
 
@@ -478,9 +596,7 @@ func TestQuerySvcsrvc_Readyz(t *testing.T) {
 			mockOrgSearcher := mock.NewMockOrganizationSearcher()
 			tc.setupMocks(mockResourceSearcher)
 
-			service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
-			svc, ok := service.(*querySvcsrvc)
-			assert.True(t, ok)
+			svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
 			ctx := context.Background()
 
@@ -520,9 +636,7 @@ func TestQuerySvcsrvc_Livez(t *testing.T) {
 			mockResourceSearcher := mock.NewMockResourceSearcher()
 			mockAccessChecker := mock.NewMockAccessControlChecker()
 			mockOrgSearcher := mock.NewMockOrganizationSearcher()
-			service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
-			svc, ok := service.(*querySvcsrvc)
-			assert.True(t, ok)
+			svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
 			ctx := context.Background()
 
@@ -568,7 +682,8 @@ func TestNewQuerySvc(t *testing.T) {
 			resourceSearcher, accessChecker, orgSearcher := tc.setupMocks()
 
 			// Execute
-			result := NewQuerySvc(resourceSearcher, accessChecker, mock.NewMockResourceFilter(), orgSearcher, mock.NewMockAuthService())
+			result, err := NewQuerySvc(resourceSearcher, accessChecker, mock.NewMockResourceFilter(), orgSearcher, mock.NewMockAuthService(), service.DefaultConfig())
+			assert.NoError(t, err)
 
 			// Verify
 			if tc.expectNonNil {
@@ -592,10 +707,10 @@ func TestQuerySvcsrvc_InterfaceCompliance(t *testing.T) {
 	mockResourceSearcher := mock.NewMockResourceSearcher()
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mock.NewMockAuthService())
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mock.NewMockAuthService())
 
 	// Compile-time guarantee that querySvcsrvc satisfies querysvc.Service.
 	var _ querysvc.Service = (*querySvcsrvc)(nil)
 
-	assert.NotNil(t, service)
+	assert.NotNil(t, svc)
 }

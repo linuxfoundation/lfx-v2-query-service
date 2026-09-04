@@ -47,10 +47,6 @@ type SearchCriteria struct {
 	PublicOnly bool
 	// PrivateOnly indicates if only private resources should be returned
 	PrivateOnly bool
-	// GroupBy indicates the field to group by
-	GroupBy string
-	// GroupBySize indicates the size of the group by
-	GroupBySize int
 	// DateField is the field to filter by date range (auto-prefixed with "data.")
 	DateField *string
 	// DateFrom is the start date for range filter (inclusive, ISO 8601 or date-only)
@@ -79,10 +75,16 @@ type SearchResult struct {
 type CountResult struct {
 	// Count number of resources found
 	Count int
-	// Aggregations
-	Aggregation TermsAggregation
-	// HasMore indicates if there are more results
+	// HasMore indicates the count is not guaranteed to be exhaustive
 	HasMore bool
+	// Groups holds per-group counts when a group_by prefix was requested
+	Groups []CountGroup
+	// GroupsComplete is set when a group_by prefix was requested
+	GroupsComplete *bool
+	// MetricValue is set when a metric was requested
+	MetricValue *uint64
+	// MetricComplete is set when a metric was requested
+	MetricComplete *bool
 	// Cache control header
 	CacheControl *string
 }
