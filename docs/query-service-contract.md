@@ -201,8 +201,10 @@ The `name` parameter runs a `multi_match` of type `bool_prefix` with
 subfields. Every term in the query must match the document; the final term
 matches as a prefix so the field behaves as a typeahead while the user types.
 
-Because terms are AND-ed, adding a word can only narrow the result set. A query
-of `Cloud Native Computing` matches strictly fewer documents than `Cloud Native`.
+Because terms are AND-ed, adding a word can never broaden the result set. The
+matches for `Cloud Native Computing` are a subset of those for `Cloud Native` —
+usually a smaller one, and the same set when every existing match happens to
+contain the added term too.
 
 Two consequences are worth knowing before you build on this:
 
