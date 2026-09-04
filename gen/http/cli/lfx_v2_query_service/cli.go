@@ -92,6 +92,9 @@ func ParseEndpoint(
 		querySvcQueryResourcesCountFiltersFlag     = querySvcQueryResourcesCountFlags.String("filters", "", "")
 		querySvcQueryResourcesCountFiltersAllFlag  = querySvcQueryResourcesCountFlags.String("filters-all", "", "")
 		querySvcQueryResourcesCountFiltersOrFlag   = querySvcQueryResourcesCountFlags.String("filters-or", "", "")
+		querySvcQueryResourcesCountGroupByFlag     = querySvcQueryResourcesCountFlags.String("group-by", "", "")
+		querySvcQueryResourcesCountGroupBySizeFlag = querySvcQueryResourcesCountFlags.String("group-by-size", "", "")
+		querySvcQueryResourcesCountMetricFlag      = querySvcQueryResourcesCountFlags.String("metric", "", "")
 		querySvcQueryResourcesCountBearerTokenFlag = querySvcQueryResourcesCountFlags.String("bearer-token", "REQUIRED", "")
 
 		querySvcQueryOrgsFlags           = flag.NewFlagSet("query-orgs", flag.ExitOnError)
@@ -199,7 +202,7 @@ func ParseEndpoint(
 				data, err = querysvcc.BuildQueryResourcesPayload(*querySvcQueryResourcesVersionFlag, *querySvcQueryResourcesNameFlag, *querySvcQueryResourcesParentFlag, *querySvcQueryResourcesTypeFlag, *querySvcQueryResourcesTagsFlag, *querySvcQueryResourcesTagsAllFlag, *querySvcQueryResourcesDateFieldFlag, *querySvcQueryResourcesDateFromFlag, *querySvcQueryResourcesDateToFlag, *querySvcQueryResourcesFiltersFlag, *querySvcQueryResourcesFiltersAllFlag, *querySvcQueryResourcesFiltersOrFlag, *querySvcQueryResourcesCelFilterFlag, *querySvcQueryResourcesFilterGrantsFlag, *querySvcQueryResourcesSortFlag, *querySvcQueryResourcesPageTokenFlag, *querySvcQueryResourcesPageSizeFlag, *querySvcQueryResourcesBearerTokenFlag)
 			case "query-resources-count":
 				endpoint = c.QueryResourcesCount()
-				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountFiltersAllFlag, *querySvcQueryResourcesCountFiltersOrFlag, *querySvcQueryResourcesCountBearerTokenFlag)
+				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountFiltersAllFlag, *querySvcQueryResourcesCountFiltersOrFlag, *querySvcQueryResourcesCountGroupByFlag, *querySvcQueryResourcesCountGroupBySizeFlag, *querySvcQueryResourcesCountMetricFlag, *querySvcQueryResourcesCountBearerTokenFlag)
 			case "query-orgs":
 				endpoint = c.QueryOrgs()
 				data, err = querysvcc.BuildQueryOrgsPayload(*querySvcQueryOrgsVersionFlag, *querySvcQueryOrgsNameFlag, *querySvcQueryOrgsDomainFlag, *querySvcQueryOrgsBearerTokenFlag)
@@ -283,7 +286,7 @@ Example:
 }
 
 func querySvcQueryResourcesCountUsage() {
-	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources-count -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -filters-all JSON -filters-or JSON -bearer-token STRING
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources-count -version STRING -name STRING -parent STRING -type STRING -tags JSON -tags-all JSON -date-field STRING -date-from STRING -date-to STRING -filters JSON -filters-all JSON -filters-or JSON -group-by STRING -group-by-size INT -metric STRING -bearer-token STRING
 
 Count matching resources by query.
     -version STRING: 
@@ -298,6 +301,9 @@ Count matching resources by query.
     -filters JSON: 
     -filters-all JSON: 
     -filters-or JSON: 
+    -group-by STRING: 
+    -group-by-size INT: 
+    -metric STRING: 
     -bearer-token STRING: 
 
 Example:
@@ -316,7 +322,7 @@ Example:
    ]' --filters-or '[
       "mailing_list_id:abc",
       "mailing_list_id:xyz"
-   ]' --bearer-token "eyJhbGci..."
+   ]' --group-by "project_uid" --group-by-size 100 --metric "cardinality:email" --bearer-token "eyJhbGci..."
 `, os.Args[0])
 }
 

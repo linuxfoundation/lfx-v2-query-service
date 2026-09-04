@@ -29,6 +29,17 @@ type QueryResourcesCountResponseBody struct {
 	// True if count is not guaranteed to be exhaustive: client should request a
 	// narrower query
 	HasMore *bool `form:"has_more,omitempty" json:"has_more,omitempty" xml:"has_more,omitempty"`
+	// Per-group counts when group_by is set, ordered by count descending then key
+	// ascending
+	Groups []*CountGroupResponseBody `form:"groups,omitempty" json:"groups,omitempty" xml:"groups,omitempty"`
+	// True when every group is present; false when more groups exist than
+	// group_by_size
+	GroupsComplete *bool `form:"groups_complete,omitempty" json:"groups_complete,omitempty" xml:"groups_complete,omitempty"`
+	// Value of the requested metric
+	MetricValue *uint64 `form:"metric_value,omitempty" json:"metric_value,omitempty" xml:"metric_value,omitempty"`
+	// True when the metric was computed over every distinct value; false when it
+	// stopped at the cap
+	MetricComplete *bool `form:"metric_complete,omitempty" json:"metric_complete,omitempty" xml:"metric_complete,omitempty"`
 }
 
 // QueryOrgsResponseBody is the type of the "query-svc" service "query-orgs"
@@ -181,6 +192,14 @@ type ResourceResponseBody struct {
 	Data any `form:"data,omitempty" json:"data,omitempty" xml:"data,omitempty"`
 }
 
+// CountGroupResponseBody is used to define fields on response body types.
+type CountGroupResponseBody struct {
+	// Group key: the tag value with the group_by prefix stripped
+	Key *string `form:"key,omitempty" json:"key,omitempty" xml:"key,omitempty"`
+	// Number of authorized resources in the group
+	Count *uint64 `form:"count,omitempty" json:"count,omitempty" xml:"count,omitempty"`
+}
+
 // OrganizationSuggestionResponseBody is used to define fields on response body
 // types.
 type OrganizationSuggestionResponseBody struct {
@@ -241,8 +260,17 @@ func NewQueryResourcesServiceUnavailable(body *QueryResourcesServiceUnavailableR
 // "query-resources-count" endpoint result from a HTTP "OK" response.
 func NewQueryResourcesCountResultOK(body *QueryResourcesCountResponseBody, cacheControl *string) *querysvc.QueryResourcesCountResult {
 	v := &querysvc.QueryResourcesCountResult{
-		Count:   *body.Count,
-		HasMore: *body.HasMore,
+		Count:          *body.Count,
+		HasMore:        *body.HasMore,
+		GroupsComplete: body.GroupsComplete,
+		MetricValue:    body.MetricValue,
+		MetricComplete: body.MetricComplete,
+	}
+	if body.Groups != nil {
+		v.Groups = make([]*querysvc.CountGroup, len(body.Groups))
+		for i, val := range body.Groups {
+			v.Groups[i] = unmarshalCountGroupResponseBodyToQuerysvcCountGroup(val)
+		}
 	}
 	v.CacheControl = cacheControl
 
@@ -407,6 +435,13 @@ func ValidateQueryResourcesCountResponseBody(body *QueryResourcesCountResponseBo
 	if body.HasMore == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("has_more", "body"))
 	}
+	for _, e := range body.Groups {
+		if e != nil {
+			if err2 := ValidateCountGroupResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+	}
 	return
 }
 
@@ -564,6 +599,18 @@ func ValidateReadyzNotReadyResponseBody(body *ReadyzNotReadyResponseBody) (err e
 	}
 	if body.Fault == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("fault", "body"))
+	}
+	return
+}
+
+// ValidateCountGroupResponseBody runs the validations defined on
+// CountGroupResponseBody
+func ValidateCountGroupResponseBody(body *CountGroupResponseBody) (err error) {
+	if body.Key == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("key", "body"))
+	}
+	if body.Count == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("count", "body"))
 	}
 	return
 }

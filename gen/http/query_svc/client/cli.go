@@ -213,7 +213,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 
 // BuildQueryResourcesCountPayload builds the payload for the query-svc
 // query-resources-count endpoint from CLI flags.
-func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountFiltersAll string, querySvcQueryResourcesCountFiltersOr string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
+func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountFiltersAll string, querySvcQueryResourcesCountFiltersOr string, querySvcQueryResourcesCountGroupBy string, querySvcQueryResourcesCountGroupBySize string, querySvcQueryResourcesCountMetric string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
 	var err error
 	var version string
 	{
@@ -316,6 +316,52 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 			}
 		}
 	}
+	var groupBy *string
+	{
+		if querySvcQueryResourcesCountGroupBy != "" {
+			groupBy = &querySvcQueryResourcesCountGroupBy
+			err = goa.MergeErrors(err, goa.ValidatePattern("group_by", *groupBy, "^[a-z][a-z0-9_]*$"))
+			if utf8.RuneCountInString(*groupBy) > 64 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("group_by", *groupBy, utf8.RuneCountInString(*groupBy), 64, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var groupBySize *int
+	{
+		if querySvcQueryResourcesCountGroupBySize != "" {
+			var v int64
+			v, err = strconv.ParseInt(querySvcQueryResourcesCountGroupBySize, 10, strconv.IntSize)
+			val := int(v)
+			groupBySize = &val
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for groupBySize, must be INT")
+			}
+			if *groupBySize < 1 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("group_by_size", *groupBySize, 1, true))
+			}
+			if *groupBySize > 1000 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("group_by_size", *groupBySize, 1000, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var metric *string
+	{
+		if querySvcQueryResourcesCountMetric != "" {
+			metric = &querySvcQueryResourcesCountMetric
+			if utf8.RuneCountInString(*metric) > 80 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("metric", *metric, utf8.RuneCountInString(*metric), 80, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var bearerToken string
 	{
 		bearerToken = querySvcQueryResourcesCountBearerToken
@@ -333,6 +379,9 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 	v.Filters = filters
 	v.FiltersAll = filtersAll
 	v.FiltersOr = filtersOr
+	v.GroupBy = groupBy
+	v.GroupBySize = groupBySize
+	v.Metric = metric
 	v.BearerToken = bearerToken
 
 	return v, nil

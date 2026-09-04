@@ -58,6 +58,14 @@ type BadRequestError struct {
 	Message string
 }
 
+// One group of a grouped resource count.
+type CountGroup struct {
+	// Group key: the tag value with the group_by prefix stripped
+	Key string
+	// Number of authorized resources in the group
+	Count uint64
+}
+
 type InternalServerError struct {
 	// Error message
 	Message string
@@ -146,6 +154,14 @@ type QueryResourcesCountPayload struct {
 	// prefixed with 'data.'. Matches resources that satisfy at least one of the
 	// provided filters.
 	FiltersOr []string
+	// Tag prefix to group the count by; groups are keyed by the tag value after
+	// '<prefix>:'
+	GroupBy *string
+	// Maximum number of groups returned
+	GroupBySize *int
+	// Metric to compute over the authorized resources; only
+	// 'cardinality:<tag_prefix>' is supported
+	Metric *string
 }
 
 // QueryResourcesCountResult is the result type of the query-svc service
@@ -156,6 +172,17 @@ type QueryResourcesCountResult struct {
 	// True if count is not guaranteed to be exhaustive: client should request a
 	// narrower query
 	HasMore bool
+	// Per-group counts when group_by is set, ordered by count descending then key
+	// ascending
+	Groups []*CountGroup
+	// True when every group is present; false when more groups exist than
+	// group_by_size
+	GroupsComplete *bool
+	// Value of the requested metric
+	MetricValue *uint64
+	// True when the metric was computed over every distinct value; false when it
+	// stopped at the cap
+	MetricComplete *bool
 	// Cache control header
 	CacheControl *string
 }

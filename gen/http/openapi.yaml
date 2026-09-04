@@ -383,6 +383,26 @@ paths:
                   items:
                     type: string
                   collectionFormat: multi
+                - name: group_by
+                  in: query
+                  description: Tag prefix to group the count by; groups are keyed by the tag value after '<prefix>:'
+                  required: false
+                  type: string
+                  maxLength: 64
+                  pattern: ^[a-z][a-z0-9_]*$
+                - name: group_by_size
+                  in: query
+                  description: Maximum number of groups returned
+                  required: false
+                  type: integer
+                  maximum: 1000
+                  minimum: 1
+                - name: metric
+                  in: query
+                  description: Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' is supported
+                  required: false
+                  type: string
+                  maxLength: 80
                 - name: Authorization
                   in: header
                   description: JWT token issued by Heimdall
@@ -436,6 +456,26 @@ definitions:
             message: The request was invalid.
         required:
             - message
+    CountGroup:
+        title: CountGroup
+        type: object
+        properties:
+            count:
+                type: integer
+                description: Number of authorized resources in the group
+                example: 12
+                format: int64
+            key:
+                type: string
+                description: 'Group key: the tag value with the group_by prefix stripped'
+                example: a1b2c3d4
+        description: One group of a grouped resource count.
+        example:
+            count: 12
+            key: a1b2c3d4
+        required:
+            - key
+            - count
     InternalServerError:
         title: InternalServerError
         type: object
@@ -525,13 +565,52 @@ definitions:
                 description: Count of resources found
                 example: 1234
                 format: int64
+            groups:
+                type: array
+                items:
+                    $ref: '#/definitions/CountGroup'
+                description: Per-group counts when group_by is set, ordered by count descending then key ascending
+                example:
+                    - count: 12
+                      key: a1b2c3d4
+                    - count: 12
+                      key: a1b2c3d4
+                    - count: 12
+                      key: a1b2c3d4
+                    - count: 12
+                      key: a1b2c3d4
+            groups_complete:
+                type: boolean
+                description: True when every group is present; false when more groups exist than group_by_size
+                example: true
             has_more:
                 type: boolean
                 description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
                 example: false
+            metric_complete:
+                type: boolean
+                description: True when the metric was computed over every distinct value; false when it stopped at the cap
+                example: true
+            metric_value:
+                type: integer
+                description: Value of the requested metric
+                example: 42
+                format: int64
         example:
             count: 1234
+            groups:
+                - count: 12
+                  key: a1b2c3d4
+                - count: 12
+                  key: a1b2c3d4
+                - count: 12
+                  key: a1b2c3d4
+                - count: 12
+                  key: a1b2c3d4
+            groups_complete: true
             has_more: false
+            metric_complete: true
+            metric_value: 42
         required:
             - count
             - has_more
@@ -549,12 +628,6 @@ definitions:
                     $ref: '#/definitions/Resource'
                 description: Resources found
                 example:
-                    - data:
-                        id: "123"
-                        name: My committee
-                        description: a committee
-                      id: "123"
-                      type: committee
                     - data:
                         id: "123"
                         name: My committee
@@ -618,14 +691,8 @@ definitions:
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
-                    - domain: linuxfoundation.org
-                      logo: https://example.com/logo.png
-                      name: Linux Foundation
         example:
             suggestions:
-                - domain: linuxfoundation.org
-                  logo: https://example.com/logo.png
-                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation

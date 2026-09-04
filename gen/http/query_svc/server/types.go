@@ -29,6 +29,17 @@ type QueryResourcesCountResponseBody struct {
 	// True if count is not guaranteed to be exhaustive: client should request a
 	// narrower query
 	HasMore bool `form:"has_more" json:"has_more" xml:"has_more"`
+	// Per-group counts when group_by is set, ordered by count descending then key
+	// ascending
+	Groups []*CountGroupResponseBody `form:"groups,omitempty" json:"groups,omitempty" xml:"groups,omitempty"`
+	// True when every group is present; false when more groups exist than
+	// group_by_size
+	GroupsComplete *bool `form:"groups_complete,omitempty" json:"groups_complete,omitempty" xml:"groups_complete,omitempty"`
+	// Value of the requested metric
+	MetricValue *uint64 `form:"metric_value,omitempty" json:"metric_value,omitempty" xml:"metric_value,omitempty"`
+	// True when the metric was computed over every distinct value; false when it
+	// stopped at the cap
+	MetricComplete *bool `form:"metric_complete,omitempty" json:"metric_complete,omitempty" xml:"metric_complete,omitempty"`
 }
 
 // QueryOrgsResponseBody is the type of the "query-svc" service "query-orgs"
@@ -181,6 +192,14 @@ type ResourceResponseBody struct {
 	Data any `form:"data,omitempty" json:"data,omitempty" xml:"data,omitempty"`
 }
 
+// CountGroupResponseBody is used to define fields on response body types.
+type CountGroupResponseBody struct {
+	// Group key: the tag value with the group_by prefix stripped
+	Key string `form:"key" json:"key" xml:"key"`
+	// Number of authorized resources in the group
+	Count uint64 `form:"count" json:"count" xml:"count"`
+}
+
 // OrganizationSuggestionResponseBody is used to define fields on response body
 // types.
 type OrganizationSuggestionResponseBody struct {
@@ -213,8 +232,17 @@ func NewQueryResourcesResponseBody(res *querysvc.QueryResourcesResult) *QueryRes
 // result of the "query-resources-count" endpoint of the "query-svc" service.
 func NewQueryResourcesCountResponseBody(res *querysvc.QueryResourcesCountResult) *QueryResourcesCountResponseBody {
 	body := &QueryResourcesCountResponseBody{
-		Count:   res.Count,
-		HasMore: res.HasMore,
+		Count:          res.Count,
+		HasMore:        res.HasMore,
+		GroupsComplete: res.GroupsComplete,
+		MetricValue:    res.MetricValue,
+		MetricComplete: res.MetricComplete,
+	}
+	if res.Groups != nil {
+		body.Groups = make([]*CountGroupResponseBody, len(res.Groups))
+		for i, val := range res.Groups {
+			body.Groups[i] = marshalQuerysvcCountGroupToCountGroupResponseBody(val)
+		}
 	}
 	return body
 }
@@ -411,7 +439,7 @@ func NewQueryResourcesPayload(version string, name *string, parent *string, type
 
 // NewQueryResourcesCountPayload builds a query-svc service
 // query-resources-count endpoint payload.
-func NewQueryResourcesCountPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, dateField *string, dateFrom *string, dateTo *string, filters []string, filtersAll []string, filtersOr []string, bearerToken string) *querysvc.QueryResourcesCountPayload {
+func NewQueryResourcesCountPayload(version string, name *string, parent *string, type_ *string, tags []string, tagsAll []string, dateField *string, dateFrom *string, dateTo *string, filters []string, filtersAll []string, filtersOr []string, groupBy *string, groupBySize *int, metric *string, bearerToken string) *querysvc.QueryResourcesCountPayload {
 	v := &querysvc.QueryResourcesCountPayload{}
 	v.Version = version
 	v.Name = name
@@ -425,6 +453,9 @@ func NewQueryResourcesCountPayload(version string, name *string, parent *string,
 	v.Filters = filters
 	v.FiltersAll = filtersAll
 	v.FiltersOr = filtersOr
+	v.GroupBy = groupBy
+	v.GroupBySize = groupBySize
+	v.Metric = metric
 	v.BearerToken = bearerToken
 
 	return v
