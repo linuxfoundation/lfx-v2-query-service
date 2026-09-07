@@ -157,10 +157,10 @@ type QueryResourcesCountPayload struct {
 	// Tag prefix to group the count by; groups are keyed by the tag value after
 	// '<prefix>:'
 	GroupBy *string
-	// Maximum number of groups returned
+	// Maximum number of groups returned (default 100)
 	GroupBySize *int
 	// Metric to compute over the authorized resources; only
-	// 'cardinality:<tag_prefix>' is supported
+	// 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported
 	Metric *string
 }
 
@@ -173,15 +173,15 @@ type QueryResourcesCountResult struct {
 	// narrower query
 	HasMore bool
 	// Per-group counts when group_by is set, ordered by count descending then key
-	// ascending
+	// ascending; omitted when no group matched
 	Groups []*CountGroup
 	// True when every group is present; false when more groups exist than
-	// group_by_size
+	// group_by_size or when has_more is true
 	GroupsComplete *bool
 	// Value of the requested metric
 	MetricValue *uint64
 	// True when the metric was computed over every distinct value; false when it
-	// stopped at the cap
+	// stopped at the cap or when has_more is true
 	MetricComplete *bool
 	// Cache control header
 	CacheControl *string

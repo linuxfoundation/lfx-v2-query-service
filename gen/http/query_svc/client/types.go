@@ -30,15 +30,15 @@ type QueryResourcesCountResponseBody struct {
 	// narrower query
 	HasMore *bool `form:"has_more,omitempty" json:"has_more,omitempty" xml:"has_more,omitempty"`
 	// Per-group counts when group_by is set, ordered by count descending then key
-	// ascending
+	// ascending; omitted when no group matched
 	Groups []*CountGroupResponseBody `form:"groups,omitempty" json:"groups,omitempty" xml:"groups,omitempty"`
 	// True when every group is present; false when more groups exist than
-	// group_by_size
+	// group_by_size or when has_more is true
 	GroupsComplete *bool `form:"groups_complete,omitempty" json:"groups_complete,omitempty" xml:"groups_complete,omitempty"`
 	// Value of the requested metric
 	MetricValue *uint64 `form:"metric_value,omitempty" json:"metric_value,omitempty" xml:"metric_value,omitempty"`
 	// True when the metric was computed over every distinct value; false when it
-	// stopped at the cap
+	// stopped at the cap or when has_more is true
 	MetricComplete *bool `form:"metric_complete,omitempty" json:"metric_complete,omitempty" xml:"metric_complete,omitempty"`
 }
 

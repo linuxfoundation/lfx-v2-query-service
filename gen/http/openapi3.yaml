@@ -612,11 +612,11 @@ paths:
                   example: project_uid
                 - name: group_by_size
                   in: query
-                  description: Maximum number of groups returned
+                  description: Maximum number of groups returned (default 100)
                   allowEmptyValue: true
                   schema:
                     type: integer
-                    description: Maximum number of groups returned
+                    description: Maximum number of groups returned (default 100)
                     example: 100
                     format: int64
                     minimum: 1
@@ -624,11 +624,11 @@ paths:
                   example: 100
                 - name: metric
                   in: query
-                  description: Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' is supported
+                  description: Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported
                   allowEmptyValue: true
                   schema:
                     type: string
-                    description: Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' is supported
+                    description: Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported
                     example: cardinality:email
                     maxLength: 80
                   example: cardinality:email
@@ -807,7 +807,7 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/CountGroup'
-                    description: Per-group counts when group_by is set, ordered by count descending then key ascending
+                    description: Per-group counts when group_by is set, ordered by count descending then key ascending; omitted when no group matched
                     example:
                         - count: 12
                           key: a1b2c3d4
@@ -819,7 +819,7 @@ components:
                           key: a1b2c3d4
                 groups_complete:
                     type: boolean
-                    description: True when every group is present; false when more groups exist than group_by_size
+                    description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
                     example: true
                 has_more:
                     type: boolean
@@ -827,7 +827,7 @@ components:
                     example: false
                 metric_complete:
                     type: boolean
-                    description: True when the metric was computed over every distinct value; false when it stopped at the cap
+                    description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
                     example: true
                 metric_value:
                     type: integer

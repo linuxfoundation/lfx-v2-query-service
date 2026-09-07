@@ -143,8 +143,8 @@ GET /query/resources/count?v=1&type=v1_past_meeting&date_field=start_time&date_f
 
 `start_time` is the occurrence's start, so the window is "when the meeting
 happened". The count is computed only over the meetings the caller may see;
-`has_more` stays `false` for any number of meetings unless the walk exceeds
-`COUNT_MAX_ACCESS_BUCKETS`. `group_by` and `metric` cannot be combined: call
+`has_more` stays `false` for any number of meetings unless the walk reaches
+`COUNT_MAX_ACCESS_BUCKETS` buckets. `group_by` and `metric` cannot be combined: call
 `group_by` once, then `metric` per group with `tags=project_uid:<uid>`. See
 [Mapping the count route depends on](query-service-contract.md#mapping-the-count-route-depends-on)
 for why only tag prefixes can be grouped on.

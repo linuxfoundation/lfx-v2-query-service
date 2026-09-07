@@ -109,7 +109,7 @@ Returns:
 | Field | Present | Meaning |
 | --- | --- | --- |
 | `count` | always | Matching documents the caller may see |
-| `has_more` | always | `true` when the count is not guaranteed exhaustive (the access-bucket walk stopped at `COUNT_MAX_ACCESS_BUCKETS`) |
+| `has_more` | always | `true` when the count is not guaranteed exhaustive: the access-bucket walk stopped at `COUNT_MAX_ACCESS_BUCKETS`, or OpenSearch returned a full page without a continuation cursor (logged as a warning) |
 | `groups` | with `group_by`, when non-empty | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag. Per-group counts are exact up to `shard_size = min(group_by_size × 5, 5000)` terms per shard. Omitted (not `[]`) when no group matched; `groups_complete` is the signal that `group_by` was honoured |
 | `groups_complete` | with `group_by` | `true` when every group is present; `false` when more groups exist than `group_by_size`, **or** when `has_more` is `true` (the groups were computed over a truncated authorized set) |
 | `metric_value` | with `metric` | The cardinality |
@@ -135,8 +135,12 @@ For an authenticated principal:
    have been walked, the walk stops without requesting the next page and
    `has_more` is `true`; pages are never split. A failed access check is a
    `503`: a count is never returned as if complete when part of the authorized
-   set is unknown.
-3. **Groups / metric** — a second aggregation search filtered to the
+   set is unknown. Likewise an OpenSearch response with a failed shard or a
+   timeout is a `503` (`allow_partial_search_results=false` is sent), never a
+   smaller number.
+3. **Groups / metric** — skipped when nothing is visible to the caller (no
+   public document matched and no private key was granted: empty groups,
+   metric 0). Otherwise a second aggregation search filtered to the
    *authorized set*: `public: true` OR `access_check_query` in the granted keys
    (at most `COUNT_MAX_ACCESS_BUCKETS` values, below OpenSearch's
    `index.max_terms_count` default of 65536). `group_by` is a `terms`

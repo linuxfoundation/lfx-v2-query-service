@@ -179,12 +179,12 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Pattern(`^[a-z][a-z0-9_]*$`)
 				dsl.MaxLength(64)
 			})
-			dsl.Attribute("group_by_size", dsl.Int, "Maximum number of groups returned", func() {
+			dsl.Attribute("group_by_size", dsl.Int, "Maximum number of groups returned (default 100)", func() {
 				dsl.Example(100)
 				dsl.Minimum(1)
 				dsl.Maximum(1000)
 			})
-			dsl.Attribute("metric", dsl.String, "Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' is supported", func() {
+			dsl.Attribute("metric", dsl.String, "Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported", func() {
 				dsl.Example("cardinality:email")
 				dsl.MaxLength(80)
 			})
@@ -198,14 +198,14 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("has_more", dsl.Boolean, "True if count is not guaranteed to be exhaustive: client should request a narrower query", func() {
 				dsl.Example(false)
 			})
-			dsl.Attribute("groups", dsl.ArrayOf(CountGroup), "Per-group counts when group_by is set, ordered by count descending then key ascending")
-			dsl.Attribute("groups_complete", dsl.Boolean, "True when every group is present; false when more groups exist than group_by_size", func() {
+			dsl.Attribute("groups", dsl.ArrayOf(CountGroup), "Per-group counts when group_by is set, ordered by count descending then key ascending; omitted when no group matched")
+			dsl.Attribute("groups_complete", dsl.Boolean, "True when every group is present; false when more groups exist than group_by_size or when has_more is true", func() {
 				dsl.Example(true)
 			})
 			dsl.Attribute("metric_value", dsl.UInt64, "Value of the requested metric", func() {
 				dsl.Example(42)
 			})
-			dsl.Attribute("metric_complete", dsl.Boolean, "True when the metric was computed over every distinct value; false when it stopped at the cap", func() {
+			dsl.Attribute("metric_complete", dsl.Boolean, "True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true", func() {
 				dsl.Example(true)
 			})
 			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
