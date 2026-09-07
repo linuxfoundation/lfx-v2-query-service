@@ -220,9 +220,13 @@ func (os *OpenSearchSearcher) AccessBuckets(ctx context.Context, criteria model.
 		// Not expected: the converter always builds the walk criteria with PrivateOnly.
 		return nil, fmt.Errorf("AccessBuckets requires PrivateOnly criteria")
 	}
+	accessKeyField, err := os.resolveAccessKeyField(ctx)
+	if err != nil {
+		return nil, err
+	}
 	params := countAggregationParams{
 		Criteria:       criteria,
-		AccessKeyField: os.resolveAccessKeyField(ctx),
+		AccessKeyField: accessKeyField,
 		AccessWalk:     true,
 		PageSize:       request.PageSize,
 	}
@@ -278,10 +282,19 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 
 	base := countAggregationParams{
 		Criteria:         criteria,
-		AccessKeyField:   os.resolveAccessKeyField(ctx),
 		AuthorizedFilter: true,
 		IncludePublic:    aggregation.IncludePublic,
 		AuthorizedKeys:   aggregation.AuthorizedKeys,
+	}
+	// The access field is only needed to render the granted-keys terms
+	// clause. Anonymous callers (public only) never touch it, so a mapping
+	// read that is failing cannot affect their answers.
+	if len(aggregation.AuthorizedKeys) > 0 {
+		accessKeyField, err := os.resolveAccessKeyField(ctx)
+		if err != nil {
+			return nil, err
+		}
+		base.AccessKeyField = accessKeyField
 	}
 
 	if aggregation.GroupByPrefix != "" {
@@ -468,21 +481,22 @@ func luceneQuoteMeta(s string) string {
 //
 //   - access_check_query mapped as keyword          -> "access_check_query"
 //   - text with a keyword subfield                  -> "access_check_query.keyword"
-//   - anything else                                 -> "access_check_query.keyword"
-//     (the pre-existing behaviour), with a warning.
+//   - anything else (unexpected shape)              -> "access_check_query.keyword"
+//     (the pre-existing behaviour), with a warning
+//   - the mapping read itself FAILS                  -> ServiceUnavailable
 //
-// A successful read is memoized for the life of the process. A failed
-// mapping call is not: the default is used with a warning and the read is
-// retried after accessKeyFieldRetryInterval, so a transient OpenSearch error
-// at boot cannot pin the wrong field (and the silent zero buckets it
-// produces on a plain-keyword index) until a restart, while a persistent
-// failure does not put a network call on every request. The mapping call
-// itself runs outside the lock so concurrent requests are not serialized
-// behind it.
+// An unexpected shape is a static property of the index, caught at first
+// use and memoized with its warning. A failed read is transient and is not
+// memoized: authenticated counts answer 503 until the read is retried after
+// accessKeyFieldRetryInterval, because on a plain-keyword index guessing
+// the field would silently return the public count as if exhaustive — the
+// failure this route exists to remove. Anonymous public counts do not need
+// the field and are unaffected. The read runs outside the lock so
+// concurrent requests are not serialized behind it.
 //
 // It also warns when tags is not keyword or data is not flat_object, since
 // the grouped count and the cardinality metric depend on both.
-func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string {
+func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) (string, error) {
 	now := time.Now
 	if os.now != nil {
 		now = os.now
@@ -492,11 +506,11 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string 
 	if os.accessKeyField != "" {
 		field := os.accessKeyField
 		os.accessKeyFieldMu.Unlock()
-		return field
+		return field, nil
 	}
 	if !os.accessKeyFieldRetryAt.IsZero() && now().Before(os.accessKeyFieldRetryAt) {
 		os.accessKeyFieldMu.Unlock()
-		return accessCheckQueryKeywordField
+		return "", errors.NewServiceUnavailable("index mapping unavailable; access-checked counts cannot be answered until the next mapping read")
 	}
 	os.accessKeyFieldMu.Unlock()
 
@@ -515,17 +529,16 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string 
 	defer os.accessKeyFieldMu.Unlock()
 	if os.accessKeyField != "" {
 		// Another request resolved it while this one was on the wire.
-		return os.accessKeyField
+		return os.accessKeyField, nil
 	}
 	if err != nil {
 		os.accessKeyFieldRetryAt = now().Add(accessKeyFieldRetryInterval)
-		slog.WarnContext(ctx, "could not read index mapping; using default access key field until the next retry",
+		slog.WarnContext(ctx, "could not read index mapping; access-checked counts fail closed until the next retry",
 			"index", os.index,
-			"access_key_field", accessCheckQueryKeywordField,
 			"retry_after", accessKeyFieldRetryInterval,
 			"error", err,
 		)
-		return accessCheckQueryKeywordField
+		return "", errors.NewServiceUnavailable("index mapping unavailable; access-checked counts cannot be answered until the next mapping read", err)
 	}
 
 	field, resolved := accessKeyFieldFromMapping(mapping)
@@ -557,7 +570,7 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string 
 		"index", os.index,
 		"access_key_field", os.accessKeyField,
 	)
-	return os.accessKeyField
+	return os.accessKeyField, nil
 }
 
 // accessKeyFieldFromMapping applies the resolution table of

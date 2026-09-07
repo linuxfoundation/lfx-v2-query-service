@@ -13,6 +13,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/service"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"goa.design/goa/v3/security"
 )
@@ -361,6 +362,33 @@ func TestQuerySvcsrvc_QueryResourcesCount(t *testing.T) {
 			},
 			expectedError:     true,
 			expectedErrorType: &querysvc.InternalServerError{},
+		},
+		{
+			name: "an unavailable index mapping is a 503 for an authenticated count, never a public-only number",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Type:    stringPtr("committee"),
+			},
+			principal: "test-user",
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				// The searcher surfaces the mapping failure the same way the
+				// OpenSearch adapter does: ServiceUnavailable from AccessBuckets.
+				searcher.SetAccessBucketsError(errors.NewServiceUnavailable("index mapping unavailable"))
+			},
+			expectedError:     true,
+			expectedErrorType: &querysvc.ServiceUnavailableError{},
+		},
+		{
+			name: "anonymous count is unaffected by an unavailable index mapping",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Version: "1",
+				Type:    stringPtr("project"),
+			},
+			principal: constants.AnonymousPrincipal,
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				searcher.SetAccessBucketsError(errors.NewServiceUnavailable("index mapping unavailable"))
+			},
+			expectedCount: 1,
 		},
 		{
 			name: "access check failure during the walk is a 503, never a partial count",

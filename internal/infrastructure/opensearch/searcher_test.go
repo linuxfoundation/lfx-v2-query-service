@@ -4,10 +4,12 @@
 package opensearch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"sync"
 	"testing"
@@ -15,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
+	pkgerrors "github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1154,16 +1157,28 @@ func TestTagPrefixInclude(t *testing.T) {
 	assert.Equal(t, `a\.b\*:.*`, tagPrefixInclude("a.b*"))
 }
 
+// captureLogs installs a JSON slog handler for the test and returns the
+// buffer it writes to.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buf
+}
+
 func TestResolveAccessKeyField(t *testing.T) {
 	tests := []struct {
-		name     string
-		mapping  *IndexMapping
-		err      error
-		expected string
+		name        string
+		mapping     *IndexMapping
+		expected    string
+		expectWarn  bool
+		warnMessage string
 	}{
 		{
 			name:     "keyword mapping uses the field itself",
-			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}}},
+			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}, "tags": {Type: "keyword"}, "data": {Type: "flat_object"}}},
 			expected: accessCheckQueryField,
 		},
 		{
@@ -1174,56 +1189,84 @@ func TestResolveAccessKeyField(t *testing.T) {
 			expected: accessCheckQueryKeywordField,
 		},
 		{
-			name:     "text without keyword subfield falls back to the subfield with a warning",
-			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "text"}}},
-			expected: accessCheckQueryKeywordField,
+			name:        "unexpected shape (text without keyword subfield) falls back to the subfield with a warning",
+			mapping:     &IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "text"}}},
+			expected:    accessCheckQueryKeywordField,
+			expectWarn:  true,
+			warnMessage: "unexpected access_check_query mapping",
 		},
 		{
-			name:     "missing field falls back",
-			mapping:  &IndexMapping{Properties: map[string]FieldMapping{"tags": {Type: "keyword"}}},
-			expected: accessCheckQueryKeywordField,
+			name:        "unexpected shape (field missing) falls back with a warning",
+			mapping:     &IndexMapping{Properties: map[string]FieldMapping{"tags": {Type: "keyword"}}},
+			expected:    accessCheckQueryKeywordField,
+			expectWarn:  true,
+			warnMessage: "unexpected access_check_query mapping",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			logs := captureLogs(t)
 			client := NewMockOpenSearchClient()
 			client.SetMappingResponse(tc.mapping)
 			searcher := &OpenSearchSearcher{client: client, index: "test-index"}
 
-			assert.Equal(t, tc.expected, searcher.resolveAccessKeyField(context.Background()))
-			// A successful read is memoized.
-			assert.Equal(t, tc.expected, searcher.resolveAccessKeyField(context.Background()))
+			field, err := searcher.resolveAccessKeyField(context.Background())
+			assert.NoError(t, err, "an unexpected shape is a static property of the index: fall back, do not fail")
+			assert.Equal(t, tc.expected, field)
+			// A successful read (whatever its shape) is memoized.
+			field, err = searcher.resolveAccessKeyField(context.Background())
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, field)
 			assert.Equal(t, 1, client.mappingCalls)
+
+			assert.Contains(t, logs.String(), `"msg":"resolved access key field"`)
+			if tc.expectWarn {
+				assert.Contains(t, logs.String(), tc.warnMessage)
+				assert.Contains(t, logs.String(), `"level":"WARN"`)
+			} else {
+				assert.NotContains(t, logs.String(), "unexpected access_check_query mapping")
+			}
 		})
 	}
 
-	t.Run("mapping call failure falls back, retries after the interval, and is never memoized", func(t *testing.T) {
+	t.Run("a failed read fails closed, retries after the interval, and is never memoized", func(t *testing.T) {
+		logs := captureLogs(t)
 		client := NewMockOpenSearchClient()
 		client.SetMappingError(errors.New("boom"))
 		clock := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
 		searcher := &OpenSearchSearcher{client: client, index: "test-index", now: func() time.Time { return clock }}
 
-		// First failure: one call, default field, retry window opens.
-		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
-		assert.Equal(t, 1, client.mappingCalls)
+		var unavailable pkgerrors.ServiceUnavailable
 
-		// Inside the window: no network call, still the default.
+		// First failure: one call, ServiceUnavailable, retry window opens.
+		_, err := searcher.resolveAccessKeyField(context.Background())
+		assert.True(t, errors.As(err, &unavailable), "got %v", err)
+		assert.Equal(t, 1, client.mappingCalls)
+		assert.Contains(t, logs.String(), "fail closed until the next retry")
+
+		// Inside the window: no network call, still unavailable.
 		clock = clock.Add(accessKeyFieldRetryInterval / 2)
-		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+		_, err = searcher.resolveAccessKeyField(context.Background())
+		assert.True(t, errors.As(err, &unavailable), "got %v", err)
 		assert.Equal(t, 1, client.mappingCalls, "a persistent failure must not cost a call per request")
 
 		// After the window: retried, still failing, window reopens.
 		clock = clock.Add(accessKeyFieldRetryInterval)
-		assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+		_, err = searcher.resolveAccessKeyField(context.Background())
+		assert.True(t, errors.As(err, &unavailable), "got %v", err)
 		assert.Equal(t, 2, client.mappingCalls, "a failure must not be memoized")
 
 		// Once the mapping is readable the real field is resolved and kept.
 		clock = clock.Add(accessKeyFieldRetryInterval)
 		client.SetMappingError(nil)
 		client.SetMappingResponse(&IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "keyword"}}})
-		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
-		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
+		field, err := searcher.resolveAccessKeyField(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, accessCheckQueryField, field)
+		field, err = searcher.resolveAccessKeyField(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, accessCheckQueryField, field)
 		assert.Equal(t, 3, client.mappingCalls)
 	})
 
@@ -1236,8 +1279,9 @@ func TestResolveAccessKeyField(t *testing.T) {
 
 		cancelled, cancel := context.WithCancel(context.Background())
 		cancel()
-		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(cancelled),
-			"the read runs on a context decoupled from the caller, so it succeeds")
+		field, err := searcher.resolveAccessKeyField(cancelled)
+		assert.NoError(t, err, "the read runs on a context decoupled from the caller, so it succeeds")
+		assert.Equal(t, accessCheckQueryField, field)
 		assert.Equal(t, 1, client.mappingCalls)
 	})
 
@@ -1251,7 +1295,9 @@ func TestResolveAccessKeyField(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
+				field, err := searcher.resolveAccessKeyField(context.Background())
+				assert.NoError(t, err)
+				assert.Equal(t, accessCheckQueryField, field)
 			}()
 		}
 		wg.Wait()
@@ -1259,7 +1305,9 @@ func TestResolveAccessKeyField(t *testing.T) {
 		// may race it on first use; every one of them must agree afterwards,
 		// and it must not be called again.
 		before := client.mappingCalls
-		assert.Equal(t, accessCheckQueryField, searcher.resolveAccessKeyField(context.Background()))
+		field, err := searcher.resolveAccessKeyField(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, accessCheckQueryField, field)
 		assert.Equal(t, before, client.mappingCalls)
 	})
 
@@ -1267,7 +1315,9 @@ func TestResolveAccessKeyField(t *testing.T) {
 		client := NewMockOpenSearchClient() // GetMapping returns (nil, nil)
 		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
 		assert.NotPanics(t, func() {
-			assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+			_, err := searcher.resolveAccessKeyField(context.Background())
+			var unavailable pkgerrors.ServiceUnavailable
+			assert.True(t, errors.As(err, &unavailable), "got %v", err)
 		})
 		assert.Equal(t, 1, client.mappingCalls)
 	})
@@ -1275,7 +1325,60 @@ func TestResolveAccessKeyField(t *testing.T) {
 	t.Run("preset field skips the mapping call", func(t *testing.T) {
 		client := NewMockOpenSearchClient()
 		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: "preset"}
-		assert.Equal(t, "preset", searcher.resolveAccessKeyField(context.Background()))
+		field, err := searcher.resolveAccessKeyField(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, "preset", field)
+		assert.Equal(t, 0, client.mappingCalls)
+	})
+}
+
+func TestMappingReadFailureFailsClosedForAuthenticatedPathsOnly(t *testing.T) {
+	private := model.SearchCriteria{PrivateOnly: true, ResourceType: stringPtr("v1_past_meeting")}
+	plain := model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")}
+	var unavailable pkgerrors.ServiceUnavailable
+
+	t.Run("the access walk is unavailable while the mapping cannot be read", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetMappingError(errors.New("403 security_exception"))
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+
+		_, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 100})
+		assert.True(t, errors.As(err, &unavailable), "got %v", err)
+		assert.Equal(t, 0, client.aggregationCalls, "no aggregation is attempted on a guessed field")
+	})
+
+	t.Run("the authorized aggregation with granted keys is unavailable too", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetMappingError(errors.New("boom"))
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+
+		_, err := searcher.AuthorizedAggregation(context.Background(), plain, model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 10, IncludePublic: true, AuthorizedKeys: []string{"k"}})
+		assert.True(t, errors.As(err, &unavailable), "got %v", err)
+		assert.Equal(t, 0, client.aggregationCalls)
+	})
+
+	t.Run("anonymous (public only) aggregations never touch the mapping", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetMappingError(errors.New("boom"))
+		client.SetAggregationResponse(map[string]any{"group_by": map[string]any{"sum_other_doc_count": 0, "buckets": []map[string]any{{"key": "project_uid:P1", "doc_count": 1}}}})
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+
+		result, err := searcher.AuthorizedAggregation(context.Background(), plain, model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 10, IncludePublic: true})
+		assert.NoError(t, err)
+		assert.Equal(t, []model.CountGroup{{Key: "P1", Count: 1}}, result.Groups)
+		assert.Equal(t, 0, client.mappingCalls)
+		assert.NotContains(t, string(client.aggregationQueries[0]), "access_check_query", "no granted-keys clause for a public-only filter")
+	})
+
+	t.Run("the public count never touches the mapping", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetMappingError(errors.New("boom"))
+		client.SetCountResponse(&CountResponse{Count: 3})
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+
+		count, err := searcher.CountPublic(context.Background(), model.SearchCriteria{PublicOnly: true, PageSize: -1})
+		assert.NoError(t, err)
+		assert.Equal(t, 3, count)
 		assert.Equal(t, 0, client.mappingCalls)
 	})
 }

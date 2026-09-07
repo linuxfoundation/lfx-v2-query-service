@@ -202,6 +202,11 @@ go run ./cmd
 - `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
 - `COUNT_MAX_ACCESS_BUCKETS`: Buckets a single count walks before reporting `has_more` (≥ page, default: "5000")
 
+The count route reads the index mapping on first use to pick the access-check
+field. If that read fails, authenticated counts answer `503` until it is
+retried (30 s); anonymous counts are unaffected. An unexpected mapping shape
+falls back with a warning instead.
+
 **Clearbit Configuration:**
 
 - `CLEARBIT_CREDENTIAL`: Clearbit API key (required for organization search)
