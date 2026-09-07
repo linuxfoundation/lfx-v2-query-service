@@ -1084,6 +1084,19 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 			expectedUnavailable: true,
 		},
 		{
+			name:      "access check failure on a later page is service unavailable, never the count so far",
+			principal: "dev_user",
+			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 5000},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				accessChecker.DefaultResult = "allowed"
+				accessChecker.SetCheckAccessErrorOnCall(2, assert.AnError)
+			},
+			expectedError:       true,
+			expectedUnavailable: true,
+			expectedPages:       2,
+		},
+		{
 			name:        "group_by runs over public plus granted resources",
 			principal:   "dev_user",
 			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
@@ -1119,14 +1132,61 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
 			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
 				seed(searcher)
+				searcher.SetCountPublicResponse(0)
 				accessChecker.DefaultResult = "denied"
-				// A forced aggregation response proves the searcher was consulted
-				// (the service does not short-circuit): public documents may exist.
-				searcher.SetAuthorizedAggregationResponse(&model.CountAggregationResult{Groups: []model.CountGroup{{Key: "P1", Count: 1}}, GroupsComplete: true})
+				// If the searcher were consulted this error would surface; it must not.
+				searcher.SetAuthorizedAggregationError(assert.AnError)
+			},
+			expectedCount: 0,
+			expectedPages: 1,
+			check: func(t *testing.T, result *model.CountResult) {
+				assert.Equal(t, []model.CountGroup{}, result.Groups)
+				assert.NotNil(t, result.GroupsComplete)
+				assert.True(t, *result.GroupsComplete)
+			},
+		},
+		{
+			name:        "metric with everything denied and no public documents skips the aggregation and is zero",
+			principal:   "dev_user",
+			aggregation: model.CountAggregation{CardinalityPrefix: "project_uid"},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher)
+				searcher.SetCountPublicResponse(0)
+				accessChecker.DefaultResult = "denied"
+				searcher.SetAuthorizedAggregationError(assert.AnError)
+			},
+			expectedCount: 0,
+			check: func(t *testing.T, result *model.CountResult) {
+				assert.Equal(t, uint64(0), *result.MetricValue)
+				assert.True(t, *result.MetricComplete)
+			},
+		},
+		{
+			name:        "group_by with everything denied still aggregates when public documents exist",
+			principal:   "dev_user",
+			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				seed(searcher) // m1 is public
+				accessChecker.DefaultResult = "denied"
 			},
 			expectedCount: 1,
 			check: func(t *testing.T, result *model.CountResult) {
 				assert.Equal(t, []model.CountGroup{{Key: "P1", Count: 1}}, result.Groups)
+			},
+		},
+		{
+			name:        "a document with two tags of the same prefix counts once per tag; count unchanged",
+			principal:   "dev_user",
+			aggregation: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100},
+			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
+				searcher.ClearResources()
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"project_uid:PA", "project_uid:PB"}}, true))
+				searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m2", map[string]any{"tags": []string{"project_uid:PA"}}, false))
+				accessChecker.DefaultResult = "allowed"
+			},
+			expectedCount: 2,
+			check: func(t *testing.T, result *model.CountResult) {
+				assert.Equal(t, []model.CountGroup{{Key: "PA", Count: 2}, {Key: "PB", Count: 1}}, result.Groups)
 			},
 		},
 		{
@@ -1180,6 +1240,10 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 				assertion.Nil(result)
 				var unavailable errors.ServiceUnavailable
 				assertion.Equal(tc.expectedUnavailable, stderrors.As(err, &unavailable), "service unavailable classification")
+				if tc.expectedPages > 0 {
+					assertion.Equal(tc.expectedPages, resourceSearcher.AccessBucketCalls(), "pages walked before failing")
+					assertion.Equal(tc.expectedPages, accessChecker.CheckAccessCalls(), "checks issued before failing")
+				}
 				return
 			}
 

@@ -404,9 +404,28 @@ func (s *ResourceSearch) QueryResourcesCount(
 		return result, nil
 	}
 
+	// Nothing is visible to the caller: no public document matched and no
+	// private key was granted. The aggregation would return nothing; skip the
+	// round-trip. Completeness still honours has_more.
+	if publicCount == 0 && len(aggregation.AuthorizedKeys) == 0 {
+		complete := !result.HasMore
+		if aggregation.GroupByPrefix != "" {
+			result.Groups = []model.CountGroup{}
+			result.GroupsComplete = &complete
+		}
+		if aggregation.CardinalityPrefix != "" {
+			var zero uint64
+			metricComplete := complete
+			result.MetricValue = &zero
+			result.MetricComplete = &metricComplete
+		}
+		return result, nil
+	}
+
 	// The authorized set is public documents plus private documents carrying
-	// one of the granted keys. len(AuthorizedKeys) <= MaxAccessBuckets (5000
-	// by default), well below OpenSearch's index.max_terms_count default of
+	// one of the granted keys. The walk checks the cap only after a full page,
+	// so len(AuthorizedKeys) < MaxAccessBuckets + AccessBucketPage (5100 with
+	// the defaults), well below OpenSearch's index.max_terms_count default of
 	// 65536, so the terms clause is always accepted.
 	if aggregation.PageSize == 0 {
 		aggregation.PageSize = s.config.AccessBucketPage

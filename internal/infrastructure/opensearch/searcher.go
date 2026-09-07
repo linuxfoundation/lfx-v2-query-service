@@ -86,7 +86,10 @@ type countAggregationParams struct {
 	PageSize int
 	// After is the composite cursor: the previous page's after_key, or, for
 	// the cardinality walk's first page, the bare "<prefix>:" string.
-	After string
+	// HasAfter says whether to render it; an empty-string cursor is a valid
+	// cursor and must still be sent.
+	After    string
+	HasAfter bool
 
 	// AuthorizedFilter adds the "filter" bool restricting documents to the
 	// authorized set; IncludePublic and AuthorizedKeys are its two branches.
@@ -225,6 +228,7 @@ func (os *OpenSearchSearcher) AccessBuckets(ctx context.Context, criteria model.
 	}
 	if request.After != nil {
 		params.After = *request.After
+		params.HasAfter = true
 	}
 	query, err := os.RenderCountAggregation(ctx, params)
 	if err != nil {
@@ -356,6 +360,7 @@ func (os *OpenSearchSearcher) walkCardinality(ctx context.Context, base countAgg
 		params.CardinalityPrefix = aggregation.CardinalityPrefix
 		params.PageSize = pageSize
 		params.After = after
+		params.HasAfter = true
 		query, err := os.RenderCountAggregation(ctx, params)
 		if err != nil {
 			slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
@@ -394,7 +399,15 @@ func (os *OpenSearchSearcher) walkCardinality(ctx context.Context, base countAgg
 		}
 		next, ok := response.Tags.AfterKey["tag"]
 		if !ok {
-			return distinct, true, nil
+			// A full page that cannot be continued: the value is a lower
+			// bound, so say so rather than claim completeness (same rule as
+			// the access-bucket walk).
+			slog.WarnContext(ctx, "cardinality page was full but carried no cursor; reporting the metric incomplete",
+				"prefix", aggregation.CardinalityPrefix,
+				"page", page,
+				"distinct", distinct,
+			)
+			return distinct, false, nil
 		}
 		after = next
 	}
@@ -494,6 +507,9 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) string 
 	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accessKeyFieldReadTimeout)
 	mapping, err := os.client.GetMapping(readCtx, os.index)
 	cancel()
+	if err == nil && mapping == nil {
+		err = fmt.Errorf("opensearch get mapping returned no mapping")
+	}
 
 	os.accessKeyFieldMu.Lock()
 	defer os.accessKeyFieldMu.Unlock()

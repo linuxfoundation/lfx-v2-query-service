@@ -1060,7 +1060,7 @@ func TestOpenSearchSearcherRenderCountAggregation(t *testing.T) {
 		},
 		{
 			name:     "access walk later page carries after",
-			params:   countAggregationParams{Criteria: private, AccessKeyField: accessCheckQueryKeywordField, AccessWalk: true, PageSize: 2, After: "v1_past_meeting:m2#viewer"},
+			params:   countAggregationParams{Criteria: private, AccessKeyField: accessCheckQueryKeywordField, AccessWalk: true, PageSize: 2, HasAfter: true, After: "v1_past_meeting:m2#viewer"},
 			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"bool":{"must_not":{"term":{"public":true}}}},{"term":{"object_type":"v1_past_meeting"}}],"minimum_should_match":1,"should":[{"term":{"tags":"x"}}]}},"aggs":{"access_keys":{"composite":{"size":2,"sources":[{"access_key":{"terms":{"field":"access_check_query.keyword"}}}],"after":{"access_key":"v1_past_meeting:m2#viewer"}}}}}`,
 		},
 		{
@@ -1082,11 +1082,16 @@ func TestOpenSearchSearcherRenderCountAggregation(t *testing.T) {
 			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":1,"shard_size":5,"include":"meeting_type:.*"}}}}`,
 		},
 		{
+			name:     "access walk with an empty-string cursor still sends it",
+			params:   countAggregationParams{Criteria: private, AccessKeyField: accessCheckQueryField, AccessWalk: true, PageSize: 1, HasAfter: true, After: ""},
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"bool":{"must_not":{"term":{"public":true}}}},{"term":{"object_type":"v1_past_meeting"}}],"minimum_should_match":1,"should":[{"term":{"tags":"x"}}]}},"aggs":{"access_keys":{"composite":{"size":1,"sources":[{"access_key":{"terms":{"field":"access_check_query"}}}],"after":{"access_key":""}}}}}`,
+		},
+		{
 			name: "cardinality walk first page starts after the bare prefix",
 			params: countAggregationParams{
 				Criteria: plain, AccessKeyField: accessCheckQueryField,
 				AuthorizedFilter: true, AuthorizedKeys: []string{"k1"},
-				CardinalityPrefix: "email", PageSize: 100, After: "email:",
+				CardinalityPrefix: "email", PageSize: 100, HasAfter: true, After: "email:",
 			},
 			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"terms":{"access_check_query":["k1"]}}],"minimum_should_match":1}}}},"aggs":{"tags":{"composite":{"size":100,"sources":[{"tag":{"terms":{"field":"tags"}}}],"after":{"tag":"email:"}}}}}`,
 		},
@@ -1117,6 +1122,22 @@ func TestJSONQuote(t *testing.T) {
 		if utf8.ValidString(s) {
 			assert.Equal(t, s, back)
 		}
+	}
+}
+
+func TestRenderCountAggregationSurvivesControlCharacters(t *testing.T) {
+	// Indexed data echoed into request bodies (after cursors, granted keys) and
+	// caller tags may carry control characters; the body must still render.
+	searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index", accessKeyField: accessCheckQueryField}
+	cases := []countAggregationParams{
+		{Criteria: model.SearchCriteria{PrivateOnly: true, TagsAll: []string{"email:a\x01@x.org"}}, AccessKeyField: accessCheckQueryField, AccessWalk: true, PageSize: 100},
+		{Criteria: model.SearchCriteria{PrivateOnly: true}, AccessKeyField: accessCheckQueryField, AccessWalk: true, PageSize: 100, HasAfter: true, After: "v1_past_meeting:m\x01#viewer"},
+		{Criteria: model.SearchCriteria{}, AccessKeyField: accessCheckQueryField, AuthorizedFilter: true, AuthorizedKeys: []string{"a\vb", "x\x7f"}, CardinalityPrefix: "email", PageSize: 100, HasAfter: true, After: "email:"},
+	}
+	for i, params := range cases {
+		body, err := searcher.RenderCountAggregation(context.Background(), params)
+		assert.NoError(t, err, "case %d", i)
+		assert.True(t, json.Valid(body), "case %d", i)
 	}
 }
 
@@ -1242,6 +1263,15 @@ func TestResolveAccessKeyField(t *testing.T) {
 		assert.Equal(t, before, client.mappingCalls)
 	})
 
+	t.Run("a nil mapping without an error is treated as a failed read", func(t *testing.T) {
+		client := NewMockOpenSearchClient() // GetMapping returns (nil, nil)
+		searcher := &OpenSearchSearcher{client: client, index: "test-index"}
+		assert.NotPanics(t, func() {
+			assert.Equal(t, accessCheckQueryKeywordField, searcher.resolveAccessKeyField(context.Background()))
+		})
+		assert.Equal(t, 1, client.mappingCalls)
+	})
+
 	t.Run("preset field skips the mapping call", func(t *testing.T) {
 		client := NewMockOpenSearchClient()
 		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: "preset"}
@@ -1297,6 +1327,22 @@ func TestOpenSearchSearcherAccessBuckets(t *testing.T) {
 		}, page.Buckets)
 		assert.NotNil(t, page.AfterKey)
 		assert.Equal(t, "v1_past_meeting:m3#viewer", *page.AfterKey)
+	})
+
+	t.Run("second page forwards the after key, including an empty one", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponse(map[string]any{"access_keys": map[string]any{"buckets": []map[string]any{}}})
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		after := "v1_past_meeting:m2#viewer"
+		_, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2, After: &after})
+		assert.NoError(t, err)
+		assert.Contains(t, string(client.aggregationQueries[0]), `"after":{"access_key":"v1_past_meeting:m2#viewer"}`)
+
+		empty := ""
+		_, err = searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2, After: &empty})
+		assert.NoError(t, err)
+		assert.Contains(t, string(client.aggregationQueries[1]), `"after":{"access_key":""}`, "an empty cursor is a cursor")
 	})
 
 	t.Run("last page has no after key", func(t *testing.T) {
@@ -1410,6 +1456,18 @@ func TestCardinalityWalkStopsAtPrefixBoundary(t *testing.T) {
 		assert.True(t, result.MetricComplete)
 		assert.Equal(t, 2, client.aggregationCalls)
 		assert.Contains(t, string(client.aggregationQueries[1]), `"after":{"tag":"email:b@y.org"}`)
+	})
+
+	t.Run("a full page without an after key cannot be continued: incomplete, never silently exact", func(t *testing.T) {
+		client := NewMockOpenSearchClient()
+		client.SetAggregationResponses(compositePage("", "email:a@x.org", "email:b@y.org"))
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+
+		result, err := searcher.AuthorizedAggregation(context.Background(), criteria, aggregation(2, 5000))
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(2), result.MetricValue)
+		assert.False(t, result.MetricComplete)
+		assert.Equal(t, 1, client.aggregationCalls)
 	})
 
 	t.Run("cap stops the walk and flags the metric incomplete", func(t *testing.T) {

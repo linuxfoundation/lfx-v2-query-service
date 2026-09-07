@@ -255,7 +255,7 @@ const countAggregationSource = `{
             }
           }
         ]
-        {{- if .After }},
+        {{- if .HasAfter }},
         "after": {
           "access_key": {{ .After | quote }}
         }

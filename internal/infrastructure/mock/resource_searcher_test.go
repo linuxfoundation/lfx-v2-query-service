@@ -166,6 +166,17 @@ func TestMockResourceSearcherAuthorizedAggregation(t *testing.T) {
 		assertion.Equal(uint64(2), result.MetricValue)
 	})
 
+	t.Run("cardinality cap flags the metric incomplete", func(t *testing.T) {
+		searcher := newSearcher()
+		result, err := searcher.AuthorizedAggregation(ctx,
+			model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting_participant")},
+			model.CountAggregation{CardinalityPrefix: "email", MaxDistinct: 1, AuthorizedKeys: []string{"v1_past_meeting_participant:p1#viewer", "v1_past_meeting_participant:p3#viewer"}},
+		)
+		assertion.NoError(err)
+		assertion.Equal(uint64(1), result.MetricValue)
+		assertion.False(result.MetricComplete)
+	})
+
 	t.Run("nothing requested returns the empty result", func(t *testing.T) {
 		searcher := newSearcher()
 		result, err := searcher.AuthorizedAggregation(ctx, model.SearchCriteria{}, model.CountAggregation{})
