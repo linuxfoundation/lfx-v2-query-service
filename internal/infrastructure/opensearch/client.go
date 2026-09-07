@@ -98,10 +98,21 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 // AggregationSearch runs a size-0 search and returns the aggregations
 // member of the response as raw JSON so each caller can unmarshal the
 // aggregation shape it asked for.
+//
+// Partial results are refused: the count route derives "exhaustive" from
+// what this call returns (a short composite page ends a walk; an empty
+// group set is reported complete), so a response missing a shard's data
+// must be an error, not a smaller answer. allow_partial_search_results=false
+// makes OpenSearch fail the request instead of returning a partial 200; the
+// _shards/timed_out check covers engines that ignore the parameter.
 func (c *httpClient) AggregationSearch(ctx context.Context, index string, query []byte) (json.RawMessage, error) {
+	allowPartial := false
 	searchRequest := opensearchapi.SearchReq{
 		Indices: []string{index},
 		Body:    bytes.NewReader(query),
+		Params: opensearchapi.SearchParams{
+			AllowPartialSearchResults: &allowPartial,
+		},
 	}
 
 	// Perform the search.
@@ -116,6 +127,10 @@ func (c *httpClient) AggregationSearch(ctx context.Context, index string, query 
 
 	if searchResponse.Errors {
 		return nil, fmt.Errorf("opensearch search returned errors")
+	}
+	if searchResponse.Timeout || searchResponse.Shards.Failed > 0 {
+		return nil, errors.NewServiceUnavailable("opensearch returned a partial aggregation result",
+			fmt.Errorf("timed_out=%t shards_failed=%d", searchResponse.Timeout, searchResponse.Shards.Failed))
 	}
 
 	return searchResponse.Aggregations, nil
@@ -166,6 +181,12 @@ func (c *httpClient) Count(ctx context.Context, index string, query []byte) (*Co
 			return nil, errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", err)
 		}
 		return nil, fmt.Errorf("opensearch count failed: %w", err)
+	}
+	// _count has no allow_partial_search_results; a failed shard means the
+	// number is a lower bound, which the count route must not present as exact.
+	if countResponse.Shards.Failed > 0 {
+		return nil, errors.NewServiceUnavailable("opensearch returned a partial count",
+			fmt.Errorf("shards_failed=%d", countResponse.Shards.Failed))
 	}
 	return &CountResponse{
 		Count: countResponse.Count,
