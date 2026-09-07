@@ -32,7 +32,28 @@ import (
 
 // templateFuncs are the helpers available to every query template.
 var templateFuncs = template.FuncMap{
-	"quote": strconv.Quote,
+	"quote": jsonQuote,
+}
+
+// jsonQuote renders s as a JSON string literal. It returns strconv.Quote's
+// output whenever that is already valid JSON — which it is for every
+// printable string, so the request bodies pinned in tests are unchanged — and
+// falls back to encoding/json otherwise. strconv.Quote alone is not enough:
+// it emits Go escapes (\x01, \v, \U0001F600) that JSON does not accept, and
+// the count route echoes indexed data (composite after_keys, granted access
+// keys) into request bodies, so a control character in a tag or key would
+// otherwise turn into a marshal error and a 500.
+func jsonQuote(s string) string {
+	quoted := strconv.Quote(s)
+	if json.Valid([]byte(quoted)) {
+		return quoted
+	}
+	encoded, err := json.Marshal(s)
+	if err != nil {
+		// json.Marshal of a string cannot fail; keep the compiler honest.
+		return `""`
+	}
+	return string(encoded)
 }
 
 // queryResourceTemplate renders /_search and /_count bodies. The shared
@@ -556,7 +577,9 @@ func (os *OpenSearchSearcher) RenderCountAggregation(ctx context.Context, params
 
 	parsed, err := json.Marshal(query)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to marshal rendered count aggregation", "error", err, "body", buf.String())
+		// The body is not logged: it carries caller tags, composite cursors
+		// and granted access keys.
+		slog.ErrorContext(ctx, "failed to marshal rendered count aggregation", "error", err, "body_len", buf.Len())
 		return nil, err
 	}
 	return parsed, nil

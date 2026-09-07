@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/stretchr/testify/assert"
@@ -1096,6 +1098,25 @@ func TestOpenSearchSearcherRenderCountAggregation(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, string(query))
 		})
+	}
+}
+
+func TestJSONQuote(t *testing.T) {
+	// Printable input: byte-identical to strconv.Quote, so pinned bodies hold.
+	for _, s := range []string{"", "plain", `q"uote`, `back\slash`, "new\nline", "tab\t", "émoji 🚀", "nbsp\u00a0", "lrm\u200e", "<>&"} {
+		assert.Equal(t, strconv.Quote(s), jsonQuote(s), "%q", s)
+		assert.True(t, json.Valid([]byte(jsonQuote(s))), "%q", s)
+	}
+	// Control / non-printable input: strconv.Quote would emit Go-only escapes;
+	// jsonQuote must still produce valid JSON that round-trips.
+	for _, s := range []string{"a\x01b", "v\vt", "bell\a", "del\x7f", "bad\xffutf8", "plane14\U000E0001", "v1_past_meeting:m\x01#viewer"} {
+		q := jsonQuote(s)
+		assert.True(t, json.Valid([]byte(q)), "%q -> %s", s, q)
+		var back string
+		assert.NoError(t, json.Unmarshal([]byte(q), &back))
+		if utf8.ValidString(s) {
+			assert.Equal(t, s, back)
+		}
 	}
 }
 
