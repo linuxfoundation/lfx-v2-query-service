@@ -196,29 +196,26 @@ var _ = dsl.Service("query-svc", func() {
 		})
 
 		dsl.Result(func() {
-			dsl.Attribute("count", dsl.UInt64, "Count of resources found", func() {
-				dsl.Example(1234)
-			})
-			dsl.Attribute("has_more", dsl.Boolean, "True if count is not guaranteed to be exhaustive: client should request a narrower query", func() {
-				dsl.Example(false)
-			})
+			dsl.Attribute("count", dsl.UInt64, "Count of resources found")
+			dsl.Attribute("has_more", dsl.Boolean, "True if count is not guaranteed to be exhaustive: client should request a narrower query")
 			dsl.Attribute("groups", dsl.ArrayOf(CountGroup), "Per-group counts when group_by is set, ordered by count descending then key ascending; omitted when no group matched")
-			dsl.Attribute("groups_complete", dsl.Boolean, "True when every group is present; false when more groups exist than group_by_size or when has_more is true", func() {
-				dsl.Example(true)
-			})
-			dsl.Attribute("group_count_error_upper_bound", dsl.UInt64, "Maximum possible undercount per returned group within the walked authorized set; zero means exact", func() {
-				dsl.Example(0)
-			})
-			dsl.Attribute("metric_value", dsl.UInt64, "Value of the requested metric", func() {
-				dsl.Example(42)
-			})
-			dsl.Attribute("metric_complete", dsl.Boolean, "True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true", func() {
-				dsl.Example(true)
-			})
+			dsl.Attribute("groups_complete", dsl.Boolean, "True when every group is present; false when more groups exist than group_by_size or when has_more is true")
+			dsl.Attribute("group_count_error_upper_bound", dsl.UInt64, "Maximum possible undercount per returned group within the walked authorized set; zero means exact")
+			dsl.Attribute("metric_value", dsl.UInt64, "Value of the requested metric")
+			dsl.Attribute("metric_complete", dsl.Boolean, "True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true")
 			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
 				dsl.Example("public, max-age=300")
 			})
 			dsl.Required("count", "has_more")
+			dsl.Example("grouped", dsl.Val{
+				"count": 42, "has_more": false,
+				"groups":          []dsl.Val{{"key": "P1", "count": 30}, {"key": "P2", "count": 12}},
+				"groups_complete": true, "group_count_error_upper_bound": 0,
+			})
+			dsl.Example("cardinality", dsl.Val{
+				"count": 42, "has_more": false,
+				"metric_value": 17, "metric_complete": true,
+			})
 		})
 
 		dsl.HTTP(func() {

@@ -563,12 +563,12 @@ definitions:
             count:
                 type: integer
                 description: Count of resources found
-                example: 1234
+                example: 5706683997245189647
                 format: int64
             group_count_error_upper_bound:
                 type: integer
                 description: Maximum possible undercount per returned group within the walked authorized set; zero means exact
-                example: 0
+                example: 17756444737383148625
                 format: int64
             groups:
                 type: array
@@ -587,11 +587,11 @@ definitions:
             groups_complete:
                 type: boolean
                 description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
-                example: true
+                example: false
             has_more:
                 type: boolean
                 description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
-                example: false
+                example: true
             metric_complete:
                 type: boolean
                 description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
@@ -599,24 +599,13 @@ definitions:
             metric_value:
                 type: integer
                 description: Value of the requested metric
-                example: 42
+                example: 4851047980279068805
                 format: int64
         example:
-            count: 1234
-            group_count_error_upper_bound: 0
-            groups:
-                - count: 12
-                  key: a1b2c3d4
-                - count: 12
-                  key: a1b2c3d4
-                - count: 12
-                  key: a1b2c3d4
-                - count: 12
-                  key: a1b2c3d4
-            groups_complete: true
+            count: 42
             has_more: false
             metric_complete: true
-            metric_value: 42
+            metric_value: 17
         required:
             - count
             - has_more
@@ -634,6 +623,12 @@ definitions:
                     $ref: '#/definitions/Resource'
                 description: Resources found
                 example:
+                    - data:
+                        id: "123"
+                        name: My committee
+                        description: a committee
+                      id: "123"
+                      type: committee
                     - data:
                         id: "123"
                         name: My committee
@@ -697,8 +692,17 @@ definitions:
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
         example:
             suggestions:
+                - domain: linuxfoundation.org
+                  logo: https://example.com/logo.png
+                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation
