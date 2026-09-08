@@ -92,6 +92,7 @@ Same parameters as `GET /query/resources` except `cel_filter`,
 supported; group first, then count each group with tags"). To get a metric per
 group, call once with `group_by`, then once per group with `metric` and
 `tags=<prefix>:<value>`.
+A bare `<prefix>:` tag with no value is neither a group nor a distinct value.
 
 Grouped response (`group_by=project_uid`):
 
@@ -160,7 +161,7 @@ For an authenticated principal:
    because whole pages are never split, always fewer than 11000). This is below
    OpenSearch's `index.max_terms_count` default of 65536; deployments with a
    lower index setting must allow for the whole-page overshoot. `group_by` is a `terms`
-   aggregation on `tags` with `include: "<prefix>:.*"` and
+   aggregation on `tags` with `include: "<prefix>:.+"` and
    `shard_size = min(group_by_size × 5, 5000)` to reduce, not eliminate,
    distributed count error. OpenSearch's `doc_count_error_upper_bound` is
    returned as `group_count_error_upper_bound`: 0 means exact counts within

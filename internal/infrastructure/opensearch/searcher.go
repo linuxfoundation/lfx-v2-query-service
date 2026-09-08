@@ -361,8 +361,9 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 
 // walkCardinality counts the distinct "<prefix>:…" tags in the authorized set
 // by paging a composite aggregation over tags in ascending key order,
-// starting just after the bare "<prefix>:" string and stopping at the first
-// key outside the prefix, at a short page, or at aggregation.MaxDistinct.
+// starting just after the bare "<prefix>:" string (deliberately excluding an
+// empty suffix, which is not a value) and stopping at the first key outside the
+// prefix, at a short page, or at aggregation.MaxDistinct.
 func (os *OpenSearchSearcher) walkCardinality(ctx context.Context, base countAggregationParams, aggregation model.CountAggregation) (uint64, bool, error) {
 	prefix := aggregation.CardinalityPrefix + ":"
 	pageSize := aggregation.PageSize
@@ -460,13 +461,11 @@ func groupByShardSize(size int) int {
 	return shardSize
 }
 
-// tagPrefixInclude builds the Lucene regular expression that restricts a
-// terms aggregation over tags to one prefix. The prefix is validated by the
-// API to [a-z][a-z0-9_]*, so no character needs escaping; regexp.QuoteMeta
-// is still applied defensively (its escapes are also Lucene escapes for
-// these characters).
+// tagPrefixInclude builds the Lucene expression for non-empty values of one
+// tag prefix. The API restricts prefixes to [a-z][a-z0-9_]*; quote Lucene
+// operators defensively for internal callers as well.
 func tagPrefixInclude(prefix string) string {
-	return luceneQuoteMeta(prefix) + ":.*"
+	return luceneQuoteMeta(prefix) + ":.+"
 }
 
 // luceneQuoteMeta escapes the Lucene regular-expression operators. Go's

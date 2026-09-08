@@ -479,8 +479,8 @@ func (m *MockResourceSearcher) AuthorizedAggregation(ctx context.Context, criter
 			// Match terms aggregation: count a resource once per distinct value.
 			keys := make(map[string]struct{})
 			for _, tag := range resourceTags(resource) {
-				if strings.HasPrefix(tag, prefix) {
-					keys[strings.TrimPrefix(tag, prefix)] = struct{}{}
+				if key, matched := strings.CutPrefix(tag, prefix); matched && key != "" {
+					keys[key] = struct{}{}
 				}
 			}
 			for key := range keys {
@@ -509,7 +509,7 @@ func (m *MockResourceSearcher) AuthorizedAggregation(ctx context.Context, criter
 		distinct := make(map[string]struct{})
 		for _, resource := range authorized {
 			for _, tag := range resourceTags(resource) {
-				if strings.HasPrefix(tag, prefix) {
+				if key, matched := strings.CutPrefix(tag, prefix); matched && key != "" {
 					distinct[tag] = struct{}{}
 				}
 			}

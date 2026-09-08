@@ -1074,18 +1074,18 @@ func TestOpenSearchSearcherRenderCountAggregation(t *testing.T) {
 			params: countAggregationParams{
 				Criteria: plain, AccessKeyField: accessCheckQueryField,
 				AuthorizedFilter: true, IncludePublic: true, AuthorizedKeys: []string{"k1", "k2"},
-				GroupByPrefix: "project_uid", GroupBySize: 100, GroupByShardSize: 500, GroupByInclude: "project_uid:.*",
+				GroupByPrefix: "project_uid", GroupBySize: 100, GroupByShardSize: 500, GroupByInclude: tagPrefixInclude("project_uid"),
 			},
-			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}},{"terms":{"access_check_query":["k1","k2"]}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":100,"shard_size":500,"include":"project_uid:.*"}}}}`,
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}},{"terms":{"access_check_query":["k1","k2"]}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":100,"shard_size":500,"include":"project_uid:.+"}}}}`,
 		},
 		{
 			name: "grouped count for anonymous is public only",
 			params: countAggregationParams{
 				Criteria: plain, AccessKeyField: accessCheckQueryField,
 				AuthorizedFilter: true, IncludePublic: true,
-				GroupByPrefix: "meeting_type", GroupBySize: 1, GroupByShardSize: 5, GroupByInclude: "meeting_type:.*",
+				GroupByPrefix: "meeting_type", GroupBySize: 1, GroupByShardSize: 5, GroupByInclude: tagPrefixInclude("meeting_type"),
 			},
-			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":1,"shard_size":5,"include":"meeting_type:.*"}}}}`,
+			expected: `{"size":0,"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"object_type":"v1_past_meeting"}}],"filter":{"bool":{"should":[{"term":{"public":true}}],"minimum_should_match":1}}}},"aggs":{"group_by":{"terms":{"field":"tags","size":1,"shard_size":5,"include":"meeting_type:.+"}}}}`,
 		},
 		{
 			name:     "access walk with an empty-string cursor still sends it",
@@ -1155,9 +1155,9 @@ func TestGroupByShardSize(t *testing.T) {
 }
 
 func TestTagPrefixInclude(t *testing.T) {
-	assert.Equal(t, "project_uid:.*", tagPrefixInclude("project_uid"))
+	assert.Equal(t, "project_uid:.+", tagPrefixInclude("project_uid"), "bare prefix tags are not group values")
 	// Defensive escaping of Lucene operators, even though the API pattern excludes them.
-	assert.Equal(t, `a\.b\*:.*`, tagPrefixInclude("a.b*"))
+	assert.Equal(t, `a\.b\*:.+`, tagPrefixInclude("a.b*"))
 }
 
 // captureLogs installs a JSON slog handler for the test and returns the
@@ -1515,7 +1515,7 @@ func TestGroupByStripsPrefix(t *testing.T) {
 	assert.Equal(t, []model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 2}}, result.Groups)
 	assert.False(t, result.GroupsComplete, "sum_other_doc_count > 0 means more groups exist")
 	assert.Equal(t, 1, client.aggregationCalls)
-	assert.Contains(t, string(client.aggregationQueries[0]), `"include":"project_uid:.*"`)
+	assert.Contains(t, string(client.aggregationQueries[0]), `"include":"project_uid:.+"`, "exclude the bare project_uid: tag")
 	assert.Contains(t, string(client.aggregationQueries[0]), `"size":2,"shard_size":10,`)
 }
 

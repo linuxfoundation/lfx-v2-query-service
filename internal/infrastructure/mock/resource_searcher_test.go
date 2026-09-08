@@ -149,6 +149,16 @@ func TestMockResourceSearcherAuthorizedAggregation(t *testing.T) {
 			tags:   []string{"project_uid:P1", "project_uid:P2"},
 			groups: []model.CountGroup{{Key: "P1", Count: 1}, {Key: "P2", Count: 1}},
 		},
+		{
+			name:   "bare group tags beside real values are excluded",
+			tags:   []string{"project_uid:", "project_uid:P1", "project_uid:P2"},
+			groups: []model.CountGroup{{Key: "P1", Count: 1}, {Key: "P2", Count: 1}},
+		},
+		{
+			name:   "only bare group tags produce no groups",
+			tags:   []string{"project_uid:"},
+			groups: []model.CountGroup{},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			searcher := NewMockResourceSearcher()
@@ -197,6 +207,30 @@ func TestMockResourceSearcherAuthorizedAggregation(t *testing.T) {
 		assertion.True(result.MetricComplete)
 		assertion.Equal(uint64(2), result.MetricValue)
 	})
+
+	for _, tc := range []struct {
+		name  string
+		tags  []string
+		value uint64
+	}{
+		{name: "bare email tag is not a distinct value", tags: []string{"email:"}, value: 0},
+		{name: "bare email beside real values is excluded", tags: []string{"email:", "email:a@x.org", "email:a@x.org", "email:b@y.org"}, value: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			searcher := NewMockResourceSearcher()
+			searcher.ClearResources()
+			searcher.AddResource(NewResourceWithDefaults("v1_past_meeting_participant", "p1", map[string]any{"tags": tc.tags}, true))
+			result, err := searcher.AuthorizedAggregation(ctx,
+				model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting_participant")},
+				model.CountAggregation{CardinalityPrefix: "email", IncludePublic: true},
+			)
+			if !assert.NoError(t, err) {
+				return
+			}
+			assert.Equal(t, tc.value, result.MetricValue)
+			assert.True(t, result.MetricComplete)
+		})
+	}
 
 	t.Run("cardinality cap flags the metric incomplete", func(t *testing.T) {
 		searcher := newSearcher()
