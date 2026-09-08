@@ -178,6 +178,9 @@ type QueryResourcesCountResult struct {
 	// True when every group is present; false when more groups exist than
 	// group_by_size or when has_more is true
 	GroupsComplete *bool
+	// Maximum possible undercount per returned group within the walked authorized
+	// set; zero means exact
+	GroupCountErrorUpperBound *uint64
 	// Value of the requested metric
 	MetricValue *uint64
 	// True when the metric was computed over every distinct value; false when it

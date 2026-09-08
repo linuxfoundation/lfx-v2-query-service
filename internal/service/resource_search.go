@@ -415,6 +415,8 @@ func (s *ResourceSearch) QueryResourcesCount(
 		if aggregation.GroupByPrefix != "" {
 			result.Groups = []model.CountGroup{}
 			result.GroupsComplete = &complete
+			var zeroBound uint64
+			result.GroupCountErrorUpperBound = &zeroBound
 		}
 		if aggregation.CardinalityPrefix != "" {
 			var zero uint64
@@ -449,6 +451,8 @@ func (s *ResourceSearch) QueryResourcesCount(
 		result.Groups = aggregationResult.Groups
 		groupsComplete := aggregationResult.GroupsComplete && !result.HasMore
 		result.GroupsComplete = &groupsComplete
+		bound := aggregationResult.GroupCountErrorUpperBound
+		result.GroupCountErrorUpperBound = &bound
 	}
 	if aggregation.CardinalityPrefix != "" {
 		metricValue := aggregationResult.MetricValue

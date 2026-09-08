@@ -304,7 +304,9 @@ client should request a narrower query.
 Two optional parameters aggregate the count over the resources the caller may
 see: `group_by=<tag prefix>` returns `groups` (one entry per tag value after
 `<prefix>:`, capped by `group_by_size`, omitted when no group matched;
-`groups_complete` says whether all are present) and `metric=cardinality:<tag prefix>` returns `metric_value` (distinct
+`groups_complete` says whether all are present, while `group_count_error_upper_bound`
+is 0 only when the returned group counts are exact within the walked authorized
+set; otherwise counts may be lower bounds) and `metric=cardinality:<tag prefix>` returns `metric_value` (distinct
 tag values) with `metric_complete`. They cannot be combined, and `data.*`
 fields cannot be aggregated on this index.
 

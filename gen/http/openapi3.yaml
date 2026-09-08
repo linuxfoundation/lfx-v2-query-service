@@ -649,6 +649,7 @@ paths:
                                 $ref: '#/components/schemas/QueryResourcesCountResponseBody'
                             example:
                                 count: 1234
+                                group_count_error_upper_bound: 0
                                 groups:
                                     - count: 12
                                       key: a1b2c3d4
@@ -803,6 +804,11 @@ components:
                     description: Count of resources found
                     example: 1234
                     format: int64
+                group_count_error_upper_bound:
+                    type: integer
+                    description: Maximum possible undercount per returned group within the walked authorized set; zero means exact
+                    example: 0
+                    format: int64
                 groups:
                     type: array
                     items:
@@ -836,6 +842,7 @@ components:
                     format: int64
             example:
                 count: 1234
+                group_count_error_upper_bound: 0
                 groups:
                     - count: 12
                       key: a1b2c3d4

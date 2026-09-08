@@ -68,7 +68,8 @@ func (a CountAggregation) HasWork() bool {
 type CountGroup struct {
 	// Key is the tag value with the group_by prefix stripped.
 	Key string
-	// Count is the number of authorized resources carrying that tag.
+	// Count is the reported number of authorized resources carrying that tag;
+	// consult GroupCountErrorUpperBound on grouped results for its accuracy.
 	Count uint64
 }
 
@@ -78,6 +79,9 @@ type CountAggregationResult struct {
 	Groups []CountGroup
 	// GroupsComplete is true when every group is present.
 	GroupsComplete bool
+	// GroupCountErrorUpperBound bounds each returned group's possible undercount.
+	// Zero means exact within the authorized set passed to the aggregation.
+	GroupCountErrorUpperBound uint64
 	// MetricValue is populated when CardinalityPrefix was set.
 	MetricValue uint64
 	// MetricComplete is true when the distinct-value walk finished.

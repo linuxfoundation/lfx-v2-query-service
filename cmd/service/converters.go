@@ -334,12 +334,13 @@ func (s *querySvcsrvc) payloadToCountAggregation(payload *querysvc.QueryResource
 // metric attributes are present only when they were requested.
 func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *querysvc.QueryResourcesCountResult {
 	response := &querysvc.QueryResourcesCountResult{
-		Count:          uint64(result.Count),
-		HasMore:        result.HasMore,
-		GroupsComplete: result.GroupsComplete,
-		MetricValue:    result.MetricValue,
-		MetricComplete: result.MetricComplete,
-		CacheControl:   result.CacheControl,
+		Count:                     uint64(result.Count),
+		HasMore:                   result.HasMore,
+		GroupsComplete:            result.GroupsComplete,
+		GroupCountErrorUpperBound: result.GroupCountErrorUpperBound,
+		MetricValue:               result.MetricValue,
+		MetricComplete:            result.MetricComplete,
+		CacheControl:              result.CacheControl,
 	}
 	if result.GroupsComplete != nil {
 		response.Groups = make([]*querysvc.CountGroup, 0, len(result.Groups))

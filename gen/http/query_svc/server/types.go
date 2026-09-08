@@ -35,6 +35,9 @@ type QueryResourcesCountResponseBody struct {
 	// True when every group is present; false when more groups exist than
 	// group_by_size or when has_more is true
 	GroupsComplete *bool `form:"groups_complete,omitempty" json:"groups_complete,omitempty" xml:"groups_complete,omitempty"`
+	// Maximum possible undercount per returned group within the walked authorized
+	// set; zero means exact
+	GroupCountErrorUpperBound *uint64 `form:"group_count_error_upper_bound,omitempty" json:"group_count_error_upper_bound,omitempty" xml:"group_count_error_upper_bound,omitempty"`
 	// Value of the requested metric
 	MetricValue *uint64 `form:"metric_value,omitempty" json:"metric_value,omitempty" xml:"metric_value,omitempty"`
 	// True when the metric was computed over every distinct value; false when it
@@ -232,11 +235,12 @@ func NewQueryResourcesResponseBody(res *querysvc.QueryResourcesResult) *QueryRes
 // result of the "query-resources-count" endpoint of the "query-svc" service.
 func NewQueryResourcesCountResponseBody(res *querysvc.QueryResourcesCountResult) *QueryResourcesCountResponseBody {
 	body := &QueryResourcesCountResponseBody{
-		Count:          res.Count,
-		HasMore:        res.HasMore,
-		GroupsComplete: res.GroupsComplete,
-		MetricValue:    res.MetricValue,
-		MetricComplete: res.MetricComplete,
+		Count:                     res.Count,
+		HasMore:                   res.HasMore,
+		GroupsComplete:            res.GroupsComplete,
+		GroupCountErrorUpperBound: res.GroupCountErrorUpperBound,
+		MetricValue:               res.MetricValue,
+		MetricComplete:            res.MetricComplete,
 	}
 	if res.Groups != nil {
 		body.Groups = make([]*CountGroupResponseBody, len(res.Groups))

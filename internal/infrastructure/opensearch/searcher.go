@@ -124,8 +124,8 @@ const (
 	accessKeyFieldRetryInterval = 30 * time.Second
 	// groupByShardSizeFactor and groupByShardSizeMax bound the terms
 	// aggregation's shard_size: each shard returns min(size*factor, max)
-	// candidates so that, on a multi-shard index, the top groups and their
-	// doc_counts are exact in practice. Composite aggregations (the access
+	// candidates to reduce potential group-count underestimation; only a
+	// zero returned error bound establishes exact counts. Composite aggregations (the access
 	// walk and the cardinality walk) are exact by construction and need no
 	// such tuning.
 	groupByShardSizeFactor = 5
@@ -322,8 +322,8 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 		}
 		if response.GroupBy.DocCountErrorUpperBound > 0 {
 			// Reported when a shard's candidate list was cut at shard_size;
-			// the returned counts may then be lower bounds. Not surfaced to
-			// callers.
+			// the returned counts may then be lower bounds. The bound is also
+			// returned to callers independently of group completeness.
 			slog.DebugContext(ctx, "grouped count has a non-zero doc_count_error_upper_bound",
 				"prefix", aggregation.GroupByPrefix,
 				"size", aggregation.GroupBySize,
@@ -340,6 +340,7 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 			})
 		}
 		result.GroupsComplete = response.GroupBy.SumOtherDocCount == 0
+		result.GroupCountErrorUpperBound = response.GroupBy.DocCountErrorUpperBound
 	}
 
 	if aggregation.CardinalityPrefix != "" {

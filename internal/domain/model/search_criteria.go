@@ -81,6 +81,8 @@ type CountResult struct {
 	Groups []CountGroup
 	// GroupsComplete is set when a group_by prefix was requested
 	GroupsComplete *bool
+	// GroupCountErrorUpperBound is set for grouped counts (zero when exact).
+	GroupCountErrorUpperBound *uint64
 	// MetricValue is set when a metric was requested
 	MetricValue *uint64
 	// MetricComplete is set when a metric was requested

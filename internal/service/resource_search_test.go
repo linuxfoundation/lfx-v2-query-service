@@ -1151,6 +1151,8 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 			expectedPages: 1,
 			check: func(t *testing.T, result *model.CountResult) {
 				assert.Equal(t, []model.CountGroup{}, result.Groups)
+				assert.NotNil(t, result.GroupCountErrorUpperBound)
+				assert.Zero(t, *result.GroupCountErrorUpperBound)
 				assert.NotNil(t, result.GroupsComplete)
 				assert.True(t, *result.GroupsComplete)
 			},
@@ -1364,10 +1366,11 @@ func TestAccessBucketWalkPagesAndCaps(t *testing.T) {
 			&model.AccessBucketPage{Buckets: p2, AfterKey: after(p2)},
 		)
 		searcher.SetAuthorizedAggregationResponse(&model.CountAggregationResult{
-			Groups:         []model.CountGroup{{Key: "P1", Count: 100}},
-			GroupsComplete: true,
-			MetricValue:    5,
-			MetricComplete: true,
+			Groups:                    []model.CountGroup{{Key: "P1", Count: 100}},
+			GroupsComplete:            true,
+			GroupCountErrorUpperBound: 7,
+			MetricValue:               5,
+			MetricComplete:            true,
 		})
 		checker := mock.NewMockAccessControlChecker()
 		checker.DefaultResult = "allowed"
@@ -1379,6 +1382,7 @@ func TestAccessBucketWalkPagesAndCaps(t *testing.T) {
 		assertion.True(result.HasMore)
 		assertion.Equal([]model.CountGroup{{Key: "P1", Count: 100}}, result.Groups)
 		assertion.False(*result.GroupsComplete, "groups were computed over a truncated authorized set")
+		assertion.Equal(uint64(7), *result.GroupCountErrorUpperBound, "cap must not erase the aggregation error bound")
 
 		result, err = service.QueryResourcesCount(ctx, publicCriteria, privateCriteria, model.CountAggregation{CardinalityPrefix: "email"})
 		assertion.NoError(err)

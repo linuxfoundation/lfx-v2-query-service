@@ -100,7 +100,8 @@ Grouped response (`group_by=project_uid`):
   "count": 42,
   "has_more": false,
   "groups": [{ "key": "a1b2", "count": 30 }, { "key": "c3d4", "count": 12 }],
-  "groups_complete": true
+  "groups_complete": true,
+  "group_count_error_upper_bound": 0
 }
 ```
 
@@ -119,8 +120,9 @@ Cardinality response (`metric=cardinality:email`, without `group_by`):
 | --- | --- | --- |
 | `count` | always | Matching documents the caller may see |
 | `has_more` | always | `true` when the count is not guaranteed exhaustive: the access-bucket walk stopped at `COUNT_MAX_ACCESS_BUCKETS`, or OpenSearch returned a full page without a continuation cursor (logged as a warning) |
-| `groups` | with `group_by`, when non-empty | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag. Per-group counts are exact up to `shard_size = min(group_by_size × 5, 5000)` terms per shard. Omitted (not `[]`) when no group matched; `groups_complete` is the signal that `group_by` was honoured |
+| `groups` | with `group_by`, when non-empty | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag. Per-group counts may be lower bounds; they are exact within the walked authorized set only when `group_count_error_upper_bound` is 0. Omitted (not `[]`) when no group matched; `groups_complete` is the signal that `group_by` was honoured |
 | `groups_complete` | with `group_by` | `true` when every group is present; `false` when more groups exist than `group_by_size`, **or** when `has_more` is `true` (the groups were computed over a truncated authorized set) |
+| `group_count_error_upper_bound` | with `group_by` | Maximum possible undercount per returned group from the distributed terms aggregation; 0 means exact within the walked authorized set. Independent of `groups_complete`; if `has_more` is true, unwalked access buckets are still excluded |
 | `metric_value` | with `metric` | The cardinality |
 | `metric_complete` | with `metric` | `true` when the distinct-value walk finished; `false` when it stopped at `COUNT_MAX_ACCESS_BUCKETS` distinct values, **or** when `has_more` is `true` |
 
@@ -156,9 +158,13 @@ For an authenticated principal:
    OpenSearch's `index.max_terms_count` default of 65536; deployments with a
    lower index setting must allow for the whole-page overshoot. `group_by` is a `terms`
    aggregation on `tags` with `include: "<prefix>:.*"` and
-   `shard_size = min(group_by_size × 5, 5000)`, so on a multi-shard index the
-   returned groups and their counts are exact in practice (a non-zero
-   `doc_count_error_upper_bound` is logged at `Debug`, not surfaced). `metric`
+   `shard_size = min(group_by_size × 5, 5000)` to reduce, not eliminate,
+   distributed count error. OpenSearch's `doc_count_error_upper_bound` is
+   returned as `group_count_error_upper_bound`: 0 means exact counts within
+   the walked authorized set; a non-zero value means counts may be lower
+   bounds. `groups_complete` still measures group truncation
+   (`sum_other_doc_count == 0`, provided `has_more` is false), not count accuracy.
+   `metric`
    is a composite walk over `tags` starting just after the bare `<prefix>:` key
    and stopping at the first key outside the prefix; like the access-bucket
    walk it is exact by construction and needs no scripting.

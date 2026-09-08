@@ -202,6 +202,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("groups_complete", dsl.Boolean, "True when every group is present; false when more groups exist than group_by_size or when has_more is true", func() {
 				dsl.Example(true)
 			})
+			dsl.Attribute("group_count_error_upper_bound", dsl.UInt64, "Maximum possible undercount per returned group within the walked authorized set; zero means exact", func() {
+				dsl.Example(0)
+			})
 			dsl.Attribute("metric_value", dsl.UInt64, "Value of the requested metric", func() {
 				dsl.Example(42)
 			})

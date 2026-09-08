@@ -1402,6 +1402,7 @@ func TestDomainCountResultToResponse(t *testing.T) {
 		assert.True(t, response.HasMore)
 		assert.Nil(t, response.Groups)
 		assert.Nil(t, response.GroupsComplete)
+		assert.Nil(t, response.GroupCountErrorUpperBound)
 		assert.Nil(t, response.MetricValue)
 		assert.Nil(t, response.MetricComplete)
 		assert.Equal(t, &cacheControl, response.CacheControl)
@@ -1409,10 +1410,15 @@ func TestDomainCountResultToResponse(t *testing.T) {
 
 	t.Run("grouped count renders groups in domain order", func(t *testing.T) {
 		response := svc.domainCountResultToResponse(&model.CountResult{
-			Count:          5,
-			Groups:         []model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 2}, {Key: "P3", Count: 1}},
-			GroupsComplete: boolPtr(true),
+			Count:                     5,
+			Groups:                    []model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 2}, {Key: "P3", Count: 1}},
+			GroupsComplete:            boolPtr(true),
+			GroupCountErrorUpperBound: uint64Ptr(7),
 		})
+		assert.Equal(t, uint64Ptr(7), response.GroupCountErrorUpperBound)
+		encoded, err := json.Marshal(server.NewQueryResourcesCountResponseBody(response))
+		assert.NoError(t, err)
+		assert.Contains(t, string(encoded), `"group_count_error_upper_bound":7`)
 		assert.Len(t, response.Groups, 3)
 		assert.Equal(t, "P1", response.Groups[0].Key)
 		assert.Equal(t, uint64(2), response.Groups[0].Count)
@@ -1424,14 +1430,14 @@ func TestDomainCountResultToResponse(t *testing.T) {
 		// Goa renders optional arrays with omitempty, so an empty groups slice
 		// is dropped from the JSON body; groups_complete (a pointer) survives
 		// and tells the client group_by was honoured. Pin that wire shape.
-		response := svc.domainCountResultToResponse(&model.CountResult{GroupsComplete: boolPtr(true)})
+		response := svc.domainCountResultToResponse(&model.CountResult{GroupsComplete: boolPtr(true), GroupCountErrorUpperBound: uint64Ptr(0)})
 		assert.Len(t, response.Groups, 0)
 		assert.NotNil(t, response.GroupsComplete)
 
 		body := server.NewQueryResourcesCountResponseBody(response)
 		encoded, err := json.Marshal(body)
 		assert.NoError(t, err)
-		assert.JSONEq(t, `{"count":0,"has_more":false,"groups_complete":true}`, string(encoded))
+		assert.JSONEq(t, `{"count":0,"has_more":false,"groups_complete":true,"group_count_error_upper_bound":0}`, string(encoded))
 	})
 
 	t.Run("metric renders value and completeness", func(t *testing.T) {
@@ -1443,6 +1449,7 @@ func TestDomainCountResultToResponse(t *testing.T) {
 		assert.Equal(t, uint64Ptr(2), response.MetricValue)
 		assert.Equal(t, boolPtr(false), response.MetricComplete)
 		assert.Nil(t, response.Groups)
+		assert.Nil(t, response.GroupCountErrorUpperBound)
 	})
 }
 
