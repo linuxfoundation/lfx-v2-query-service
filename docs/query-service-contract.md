@@ -185,7 +185,7 @@ three facts about the live mapping:
 | --- | --- | --- |
 | `tags` | `keyword` | The **only aggregatable dimension**. `group_by` and `metric=cardinality:` both aggregate on it; a tag prefix is the way to expose a groupable attribute |
 | `data` | `flat_object` | Never aggregatable, never summable, no numeric operations. This is why `sum` and `group_by` on `data.*` are declined rather than attempted |
-| `access_check_query` | `keyword`, **or** `text` with a `keyword` subfield | The access-bucket walk aggregates on it. The searcher reads `GET /<index>/_mapping` on first use and picks `access_check_query` (keyword) or `access_check_query.keyword` (text + subfield), memoizing the answer and logging `resolved access key field` at `Info`. An **unexpected shape** is a static property of the index: it falls back to `access_check_query.keyword` with a warning and is memoized. A **failed read** (error, timeout, permission) is transient and **fails closed**: every authenticated count answers `503` (the same `ServiceUnavailable` shape as a failed access check) until the read is retried 30 seconds later; anonymous public counts do not need the field and are unaffected. Guessing the field would return the public count as if exhaustive on a plain-keyword index — the silent zero this route exists to remove |
+| `access_check_query` | `keyword`, **or** `text` with a `keyword` subfield | The access-bucket walk aggregates on it. The searcher reads `GET /<index>/_mapping` and resolves **every** backing index to `access_check_query` (keyword) or `access_check_query.keyword` (text + keyword subfield). Only agreement across supported mappings is memoized and logged at `Info`. An unsupported shape (including a missing field), disagreeing alias targets, or a failed read **fails closed**: authenticated counts answer `503` and a warning identifies the mapping problem; resolution is retried after 30 seconds. Anonymous public counts and aggregations do not read the mapping and are unaffected. Guessing the field would return the public count as if exhaustive on a plain-keyword index — the silent zero this route exists to remove |
 
 The mockdata fallback mapping declares `access_check_query` as plain `keyword`;
 an index whose field was created by dynamic mapping carries `text` +
@@ -193,8 +193,11 @@ an index whose field was created by dynamic mapping carries `text` +
 `.keyword`, and on a plain-`keyword` index the aggregation returned zero
 buckets with HTTP 200, so every authenticated count silently equalled the
 public count. If `access_check_query` is mapped `text` **without** a `keyword`
-subfield, the fallback aggregation still returns no buckets: authenticated
-counts equal the public count and the warning is the only signal.
+subfield, or is absent, authenticated counts now return `503` with the warning
+`access_check_query mapping unsupported`. This supersedes QS-1 spec §3.5's
+original fallback-plus-warning rule: guessing an unmapped subfield must never
+turn private resources into a successful public-only count. Plain `keyword`
+(the mockdata fallback mapping) remains supported.
 
 ## Anonymous vs Authenticated Requests
 

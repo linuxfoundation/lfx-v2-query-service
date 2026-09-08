@@ -1192,18 +1192,16 @@ func TestResolveAccessKeyField(t *testing.T) {
 			expected: accessCheckQueryKeywordField,
 		},
 		{
-			name:        "unexpected shape (text without keyword subfield) falls back to the subfield with a warning",
+			name:        "unsupported text without keyword subfield fails closed",
 			mapping:     &IndexMapping{Properties: map[string]FieldMapping{"access_check_query": {Type: "text"}}},
-			expected:    accessCheckQueryKeywordField,
 			expectWarn:  true,
-			warnMessage: "unexpected access_check_query mapping",
+			warnMessage: "access_check_query mapping unsupported",
 		},
 		{
-			name:        "unexpected shape (field missing) falls back with a warning",
+			name:        "missing access field fails closed",
 			mapping:     &IndexMapping{Properties: map[string]FieldMapping{"tags": {Type: "keyword"}}},
-			expected:    accessCheckQueryKeywordField,
 			expectWarn:  true,
-			warnMessage: "unexpected access_check_query mapping",
+			warnMessage: "access_check_query mapping unsupported",
 		},
 	}
 
@@ -1215,21 +1213,30 @@ func TestResolveAccessKeyField(t *testing.T) {
 			searcher := &OpenSearchSearcher{client: client, index: "test-index"}
 
 			field, err := searcher.resolveAccessKeyField(context.Background())
-			assert.NoError(t, err, "an unexpected shape is a static property of the index: fall back, do not fail")
+			if tc.expectWarn {
+				var unavailable pkgerrors.ServiceUnavailable
+				assert.ErrorAs(t, err, &unavailable)
+				assert.Empty(t, field)
+				assert.Empty(t, searcher.accessKeyField, "unsupported shapes are not memoized")
+				assert.Contains(t, logs.String(), tc.warnMessage)
+				assert.Contains(t, logs.String(), `"level":"WARN"`)
+				assert.NotContains(t, logs.String(), `"msg":"resolved access key field"`)
+				_, err = searcher.AccessBuckets(context.Background(), model.SearchCriteria{PrivateOnly: true}, model.AccessBucketRequest{PageSize: 100})
+				assert.ErrorAs(t, err, &unavailable)
+				assert.Equal(t, 1, client.mappingCalls)
+				assert.Zero(t, client.aggregationCalls)
+				return
+			}
+			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, field)
-			// A successful read (whatever its shape) is memoized.
+			// Agreement on a supported field is memoized.
 			field, err = searcher.resolveAccessKeyField(context.Background())
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, field)
 			assert.Equal(t, 1, client.mappingCalls)
 
 			assert.Contains(t, logs.String(), `"msg":"resolved access key field"`)
-			if tc.expectWarn {
-				assert.Contains(t, logs.String(), tc.warnMessage)
-				assert.Contains(t, logs.String(), `"level":"WARN"`)
-			} else {
-				assert.NotContains(t, logs.String(), "unexpected access_check_query mapping")
-			}
+			assert.NotContains(t, logs.String(), "access_check_query mapping unsupported")
 		})
 	}
 

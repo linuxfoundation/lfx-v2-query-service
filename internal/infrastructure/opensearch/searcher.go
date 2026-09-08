@@ -481,18 +481,13 @@ func luceneQuoteMeta(s string) string {
 //
 //   - access_check_query mapped as keyword          -> "access_check_query"
 //   - text with a keyword subfield                  -> "access_check_query.keyword"
-//   - anything else (unexpected shape)              -> "access_check_query.keyword"
-//     (the pre-existing behaviour), with a warning
-//   - the mapping read itself FAILS                  -> ServiceUnavailable
+//   - an unsupported shape, disagreeing alias targets, or a failed read
+//     -> ServiceUnavailable, warning and retry after accessKeyFieldRetryInterval
 //
-// An unexpected shape is a static property of the index, caught at first
-// use and memoized with its warning. A failed read is transient and is not
-// memoized: authenticated counts answer 503 until the read is retried after
-// accessKeyFieldRetryInterval, because on a plain-keyword index guessing
-// the field would silently return the public count as if exhaustive — the
-// failure this route exists to remove. Anonymous public counts do not need
-// the field and are unaffected. The read runs outside the lock so
-// concurrent requests are not serialized behind it.
+// Only agreement across every supported backing index is memoized. Never
+// guess a subfield: an unmapped field can return zero buckets with HTTP 200.
+// Anonymous public counts do not need the field and are unaffected. The read
+// runs outside the lock so concurrent requests are not serialized behind it.
 //
 // It also warns when tags is not keyword or data is not flat_object, since
 // the grouped count and the cardinality metric depend on both.
@@ -544,16 +539,18 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) (string
 	var commonField string
 	for name, mapping := range mappings {
 		field, resolved := accessKeyFieldFromMapping(&mapping)
-		if len(mappings) > 1 && (!resolved || (commonField != "" && field != commonField)) {
+		if !resolved {
+			os.accessKeyFieldRetryAt = now().Add(accessKeyFieldRetryInterval)
+			slog.WarnContext(ctx, "access_check_query mapping unsupported",
+				"index", os.index, "backing_index", name,
+				"observed_type", mapping.Properties[accessCheckQueryField].Type)
+			return "", errors.NewServiceUnavailable("access_check_query mapping unsupported; configure keyword or text with a keyword subfield and retry")
+		}
+		if commonField != "" && field != commonField {
 			os.accessKeyFieldRetryAt = now().Add(accessKeyFieldRetryInterval)
 			slog.WarnContext(ctx, "access_check_query alias mappings disagree or are unsupported",
 				"index", os.index, "backing_index", name, "index_count", len(mappings))
 			return "", errors.NewServiceUnavailable("index mappings must agree on one supported access_check_query field; repair the alias mappings and retry")
-		}
-		if !resolved {
-			observed, _ := json.Marshal(mapping.Properties[accessCheckQueryField])
-			slog.WarnContext(ctx, "unexpected access_check_query mapping; using default access key field",
-				"index", name, "access_key_field", field, "observed_mapping", string(observed))
 		}
 		commonField = field
 		if tags, ok := mapping.Properties["tags"]; !ok || tags.Type != "keyword" {
@@ -578,14 +575,14 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) (string
 
 // accessKeyFieldFromMapping applies the resolution table of
 // resolveAccessKeyField to a mapping. The boolean is false when the mapping
-// did not match a known shape and the default is being returned.
+// did not match a supported shape; there is no fallback field.
 func accessKeyFieldFromMapping(mapping *IndexMapping) (string, bool) {
 	if mapping == nil {
-		return accessCheckQueryKeywordField, false
+		return "", false
 	}
 	field, ok := mapping.Properties[accessCheckQueryField]
 	if !ok {
-		return accessCheckQueryKeywordField, false
+		return "", false
 	}
 	switch field.Type {
 	case "keyword":
@@ -595,7 +592,7 @@ func accessKeyFieldFromMapping(mapping *IndexMapping) (string, bool) {
 			return accessCheckQueryKeywordField, true
 		}
 	}
-	return accessCheckQueryKeywordField, false
+	return "", false
 }
 
 // RenderCountAggregation generates an aggregation-only body for the count route.

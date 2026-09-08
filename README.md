@@ -203,9 +203,10 @@ go run ./cmd
 - `COUNT_MAX_ACCESS_BUCKETS`: Buckets a single count walks before reporting `has_more` (≥ page, default: "5000")
 
 The count route reads the index mapping on first use to pick the access-check
-field. If that read fails, authenticated counts answer `503` until it is
-retried (30 s); anonymous counts are unaffected. An unexpected mapping shape
-falls back with a warning instead.
+field in every backing index. Failed reads, unsupported shapes, or disagreeing
+alias mappings return `503` for authenticated counts until resolution is retried
+(30 s), with a warning; there is no guessed-field fallback. Anonymous counts
+and public-only aggregations do not read the mapping and are unaffected.
 
 **Clearbit Configuration:**
 

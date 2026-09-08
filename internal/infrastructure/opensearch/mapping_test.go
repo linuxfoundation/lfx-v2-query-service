@@ -28,6 +28,8 @@ func TestResolveAliasMappings(t *testing.T) {
 		{"different supported fields", IndexMappings{"a": keyword, "b": text}, "", true},
 		{"one unusable field", IndexMappings{"a": keyword, "b": unusable}, "", true},
 		{"both unusable fields", IndexMappings{"a": unusable, "b": unusable}, "", true},
+		{"single unusable field", IndexMappings{"a": unusable}, "", true},
+		{"single missing field", IndexMappings{"a": IndexMapping{}}, "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			client := NewMockOpenSearchClient()
