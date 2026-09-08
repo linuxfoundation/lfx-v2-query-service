@@ -157,7 +157,7 @@ type QueryResourcesCountPayload struct {
 	// Tag prefix to group the count by; groups are keyed by the tag value after
 	// '<prefix>:'
 	GroupBy *string
-	// Maximum number of groups returned (default 100)
+	// Maximum number of groups returned (default 100); requires group_by
 	GroupBySize *int
 	// Metric to compute over the authorized resources; only
 	// 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported

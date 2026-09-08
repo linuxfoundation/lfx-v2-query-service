@@ -1296,6 +1296,18 @@ func TestPayloadToCountAggregation(t *testing.T) {
 			expected: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: constants.DefaultGroupBySize},
 		},
 		{
+			name:          "group_by_size without group_by is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBySize: intPtr(10)},
+			expectError:   true,
+			errorContains: "group_by_size requires group_by",
+		},
+		{
+			name:          "group_by_size with a metric is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBySize: intPtr(10), Metric: stringPtr("cardinality:email")},
+			expectError:   true,
+			errorContains: "group_by_size requires group_by",
+		},
+		{
 			name:     "group_by_size overrides the default",
 			payload:  &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("meeting_type"), GroupBySize: intPtr(1)},
 			expected: model.CountAggregation{GroupByPrefix: "meeting_type", GroupBySize: 1},

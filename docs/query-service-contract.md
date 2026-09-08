@@ -85,7 +85,7 @@ Same parameters as `GET /query/resources` except `cel_filter`,
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `group_by` | string | Tag prefix (`^[a-z][a-z0-9_]*$`, max 64). Groups the count by the value after `<prefix>:` in each document's `tags`, e.g. `group_by=project_uid` |
-| `group_by_size` | int | 1–1000, default 100. Maximum number of groups returned |
+| `group_by_size` | int | 1–1000, default 100. Maximum number of groups returned; requires `group_by` (otherwise `400`, including with `metric`) |
 | `metric` | string | `cardinality:<tag_prefix>` (max 80). Number of distinct `<tag_prefix>:…` tag values across the authorized documents, e.g. `metric=cardinality:email`. Any other shape, including `sum:…`, is a `400` |
 
 `group_by` and `metric` cannot be combined (`400`: "metric per group is not

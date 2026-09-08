@@ -179,7 +179,7 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Pattern(`^[a-z][a-z0-9_]*$`)
 				dsl.MaxLength(64)
 			})
-			dsl.Attribute("group_by_size", dsl.Int, "Maximum number of groups returned (default 100)", func() {
+			dsl.Attribute("group_by_size", dsl.Int, "Maximum number of groups returned (default 100); requires group_by", func() {
 				dsl.Example(100)
 				dsl.Minimum(1)
 				dsl.Maximum(1000)

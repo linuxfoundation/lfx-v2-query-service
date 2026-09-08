@@ -306,6 +306,9 @@ func (s *querySvcsrvc) payloadToCountAggregation(payload *querysvc.QueryResource
 		aggregation.GroupByPrefix = *payload.GroupBy
 	}
 	if payload.GroupBySize != nil {
+		if payload.GroupBy == nil {
+			return aggregation, errors.NewValidation("group_by_size requires group_by; omit group_by_size for plain counts or metrics")
+		}
 		if *payload.GroupBySize < 1 || *payload.GroupBySize > constants.MaxGroupBySize {
 			return aggregation, errors.NewValidation(fmt.Sprintf("group_by_size must be between 1 and %d", constants.MaxGroupBySize))
 		}

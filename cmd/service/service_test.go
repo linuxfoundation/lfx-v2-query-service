@@ -314,6 +314,24 @@ func TestQuerySvcsrvc_QueryResourcesCount(t *testing.T) {
 			},
 		},
 		{
+			name:              "group_by_size alone is a 400 naming the fix",
+			payload:           &querysvc.QueryResourcesCountPayload{Version: "1", Type: stringPtr("project"), GroupBySize: intPtr(10)},
+			principal:         "test-user",
+			setupMocks:        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {},
+			expectedError:     true,
+			expectedErrorType: &querysvc.BadRequestError{},
+			expectedErrorText: "group_by_size requires group_by",
+		},
+		{
+			name:              "group_by_size with metric is a 400 naming the fix",
+			payload:           &querysvc.QueryResourcesCountPayload{Version: "1", Type: stringPtr("project"), GroupBySize: intPtr(10), Metric: stringPtr("cardinality:email")},
+			principal:         "test-user",
+			setupMocks:        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker) {},
+			expectedError:     true,
+			expectedErrorType: &querysvc.BadRequestError{},
+			expectedErrorText: "group_by_size requires group_by",
+		},
+		{
 			name: "sum metric is a 400 naming the reason",
 			payload: &querysvc.QueryResourcesCountPayload{
 				Version: "1",

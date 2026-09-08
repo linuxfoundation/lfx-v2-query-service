@@ -612,11 +612,11 @@ paths:
                   example: project_uid
                 - name: group_by_size
                   in: query
-                  description: Maximum number of groups returned (default 100)
+                  description: Maximum number of groups returned (default 100); requires group_by
                   allowEmptyValue: true
                   schema:
                     type: integer
-                    description: Maximum number of groups returned (default 100)
+                    description: Maximum number of groups returned (default 100); requires group_by
                     example: 100
                     format: int64
                     minimum: 1
