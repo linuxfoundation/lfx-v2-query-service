@@ -185,7 +185,11 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Maximum(1000)
 			})
 			dsl.Attribute("metric", dsl.String, "Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported", func() {
-				dsl.Example("cardinality:email")
+				// Goa's CLI emits every flag using the last example. Its payload
+				// builder omits empty optional strings, so keep grouped mode as
+				// the default while documenting cardinality as an alternative.
+				dsl.Example("cardinality mode (group_by omitted)", "cardinality:email")
+				dsl.Example("grouped mode (metric omitted)", "")
 				dsl.MaxLength(80)
 			})
 			dsl.Required("bearer_token", "version")

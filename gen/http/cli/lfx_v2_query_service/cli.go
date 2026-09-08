@@ -322,7 +322,7 @@ Example:
    ]' --filters-or '[
       "mailing_list_id:abc",
       "mailing_list_id:xyz"
-   ]' --group-by "project_uid" --group-by-size 100 --metric "cardinality:email" --bearer-token "eyJhbGci..."
+   ]' --group-by "project_uid" --group-by-size 100 --metric "" --bearer-token "eyJhbGci..."
 `, os.Args[0])
 }
 

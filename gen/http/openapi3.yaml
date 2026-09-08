@@ -629,9 +629,15 @@ paths:
                   schema:
                     type: string
                     description: Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported
-                    example: cardinality:email
+                    example: ""
                     maxLength: 80
-                  example: cardinality:email
+                  examples:
+                    cardinality mode (group_by omitted):
+                        summary: cardinality mode (group_by omitted)
+                        value: cardinality:email
+                    grouped mode (metric omitted):
+                        summary: grouped mode (metric omitted)
+                        value: ""
             responses:
                 "200":
                     description: OK response.
