@@ -263,6 +263,15 @@ func EncodeQueryResourcesCountRequest(encoder func(*http.Request) goahttp.Encode
 		for _, value := range p.FiltersOr {
 			values.Add("filters_or", value)
 		}
+		if p.GroupBy != nil {
+			values.Add("group_by", *p.GroupBy)
+		}
+		if p.GroupBySize != nil {
+			values.Add("group_by_size", fmt.Sprintf("%v", *p.GroupBySize))
+		}
+		if p.Metric != nil {
+			values.Add("metric", *p.Metric)
+		}
 		req.URL.RawQuery = values.Encode()
 		return nil
 	}
@@ -754,6 +763,20 @@ func unmarshalResourceResponseBodyToQuerysvcResource(v *ResourceResponseBody) *q
 		Type: v.Type,
 		ID:   v.ID,
 		Data: v.Data,
+	}
+
+	return res
+}
+
+// unmarshalCountGroupResponseBodyToQuerysvcCountGroup builds a value of type
+// *querysvc.CountGroup from a value of type *CountGroupResponseBody.
+func unmarshalCountGroupResponseBodyToQuerysvcCountGroup(v *CountGroupResponseBody) *querysvc.CountGroup {
+	if v == nil {
+		return nil
+	}
+	res := &querysvc.CountGroup{
+		Key:   *v.Key,
+		Count: *v.Count,
 	}
 
 	return res

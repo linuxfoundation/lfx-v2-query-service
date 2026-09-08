@@ -27,9 +27,11 @@ type MockAccessControlChecker struct {
 	// DefaultResult is the default access result ("allowed" or "denied")
 	DefaultResult string
 	// Test helper fields
-	checkAccessResponse map[string]string
-	checkAccessError    error
-	isReadyError        error
+	checkAccessResponse    map[string]string
+	checkAccessError       error
+	checkAccessErrorOnCall int
+	checkAccessCalls       int
+	isReadyError           error
 	// MockTupleRefs is the list of object refs returned by ReadTuples
 	MockTupleRefs []string
 	// SimulateTuplesError determines if ReadTuples should return an error
@@ -41,12 +43,15 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	slog.DebugContext(ctx, "executing mock access control check",
 		"subject", subj,
 		"timeout", timeout,
-		"message", string(data),
+		"request_bytes", len(data),
 		"public_only", m.PublicResourcesOnly,
 	)
 
-	// If test has set a mock error, return it
-	if m.checkAccessError != nil {
+	m.checkAccessCalls++
+
+	// If test has set a mock error, return it (on every call, or only on the
+	// configured call number).
+	if m.checkAccessError != nil && (m.checkAccessErrorOnCall == 0 || m.checkAccessErrorOnCall == m.checkAccessCalls) {
 		return nil, m.checkAccessError
 	}
 
@@ -91,7 +96,6 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	slog.DebugContext(ctx, "mock access control check completed",
 		"subject", subj,
 		"result_count", len(result),
-		"result", result,
 	)
 
 	return result, nil
@@ -215,6 +219,19 @@ func (m *MockAccessControlChecker) SetCheckAccessResponse(response map[string]st
 // SetCheckAccessError sets the mock error for CheckAccess calls
 func (m *MockAccessControlChecker) SetCheckAccessError(err error) {
 	m.checkAccessError = err
+	m.checkAccessErrorOnCall = 0
+}
+
+// SetCheckAccessErrorOnCall makes only the n-th CheckAccess call (1-based)
+// fail with err; earlier and later calls behave normally.
+func (m *MockAccessControlChecker) SetCheckAccessErrorOnCall(n int, err error) {
+	m.checkAccessError = err
+	m.checkAccessErrorOnCall = n
+}
+
+// CheckAccessCalls returns how many times CheckAccess was called.
+func (m *MockAccessControlChecker) CheckAccessCalls() int {
+	return m.checkAccessCalls
 }
 
 // SetIsReadyError sets the mock error for IsReady calls

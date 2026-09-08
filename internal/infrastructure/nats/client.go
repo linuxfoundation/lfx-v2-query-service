@@ -95,7 +95,7 @@ func (c *NATSClient) CheckAccess(ctx context.Context, request *AccessCheckNATSRe
 
 	slog.DebugContext(ctx, "received NATS response",
 		"subject", request.Subject,
-		"message", string(natsResponse.Data),
+		"response_bytes", len(natsResponse.Data),
 		"timeout", timeout,
 	)
 
@@ -108,9 +108,7 @@ func (c *NATSClient) CheckAccess(ctx context.Context, request *AccessCheckNATSRe
 		var relationPart, allowedPart []byte
 		var found bool
 		if relationPart, allowedPart, found = bytes.Cut(line, []byte("\t")); !found {
-			slog.ErrorContext(ctx, "invalid NATS response format",
-				"message", string(line),
-			)
+			slog.ErrorContext(ctx, "invalid NATS response format", "line_bytes", len(line))
 			return nil, errors.NewUnexpected("invalid NATS response format")
 		}
 		// Add the response to our map so we can look it up on the corresponding hit.

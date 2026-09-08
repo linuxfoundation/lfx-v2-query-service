@@ -195,6 +195,21 @@ go run ./cmd
 - `NATS_MAX_RECONNECT`: Maximum reconnection attempts (default: "3")
 - `NATS_RECONNECT_WAIT`: Time between reconnection attempts (default: "2s")
 
+**Access Checks and Counting:**
+
+- `ACCESS_CHECK_TIMEOUT`: Timeout of each batched fga-sync access check (default: "15s")
+- `READ_TUPLES_TIMEOUT`: Timeout of the `filter_grants=direct` tuple read (default: "15s")
+- `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
+- `COUNT_MAX_ACCESS_BUCKETS`: Access-key walk cap (page size..10000, default: "5000"); startup validation also requires at most 100 pages per count (`ceil(cap/page) <= 100`). Whole pages are never split, so the final page can overshoot by at most page size minus one (always fewer than 11000 granted keys). An index with a lowered `index.max_terms_count` must accommodate that bound.
+
+The count route reads the index mapping on first use to pick the access-check
+field in every backing index. Failed reads, unsupported shapes, or disagreeing
+alias mappings return `503` for authenticated counts until resolution is retried
+(30 s), with a warning; there is no guessed-field fallback. The resolution is
+revalidated every 5 minutes; a failed or unsupported revalidation fails closed
+like the first read. Anonymous counts and public-only aggregations do not read
+the mapping and are unaffected.
+
 **Clearbit Configuration:**
 
 - `CLEARBIT_CREDENTIAL`: Clearbit API key (required for organization search)
@@ -287,6 +302,20 @@ returns a count rather than the resources themselves:
 
 `has_more` is `true` when the count is not guaranteed to be exhaustive and the
 client should request a narrower query.
+
+Two optional parameters aggregate the count over the resources the caller may
+see: `group_by=<tag prefix>` returns `groups` (one entry per tag value after
+`<prefix>:`, capped by `group_by_size`, omitted when no group matched;
+`groups_complete` says whether all are present, while `group_count_error_upper_bound`
+is 0 only when the returned group counts are exact within the walked authorized
+set; otherwise counts may be lower bounds) and `metric=cardinality:<tag prefix>` returns `metric_value` (distinct
+tag values) with `metric_complete`. They cannot be combined, and `data.*`
+fields cannot be aggregated on this index.
+
+```bash
+GET /query/resources/count?v=1&type=v1_past_meeting&group_by=project_uid
+GET /query/resources/count?v=1&type=v1_past_meeting_participant&tags_all=is_attended:true&metric=cardinality:email
+```
 
 For API contract details (page size, date ranges, CEL filter, clause limits,
 anonymous vs authenticated semantics, access-control flow), see

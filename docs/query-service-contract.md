@@ -80,23 +80,150 @@ lives in `validateSearchCriteria` in `internal/service/resource_search.go`.
 ### GET /query/resources/count
 
 Same parameters as `GET /query/resources` except `cel_filter`,
-`filter_grants`, `sort`, `page_size`, and `page_token`. Returns:
+`filter_grants`, `sort`, `page_size`, and `page_token`, plus:
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `group_by` | string | Tag prefix (`^[a-z][a-z0-9_]*$`, max 64). Groups the count by the value after `<prefix>:` in each document's `tags`, e.g. `group_by=project_uid` |
+| `group_by_size` | int | 1–1000, default 100. Maximum number of groups returned; requires `group_by` (otherwise `400`, including with `metric`) |
+| `metric` | string | `cardinality:<tag_prefix>` (max 80). Number of distinct `<tag_prefix>:…` tag values across the authorized documents, e.g. `metric=cardinality:email`. Any other shape, including `sum:…`, is a `400` |
+
+`group_by` and `metric` cannot be combined (`400`: "metric per group is not
+supported; group first, then count each group with tags"). To get a metric per
+group, call once with `group_by`, then once per group with `metric` and
+`tags=<prefix>:<value>`.
+A bare `<prefix>:` tag with no value is neither a group nor a distinct value.
+
+Grouped response (`group_by=project_uid`):
 
 ```json
-{ "count": 42, "has_more": false }
+{
+  "count": 42,
+  "has_more": false,
+  "groups": [{ "key": "a1b2", "count": 30 }, { "key": "c3d4", "count": 12 }],
+  "groups_complete": true,
+  "group_count_error_upper_bound": 0
+}
 ```
 
-Count queries use two OpenSearch requests for authenticated principals:
+Cardinality response (`metric=cardinality:email`, without `group_by`):
 
-- A `_count` request for public resources.
-- An aggregation over private resources grouped by
-  `access_check_query.keyword`, followed by one batched FGA access check over
-  those aggregation keys.
+```json
+{
+  "count": 42,
+  "has_more": false,
+  "metric_value": 17,
+  "metric_complete": true
+}
+```
 
-The service adds authorized private bucket counts to the public count. The
-private aggregation is capped at `constants.DefaultBucketSize` (100) distinct
-`access_check_query` buckets. If the private aggregation overflows that bucket
-size, `has_more` is `true` and callers should issue a narrower count query.
+| Field | Present | Meaning |
+| --- | --- | --- |
+| `count` | always | Matching documents the caller may see |
+| `has_more` | always | `true` when the count is not guaranteed exhaustive: the access-bucket walk stopped at `COUNT_MAX_ACCESS_BUCKETS`, or OpenSearch returned a full page without a continuation cursor (logged as a warning) |
+| `groups` | with `group_by`, when non-empty | One entry per group, key = tag value with the prefix stripped, ordered by count descending then key ascending. A document carrying several `<prefix>:` tags counts once per tag. Per-group counts may be lower bounds; they are exact within the walked authorized set only when `group_count_error_upper_bound` is 0. Omitted (not `[]`) when no group matched; `groups_complete` is the signal that `group_by` was honoured |
+| `groups_complete` | with `group_by` | `true` when every group is present; `false` when more groups exist than `group_by_size`, **or** when `has_more` is `true` (the groups were computed over a truncated authorized set) |
+| `group_count_error_upper_bound` | with `group_by` | Maximum possible undercount per returned group from the distributed terms aggregation; 0 means exact within the walked authorized set. Independent of `groups_complete`; if `has_more` is true, unwalked access buckets are still excluded |
+| `metric_value` | with `metric` | The cardinality |
+| `metric_complete` | with `metric` | `true` when the distinct-value walk finished; `false` when it stopped at `COUNT_MAX_ACCESS_BUCKETS` distinct values, **or** when `has_more` is `true` |
+
+#### How a count is computed
+
+For an anonymous principal: one `_count` request over `public: true` documents,
+with `Cache-Control: public, max-age=300`. Groups and metrics, if requested,
+run over public documents only.
+
+For an authenticated principal:
+
+1. **Public part** — the same `_count` over `public: true` documents.
+2. **Access-bucket walk** — over private documents (`must_not public:true`), a
+   composite aggregation on the access-check field (see
+   [Mapping the count route depends on](#mapping-the-count-route-depends-on))
+   returns `COUNT_ACCESS_BUCKET_PAGE` distinct `access_check_query` values per
+   page. Each page is one batched fga-sync check (`<key>@user:<principal>`
+   lines, same format as the search route); the document counts of the granted
+   keys are added to the count. A page with fewer buckets than the page size
+   ends the walk. After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets
+   have been walked, the walk stops without requesting the next page and
+   `has_more` is `true`; pages are never split. The walk stops on
+   request-context cancellation; per-check timeouts bound each page's access
+   check, and startup validation allows at most 100 pages per count.
+   A failed access check is a
+   `503`: a count is never returned as if complete when part of the authorized
+   set is unknown. Likewise an OpenSearch response with a failed shard or a
+   timeout is a `503` (`allow_partial_search_results=false` is sent), never a
+   smaller number.
+3. **Groups / metric** — skipped when nothing is visible to the caller (no
+   public document matched and no private key was granted: empty groups,
+   metric 0). Otherwise a second aggregation search filtered to the
+   *authorized set*: `public: true` OR `access_check_query` in the granted keys
+   (fewer than `COUNT_MAX_ACCESS_BUCKETS + COUNT_ACCESS_BUCKET_PAGE` values
+   because whole pages are never split, always fewer than 11000). This is below
+   OpenSearch's `index.max_terms_count` default of 65536; deployments with a
+   lower index setting must allow for the whole-page overshoot. `group_by` is a `terms`
+   aggregation on `tags` with `include: "<prefix>:.+"` and
+   `shard_size = min(group_by_size × 5, 5000)` to reduce, not eliminate,
+   distributed count error. OpenSearch's `doc_count_error_upper_bound` is
+   returned as `group_count_error_upper_bound`: 0 means exact counts within
+   the walked authorized set; a non-zero value means counts may be lower
+   bounds. `groups_complete` still measures group truncation
+   (`sum_other_doc_count == 0`, provided `has_more` is false), not count accuracy.
+   `metric`
+   is a composite walk over `tags` starting just after the bare `<prefix>:` key
+   and stopping at the first key outside the prefix; like the access-bucket
+   walk it is exact by construction and needs no scripting.
+
+Resource families whose access key is per object (past meetings:
+`v1_past_meeting:{id}#viewer`, and their participants, which inherit it)
+produce one bucket per meeting, so a count over N meetings walks ⌈N/100⌉
+pages with the defaults. A walk longer than five pages is logged at `Info`
+with its page count and wall time.
+
+Environment variables (defaults live in code; no values file needs to set them):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search and count routes) |
+| `READ_TUPLES_TIMEOUT` | `15s` | Timeout of the `filter_grants=direct` tuple read |
+| `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
+| `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
+
+#### Not supported
+
+- `sum:<field>`, `avg`, or any metric or `group_by` over `data.*`: `data` is a
+  `flat_object` and cannot be aggregated (see below). `400` names the reason.
+- A metric per group, `group_by` on two prefixes, paging of groups beyond
+  `group_by_size`.
+
+### Mapping the count route depends on
+
+No repository owns an index template for `resources`; the only mapping text in
+the workspace is the fallback in `lfx-v2-mockdata/scripts/reset-data.sh`, used
+when that script cannot read an existing index. The count route depends on
+three facts about the live mapping:
+
+| Field | Required mapping | Why |
+| --- | --- | --- |
+| `tags` | `keyword` | The **only aggregatable dimension**. `group_by` and `metric=cardinality:` both aggregate on it; a tag prefix is the way to expose a groupable attribute |
+| `data` | `flat_object` | Never aggregatable, never summable, no numeric operations. This is why `sum` and `group_by` on `data.*` are declined rather than attempted |
+| `access_check_query` | `keyword`, **or** `text` with a `keyword` subfield | The access-bucket walk aggregates on it. The searcher reads `GET /<index>/_mapping` and resolves **every** backing index to `access_check_query` (keyword) or `access_check_query.keyword` (text + keyword subfield). Only agreement across supported mappings is cached; `Info` is logged on initial resolution or when the resolved field changes. An unsupported shape (including a missing field), disagreeing alias targets, or a failed read **fails closed**: authenticated counts answer `503` and a warning identifies the mapping problem; resolution is retried after 30 seconds. Anonymous public counts and aggregations do not read the mapping and are unaffected. Guessing the field would return the public count as if exhaustive on a plain-keyword index — the silent zero this route exists to remove |
+
+The resolution is revalidated every 5 minutes; a failed, unsupported, or
+disagreeing revalidation fails closed like the first read instead of reusing
+an expired field. This bounds stale-mapping time but is not a transactional
+snapshot of alias changes.
+
+The mockdata fallback mapping declares `access_check_query` as plain `keyword`;
+an index whose field was created by dynamic mapping carries `text` +
+`.keyword`. Before this resolution the field name was hardcoded to
+`.keyword`, and on a plain-`keyword` index the aggregation returned zero
+buckets with HTTP 200, so every authenticated count silently equalled the
+public count. If `access_check_query` is mapped `text` **without** a `keyword`
+subfield, or is absent, authenticated counts now return `503` with the warning
+`access_check_query mapping unsupported`. This supersedes QS-1 spec §3.5's
+original fallback-plus-warning rule: guessing an unmapped subfield must never
+turn private resources into a successful public-only count. Plain `keyword`
+(the mockdata fallback mapping) remains supported.
 
 ## Anonymous vs Authenticated Requests
 
@@ -129,7 +256,7 @@ For authenticated requests, the query-service:
    (format: `{access_check_object}#{access_check_relation}@user:{principal}`)
 3. Sends to fga-sync via NATS request/reply:
    - Subject: `lfx.access_check.request`
-   - Timeout: 15 seconds
+   - Timeout: `ACCESS_CHECK_TIMEOUT` (default 15 seconds)
 4. Parses the tab-separated response:
 
    ```text
@@ -150,8 +277,9 @@ has direct OpenFGA tuples for the requested `type`.
 
 - Requires `type`, because fga-sync reads tuples by object type.
 - Requires an authenticated principal. Anonymous requests fail validation.
-- Calls `lfx.access_check.read_tuples` through fga-sync, then pre-filters
-  OpenSearch by the returned `object_ref` values.
+- Calls `lfx.access_check.read_tuples` through fga-sync (timeout
+  `READ_TUPLES_TIMEOUT`, default 15 seconds), then pre-filters OpenSearch by
+  the returned `object_ref` values.
 - The normal access-check pass still runs after OpenSearch returns resources.
 - This is a direct-grant filter only. It does not expand inherited permissions
   through parent projects or committees.
@@ -168,11 +296,11 @@ resource to be discoverable and accessible:
 | `object_id` | Debug lookup and warning-log context for the source resource ID | Harder to trace an indexed document back to the owning resource |
 | `parent_refs` | Parent filtering (`parent=` param) | Resource won't appear in parent queries |
 | `name_and_aliases` | Typeahead search (`name=` param) | Resource won't appear in name searches |
-| `tags` | Tag filtering | Resource won't match tag queries |
+| `tags` | Tag filtering; the only aggregatable dimension (`group_by`, `metric=cardinality:`) | Resource won't match tag queries or appear in grouped counts |
 | `public` | Marks the resource as public: skips the FGA check for all callers (`BuildMessage` returns it without checking when `public` is true) and lets anonymous callers see it via the `public: true` filter | Anonymous users can't see it; setting it incorrectly exposes a private resource to everyone |
 | `access_check_object` | Identifies FGA object to check | Non-public resource treated as unauthorized and excluded from results (legacy/malformed document) |
 | `access_check_relation` | FGA relation to check (e.g. `viewer`) | Non-public resource treated as unauthorized and excluded from results (legacy/malformed document) |
-| `access_check_query` | `{access_check_object}#{access_check_relation}` used by count aggregations | Authenticated counts can undercount private resources |
+| `access_check_query` | `{access_check_object}#{access_check_relation}`; the count route's access-bucket walk aggregates on it (field resolved from the mapping, see [Mapping the count route depends on](#mapping-the-count-route-depends-on)) | Authenticated counts can undercount private resources |
 | `sort_name` | Sorting by name | May sort incorrectly |
 | `updated_at` | Sorting by `updated_asc` / `updated_desc` | Updated-date sorting may be wrong or place records last |
 | `data` | Returned as-is in the response | Missing fields in response |
@@ -354,7 +482,9 @@ Clause-count rules:
 - `filters_or` adds 1 wrapping clause plus 1 per value.
 - `type`, `parent`, `name`, and the date range each add 1 clause.
 - Every request adds 1 fixed clause (`latest: true`).
-- Anonymous queries and count subqueries add public/private clauses as needed.
+- Anonymous queries and count subqueries add public/private clauses as needed;
+  the count route's grouped/metric search adds one `terms` clause holding the
+  granted access keys (fewer than `COUNT_MAX_ACCESS_BUCKETS + COUNT_ACCESS_BUCKET_PAGE` values because full pages are never split).
 - `filter_grants=direct` adds one `object_ref` terms clause populated from
   fga-sync's direct tuple response.
 
