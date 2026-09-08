@@ -1311,9 +1311,7 @@ func TestResolveAccessKeyField(t *testing.T) {
 			}()
 		}
 		wg.Wait()
-		// The mapping call runs outside the searcher lock, so several requests
-		// may race it on first use; every one of them must agree afterwards,
-		// and it must not be called again.
+		assert.Equal(t, 1, client.mappingCalls, "concurrent first use shares one read")
 		before := client.mappingCalls
 		field, err := searcher.resolveAccessKeyField(context.Background())
 		assert.NoError(t, err)

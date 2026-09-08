@@ -28,6 +28,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/singleflight"
 )
 
 // templateFuncs are the helpers available to every query template.
@@ -147,6 +148,7 @@ type OpenSearchSearcher struct {
 	// retried; zero means "retry now".
 	accessKeyFieldRetryAt time.Time
 	accessKeyFieldMu      sync.Mutex
+	accessKeyFieldFlight  singleflight.Group
 	// now is the clock used for the retry window; tests may override it.
 	now func() time.Time
 }
@@ -493,6 +495,20 @@ func luceneQuoteMeta(s string) string {
 // It also warns when tags is not keyword or data is not flat_object, since
 // the grouped count and the cardinality metric depend on both.
 func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) (string, error) {
+	// Coalesce startup and retry-boundary callers. The cache is rechecked
+	// inside the flight, so a late caller cannot start another mapping read.
+	value, err, _ := os.accessKeyFieldFlight.Do("mapping", func() (any, error) {
+		return os.readAccessKeyField(ctx)
+	})
+	if err != nil {
+		return "", err
+	}
+	return value.(string), nil
+}
+
+// readAccessKeyField runs only inside a mapping flight; successful results
+// and failed-read retry windows are shared by every caller.
+func (os *OpenSearchSearcher) readAccessKeyField(ctx context.Context) (string, error) {
 	now := time.Now
 	if os.now != nil {
 		now = os.now
