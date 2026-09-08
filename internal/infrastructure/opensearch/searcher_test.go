@@ -1008,8 +1008,8 @@ func mustMarshal(v any) []byte {
 }
 
 // publicCountBodies pins the /_count request body byte-for-byte to the output
-// of the template before the count route was extended (captured from main at
-// 7faf1ac). Existing callers must keep receiving the same public count.
+// of main's template at 4a77587, including PR #70's name operator:and.
+// Existing callers must keep receiving the same public count as main.
 var publicCountBodies = []struct {
 	name     string
 	criteria model.SearchCriteria
@@ -1031,7 +1031,7 @@ var publicCountBodies = []struct {
 			FiltersOr:  []model.FieldFilter{{Field: "data.m", Value: "1"}, {Field: "data.m", Value: "2"}},
 			DateField:  stringPtr("data.start_time"), DateFrom: stringPtr("2026-08-01T00:00:00Z"), DateTo: stringPtr("2026-08-31T23:59:59Z"),
 		},
-		expected: `{"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"public":true}},{"term":{"object_type":"committee"}},{"term":{"parent_refs":"project:123"}},{"multi_match":{"query":"gov","type":"bool_prefix","fields":["name_and_aliases","name_and_aliases._2gram","name_and_aliases._3gram"]}},{"term":{"tags":"c"}},{"range":{"data.start_time":{"gte":"2026-08-01T00:00:00Z","lte":"2026-08-31T23:59:59Z"}}},{"term":{"data.status":"active"}},{"term":{"data.x":"y"}},{"bool":{"should":[{"term":{"data.m":"1"}},{"term":{"data.m":"2"}}],"minimum_should_match":1}}],"minimum_should_match":1,"should":[{"term":{"tags":"a"}},{"term":{"tags":"b"}}]}}}`,
+		expected: `{"query":{"bool":{"must":[{"term":{"latest":true}},{"term":{"public":true}},{"term":{"object_type":"committee"}},{"term":{"parent_refs":"project:123"}},{"multi_match":{"query":"gov","type":"bool_prefix","operator":"and","fields":["name_and_aliases","name_and_aliases._2gram","name_and_aliases._3gram"]}},{"term":{"tags":"c"}},{"range":{"data.start_time":{"gte":"2026-08-01T00:00:00Z","lte":"2026-08-31T23:59:59Z"}}},{"term":{"data.status":"active"}},{"term":{"data.x":"y"}},{"bool":{"should":[{"term":{"data.m":"1"}},{"term":{"data.m":"2"}}],"minimum_should_match":1}}],"minimum_should_match":1,"should":[{"term":{"tags":"a"}},{"term":{"tags":"b"}}]}}}`,
 	},
 }
 
