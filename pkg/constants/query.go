@@ -21,4 +21,7 @@ const (
 	MaxAccessBucketPage = 1000
 	// DefaultMaxAccessBuckets is the default cap on access-key buckets walked before a count reports has_more
 	DefaultMaxAccessBuckets = 5000
+	// MaxCountAccessBuckets is the maximum configurable access-key walk cap.
+	// Whole-page overshoot remains below OpenSearch's default max_terms_count.
+	MaxCountAccessBuckets = 10000
 )

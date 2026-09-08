@@ -42,7 +42,7 @@ type Config struct {
 	// checked per page of the count walk (1..constants.MaxAccessBucketPage).
 	AccessBucketPage int
 	// MaxAccessBuckets caps the number of access-key buckets a single count
-	// walks before it stops and reports has_more (>= AccessBucketPage).
+	// walks before it stops and reports has_more (AccessBucketPage..10000).
 	MaxAccessBuckets int
 }
 
@@ -88,6 +88,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxAccessBuckets < c.AccessBucketPage {
 		return fmt.Errorf("max access buckets (%d) must be at least the access bucket page (%d)", c.MaxAccessBuckets, c.AccessBucketPage)
+	}
+	if c.MaxAccessBuckets > constants.MaxCountAccessBuckets {
+		return fmt.Errorf("max access buckets must not exceed %d, got %d", constants.MaxCountAccessBuckets, c.MaxAccessBuckets)
 	}
 	return nil
 }
@@ -424,9 +427,9 @@ func (s *ResourceSearch) QueryResourcesCount(
 
 	// The authorized set is public documents plus private documents carrying
 	// one of the granted keys. The walk checks the cap only after a full page,
-	// so len(AuthorizedKeys) < MaxAccessBuckets + AccessBucketPage (5100 with
-	// the defaults), well below OpenSearch's index.max_terms_count default of
-	// 65536, so the terms clause is always accepted.
+	// so len(AuthorizedKeys) < MaxAccessBuckets + AccessBucketPage <= 11000,
+	// below OpenSearch's index.max_terms_count default of 65536. Deployments
+	// with a reduced index setting must allow for this whole-page overshoot.
 	if aggregation.PageSize == 0 {
 		aggregation.PageSize = s.config.AccessBucketPage
 	}

@@ -854,6 +854,15 @@ func TestNewResourceSearch(t *testing.T) {
 		assertion.NotNil(result)
 	})
 
+	t.Run("maximum supported cap is accepted", func(t *testing.T) {
+		config := DefaultConfig()
+		config.MaxAccessBuckets = constants.MaxCountAccessBuckets
+		assert.NoError(t, config.Validate())
+		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), config)
+		assert.NoError(t, err)
+		assert.Equal(t, constants.MaxCountAccessBuckets, result.(*ResourceSearch).config.MaxAccessBuckets)
+	})
+
 	t.Run("explicit config is kept", func(t *testing.T) {
 		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3}
 		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), config)
@@ -871,6 +880,7 @@ func TestNewResourceSearch(t *testing.T) {
 		{"page above the maximum", Config{AccessBucketPage: constants.MaxAccessBucketPage + 1}, "access bucket page"},
 		{"negative page", Config{AccessBucketPage: -1}, "access bucket page"},
 		{"max below page", Config{AccessBucketPage: 100, MaxAccessBuckets: 50}, "max access buckets"},
+		{"max above limit", Config{MaxAccessBuckets: constants.MaxCountAccessBuckets + 1}, "max access buckets must not exceed 10000"},
 	}
 	for _, tc := range invalid {
 		t.Run("rejects "+tc.name, func(t *testing.T) {

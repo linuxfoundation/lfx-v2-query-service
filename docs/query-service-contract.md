@@ -142,8 +142,10 @@ For an authenticated principal:
    public document matched and no private key was granted: empty groups,
    metric 0). Otherwise a second aggregation search filtered to the
    *authorized set*: `public: true` OR `access_check_query` in the granted keys
-   (at most `COUNT_MAX_ACCESS_BUCKETS` values, below OpenSearch's
-   `index.max_terms_count` default of 65536). `group_by` is a `terms`
+   (fewer than `COUNT_MAX_ACCESS_BUCKETS + COUNT_ACCESS_BUCKET_PAGE` values
+   because whole pages are never split, always fewer than 11000). This is below
+   OpenSearch's `index.max_terms_count` default of 65536; deployments with a
+   lower index setting must allow for the whole-page overshoot. `group_by` is a `terms`
    aggregation on `tags` with `include: "<prefix>:.*"` and
    `shard_size = min(group_by_size × 5, 5000)`, so on a multi-shard index the
    returned groups and their counts are exact in practice (a non-zero
@@ -165,7 +167,7 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search and count routes) |
 | `READ_TUPLES_TIMEOUT` | `15s` | Timeout of the `filter_grants=direct` tuple read |
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
-| `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Buckets walked before a count reports `has_more` (≥ page) |
+| `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); a full page can overshoot by at most page size minus one |
 
 #### Not supported
 

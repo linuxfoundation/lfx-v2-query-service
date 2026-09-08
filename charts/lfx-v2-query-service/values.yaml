@@ -75,7 +75,7 @@ app:
     ##   value: 15s
     ## COUNT_ACCESS_BUCKET_PAGE:  # default 100   - access-key buckets per count page (1-1000)
     ##   value: "100"
-    ## COUNT_MAX_ACCESS_BUCKETS:  # default 5000  - buckets walked before a count reports has_more
+    ## COUNT_MAX_ACCESS_BUCKETS:  # default 5000, page..10000; full pages may overshoot by page-1
     ##   value: "5000"
   # extraEnv allows injecting additional environment variables before OTEL configuration.
   # Supports both simple values and Kubernetes field references.
