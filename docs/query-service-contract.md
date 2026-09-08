@@ -93,14 +93,23 @@ supported; group first, then count each group with tags"). To get a metric per
 group, call once with `group_by`, then once per group with `metric` and
 `tags=<prefix>:<value>`.
 
-Returns:
+Grouped response (`group_by=project_uid`):
 
 ```json
 {
   "count": 42,
   "has_more": false,
   "groups": [{ "key": "a1b2", "count": 30 }, { "key": "c3d4", "count": 12 }],
-  "groups_complete": true,
+  "groups_complete": true
+}
+```
+
+Cardinality response (`metric=cardinality:email`, without `group_by`):
+
+```json
+{
+  "count": 42,
+  "has_more": false,
   "metric_value": 17,
   "metric_complete": true
 }
