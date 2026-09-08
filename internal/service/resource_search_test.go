@@ -1018,7 +1018,7 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 		{
 			name:      "authenticated user, allow-all, walk of two pages is exhaustive",
 			principal: "dev_user",
-			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 5000},
+			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 200},
 			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
 				seed(searcher)
 				accessChecker.DefaultResult = "allowed"
@@ -1085,7 +1085,7 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 		{
 			name:      "access check failure mid-walk is service unavailable, not a partial count",
 			principal: "dev_user",
-			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 5000},
+			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 200},
 			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
 				seed(searcher)
 				accessChecker.SetCheckAccessError(assert.AnError)
@@ -1096,7 +1096,7 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 		{
 			name:      "access check failure on a later page is service unavailable, never the count so far",
 			principal: "dev_user",
-			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 5000},
+			config:    Config{AccessBucketPage: 2, MaxAccessBuckets: 200},
 			setupMocks: func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {
 				seed(searcher)
 				accessChecker.DefaultResult = "allowed"

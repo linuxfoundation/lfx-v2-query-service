@@ -200,7 +200,7 @@ go run ./cmd
 - `ACCESS_CHECK_TIMEOUT`: Timeout of each batched fga-sync access check (default: "15s")
 - `READ_TUPLES_TIMEOUT`: Timeout of the `filter_grants=direct` tuple read (default: "15s")
 - `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
-- `COUNT_MAX_ACCESS_BUCKETS`: Access-key walk cap (page size..10000, default: "5000"); larger values fail startup validation. Whole pages are never split, so the final page can overshoot by at most page size minus one (always fewer than 11000 granted keys). An index with a lowered `index.max_terms_count` must accommodate that bound.
+- `COUNT_MAX_ACCESS_BUCKETS`: Access-key walk cap (page size..10000, default: "5000"); startup validation also requires at most 100 pages per count (`ceil(cap/page) <= 100`). Whole pages are never split, so the final page can overshoot by at most page size minus one (always fewer than 11000 granted keys). An index with a lowered `index.max_terms_count` must accommodate that bound.
 
 The count route reads the index mapping on first use to pick the access-check
 field in every backing index. Failed reads, unsupported shapes, or disagreeing

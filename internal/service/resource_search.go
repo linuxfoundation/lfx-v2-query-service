@@ -92,6 +92,10 @@ func (c Config) Validate() error {
 	if c.MaxAccessBuckets > constants.MaxCountAccessBuckets {
 		return fmt.Errorf("max access buckets must not exceed %d, got %d", constants.MaxCountAccessBuckets, c.MaxAccessBuckets)
 	}
+	pages := (c.MaxAccessBuckets + c.AccessBucketPage - 1) / c.AccessBucketPage
+	if pages > constants.MaxCountAccessPages {
+		return fmt.Errorf("max access buckets / access bucket page must not exceed %d pages, got %d (buckets=%d, page=%d)", constants.MaxCountAccessPages, pages, c.MaxAccessBuckets, c.AccessBucketPage)
+	}
 	return nil
 }
 

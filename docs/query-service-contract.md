@@ -144,7 +144,10 @@ For an authenticated principal:
    keys are added to the count. A page with fewer buckets than the page size
    ends the walk. After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets
    have been walked, the walk stops without requesting the next page and
-   `has_more` is `true`; pages are never split. A failed access check is a
+   `has_more` is `true`; pages are never split. The walk stops on
+   request-context cancellation; per-check timeouts bound each page's access
+   check, and startup validation allows at most 100 pages per count.
+   A failed access check is a
    `503`: a count is never returned as if complete when part of the authorized
    set is unknown. Likewise an OpenSearch response with a failed shard or a
    timeout is a `503` (`allow_partial_search_results=false` is sent), never a
@@ -182,7 +185,7 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search and count routes) |
 | `READ_TUPLES_TIMEOUT` | `15s` | Timeout of the `filter_grants=direct` tuple read |
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
-| `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); a full page can overshoot by at most page size minus one |
+| `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
 
 #### Not supported
 
@@ -475,7 +478,7 @@ Clause-count rules:
 - Every request adds 1 fixed clause (`latest: true`).
 - Anonymous queries and count subqueries add public/private clauses as needed;
   the count route's grouped/metric search adds one `terms` clause holding the
-  granted access keys (at most `COUNT_MAX_ACCESS_BUCKETS` values).
+  granted access keys (fewer than `COUNT_MAX_ACCESS_BUCKETS + COUNT_ACCESS_BUCKET_PAGE` values because full pages are never split).
 - `filter_grants=direct` adds one `object_ref` terms clause populated from
   fga-sync's direct tuple response.
 
