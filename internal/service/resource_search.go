@@ -597,7 +597,7 @@ func (s *ResourceSearch) CheckCountAccess(ctx context.Context, principal string,
 		accessCheckMessage = accessCheckMessage[:len(accessCheckMessage)-1]
 		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, s.config.AccessCheckTimeout)
 		if errCheckAccess != nil {
-			slog.ErrorContext(ctx, "count access control check failed", "bucket_count", len(buckets))
+			slog.ErrorContext(ctx, "count access control check failed", "error", errCheckAccess, "bucket_count", len(buckets))
 			return 0, nil, errors.NewServiceUnavailable("access control check failed", errCheckAccess)
 		}
 		accessCheckResponses = accessCheckResult

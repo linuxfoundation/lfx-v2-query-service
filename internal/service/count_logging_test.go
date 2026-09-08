@@ -40,6 +40,7 @@ func TestCountLogsDoNotExposeBatchesOrValues(t *testing.T) {
 	checker.SetCheckAccessError(errors.New("checker unavailable"))
 	_, err = service.QueryResourcesCount(ctx, public, private, model.CountAggregation{})
 	require.Error(t, err)
+	require.Contains(t, logs.String(), `"error":"checker unavailable"`, "retain the failure reason without the batch")
 	require.NotContains(t, logs.String(), sentinel)
 	require.Contains(t, logs.String(), `"bucket_count":1`)
 	require.Contains(t, logs.String(), `"response_count":1`)
