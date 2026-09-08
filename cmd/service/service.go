@@ -72,9 +72,7 @@ func (s *querySvcsrvc) QueryResources(ctx context.Context, p *querysvc.QueryReso
 // relationship.
 func (s *querySvcsrvc) QueryResourcesCount(ctx context.Context, p *querysvc.QueryResourcesCountPayload) (*querysvc.QueryResourcesCountResult, error) {
 
-	slog.DebugContext(ctx, "querySvc.query-resource-counts",
-		"name", p.Name,
-	)
+	slog.DebugContext(ctx, "querySvc.query-resource-counts")
 
 	// Convert payload to domain criteria
 	publicCriteria, errPublicCriteria := s.payloadToCountPublicCriteria(p)

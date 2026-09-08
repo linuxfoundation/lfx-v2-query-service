@@ -204,7 +204,7 @@ func (os *OpenSearchSearcher) CountPublic(ctx context.Context, criteria model.Se
 		slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
 		return 0, fmt.Errorf("failed to render query: %w", err)
 	}
-	slog.DebugContext(ctx, "public resource count query", "query", string(query))
+	slog.DebugContext(ctx, "public resource count query")
 
 	countResponse, err := os.client.Count(ctx, os.index, query)
 	if err != nil {
@@ -239,7 +239,7 @@ func (os *OpenSearchSearcher) AccessBuckets(ctx context.Context, criteria model.
 		slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
 		return nil, fmt.Errorf("failed to render query: %w", err)
 	}
-	slog.DebugContext(ctx, "access bucket walk query", "query", string(query))
+	slog.DebugContext(ctx, "access bucket walk query", "page_size", request.PageSize)
 
 	response, err := os.aggregationSearch(ctx, query)
 	if err != nil {
@@ -308,7 +308,8 @@ func (os *OpenSearchSearcher) AuthorizedAggregation(ctx context.Context, criteri
 			slog.ErrorContext(ctx, "unrecoverable request parsing error", "error", err)
 			return nil, fmt.Errorf("failed to render query: %w", err)
 		}
-		slog.DebugContext(ctx, "grouped count query", "query", string(query))
+		slog.DebugContext(ctx, "grouped count query", "prefix", aggregation.GroupByPrefix,
+			"size", aggregation.GroupBySize, "authorized_key_count", len(aggregation.AuthorizedKeys))
 
 		response, err := os.aggregationSearch(ctx, query)
 		if err != nil {

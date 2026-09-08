@@ -369,7 +369,7 @@ func accessKey(resource model.Resource) string {
 
 // CountPublic implements the ResourceSearcher interface with mock data
 func (m *MockResourceSearcher) CountPublic(ctx context.Context, criteria model.SearchCriteria) (int, error) {
-	slog.DebugContext(ctx, "executing mock public count", "criteria", criteria)
+	slog.DebugContext(ctx, "executing mock public count")
 	if m.countPublicError != nil {
 		return 0, m.countPublicError
 	}
@@ -384,7 +384,7 @@ func (m *MockResourceSearcher) CountPublic(ctx context.Context, criteria model.S
 // private resources grouped by access key, sorted by key, paged like a
 // composite aggregation.
 func (m *MockResourceSearcher) AccessBuckets(ctx context.Context, criteria model.SearchCriteria, request model.AccessBucketRequest) (*model.AccessBucketPage, error) {
-	slog.DebugContext(ctx, "executing mock access bucket page", "criteria", criteria, "request", request)
+	slog.DebugContext(ctx, "executing mock access bucket page", "page_size", request.PageSize)
 	if m.accessBucketsError != nil {
 		return nil, m.accessBucketsError
 	}
@@ -437,7 +437,9 @@ func (m *MockResourceSearcher) AccessBuckets(ctx context.Context, criteria model
 // data: groups and distinct tag values over public resources and private
 // resources whose access key was granted.
 func (m *MockResourceSearcher) AuthorizedAggregation(ctx context.Context, criteria model.SearchCriteria, aggregation model.CountAggregation) (*model.CountAggregationResult, error) {
-	slog.DebugContext(ctx, "executing mock authorized aggregation", "criteria", criteria, "aggregation", aggregation)
+	slog.DebugContext(ctx, "executing mock authorized aggregation", "group_prefix", aggregation.GroupByPrefix,
+		"metric_prefix", aggregation.CardinalityPrefix, "size", aggregation.GroupBySize,
+		"authorized_key_count", len(aggregation.AuthorizedKeys))
 	if m.authorizedAggregationError != nil {
 		return nil, m.authorizedAggregationError
 	}

@@ -358,9 +358,9 @@ func (s *ResourceSearch) QueryResourcesCount(
 ) (*model.CountResult, error) {
 
 	slog.DebugContext(ctx, "starting resource count search",
-		"public_criteria", publicCriteria,
-		"private_criteria", privateCriteria,
-		"aggregation", aggregation,
+		"group_prefix", aggregation.GroupByPrefix,
+		"metric_prefix", aggregation.CardinalityPrefix,
+		"group_size", aggregation.GroupBySize,
 	)
 
 	// Grab the principal which was stored into the context by the security handler.
@@ -584,23 +584,18 @@ func (s *ResourceSearch) BuildCountMessage(ctx context.Context, principal string
 func (s *ResourceSearch) CheckCountAccess(ctx context.Context, principal string, buckets []model.AggregationBucket, accessCheckMessage []byte) (uint64, []string, error) {
 	var accessCheckResponses map[string]string
 	if len(accessCheckMessage) > 0 {
-		slog.DebugContext(ctx, "performing access control checks",
-			"message", string(accessCheckMessage),
-		)
+		slog.DebugContext(ctx, "performing count access control checks", "bucket_count", len(buckets))
 
 		// Trim trailing newline.
 		accessCheckMessage = accessCheckMessage[:len(accessCheckMessage)-1]
 		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, s.config.AccessCheckTimeout)
 		if errCheckAccess != nil {
-			slog.ErrorContext(ctx, "access control check failed",
-				"error", errCheckAccess,
-				"message", string(accessCheckMessage),
-			)
+			slog.ErrorContext(ctx, "count access control check failed", "bucket_count", len(buckets))
 			return 0, nil, errors.NewServiceUnavailable("access control check failed", errCheckAccess)
 		}
 		accessCheckResponses = accessCheckResult
 	}
-	slog.DebugContext(ctx, "access check responses", "responses", accessCheckResponses)
+	slog.DebugContext(ctx, "count access check completed", "bucket_count", len(buckets), "response_count", len(accessCheckResponses))
 
 	var count uint64
 	granted := make([]string, 0, len(buckets))

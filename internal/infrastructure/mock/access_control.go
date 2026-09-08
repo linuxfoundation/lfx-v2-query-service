@@ -43,7 +43,7 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	slog.DebugContext(ctx, "executing mock access control check",
 		"subject", subj,
 		"timeout", timeout,
-		"message", string(data),
+		"request_bytes", len(data),
 		"public_only", m.PublicResourcesOnly,
 	)
 
@@ -96,7 +96,6 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	slog.DebugContext(ctx, "mock access control check completed",
 		"subject", subj,
 		"result_count", len(result),
-		"result", result,
 	)
 
 	return result, nil

@@ -24,7 +24,7 @@ func (n *NATSAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	slog.DebugContext(ctx, "executing NATS access control check",
 		"subject", subj,
 		"timeout", timeout,
-		"message", string(data),
+		"request_bytes", len(data),
 	)
 
 	// Send request via NATS
@@ -46,7 +46,7 @@ func (n *NATSAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 
 	slog.DebugContext(ctx, "NATS access control check completed",
 		"subject", subj,
-		"result", result,
+		"response_count", len(result),
 	)
 
 	return result, nil
