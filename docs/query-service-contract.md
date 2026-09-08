@@ -205,7 +205,12 @@ three facts about the live mapping:
 | --- | --- | --- |
 | `tags` | `keyword` | The **only aggregatable dimension**. `group_by` and `metric=cardinality:` both aggregate on it; a tag prefix is the way to expose a groupable attribute |
 | `data` | `flat_object` | Never aggregatable, never summable, no numeric operations. This is why `sum` and `group_by` on `data.*` are declined rather than attempted |
-| `access_check_query` | `keyword`, **or** `text` with a `keyword` subfield | The access-bucket walk aggregates on it. The searcher reads `GET /<index>/_mapping` and resolves **every** backing index to `access_check_query` (keyword) or `access_check_query.keyword` (text + keyword subfield). Only agreement across supported mappings is memoized and logged at `Info`. An unsupported shape (including a missing field), disagreeing alias targets, or a failed read **fails closed**: authenticated counts answer `503` and a warning identifies the mapping problem; resolution is retried after 30 seconds. Anonymous public counts and aggregations do not read the mapping and are unaffected. Guessing the field would return the public count as if exhaustive on a plain-keyword index — the silent zero this route exists to remove |
+| `access_check_query` | `keyword`, **or** `text` with a `keyword` subfield | The access-bucket walk aggregates on it. The searcher reads `GET /<index>/_mapping` and resolves **every** backing index to `access_check_query` (keyword) or `access_check_query.keyword` (text + keyword subfield). Only agreement across supported mappings is cached; `Info` is logged on initial resolution or when the resolved field changes. An unsupported shape (including a missing field), disagreeing alias targets, or a failed read **fails closed**: authenticated counts answer `503` and a warning identifies the mapping problem; resolution is retried after 30 seconds. Anonymous public counts and aggregations do not read the mapping and are unaffected. Guessing the field would return the public count as if exhaustive on a plain-keyword index — the silent zero this route exists to remove |
+
+The resolution is revalidated every 5 minutes; a failed, unsupported, or
+disagreeing revalidation fails closed like the first read instead of reusing
+an expired field. This bounds stale-mapping time but is not a transactional
+snapshot of alias changes.
 
 The mockdata fallback mapping declares `access_check_query` as plain `keyword`;
 an index whose field was created by dynamic mapping carries `text` +

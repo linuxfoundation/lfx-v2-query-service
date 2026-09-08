@@ -122,6 +122,9 @@ const (
 	// account without indices:admin/mappings/get) costs one extra round-trip
 	// per interval instead of one per request.
 	accessKeyFieldRetryInterval = 30 * time.Second
+	// accessKeyFieldRevalidateInterval bounds stale successful resolutions
+	// when operators change an alias's backing indices.
+	accessKeyFieldRevalidateInterval = 5 * time.Minute
 	// groupByShardSizeFactor and groupByShardSizeMax bound the terms
 	// aggregation's shard_size: each shard returns min(size*factor, max)
 	// candidates to reduce potential group-count underestimation; only a
@@ -141,9 +144,10 @@ type OpenSearchSearcher struct {
 	client OpenSearchClientRetriever
 	index  string
 
-	// accessKeyField is resolved from the live index mapping on first use
-	// (see resolveAccessKeyField). Tests may preset it to skip resolution.
+	// accessKeyField is usable only while its successful resolution is fresh.
 	accessKeyField string
+	// accessKeyFieldResolvedAt is the completion time of its last successful read.
+	accessKeyFieldResolvedAt time.Time
 	// accessKeyFieldRetryAt is the earliest time a failed mapping read is
 	// retried; zero means "retry now".
 	accessKeyFieldRetryAt time.Time
@@ -488,8 +492,9 @@ func luceneQuoteMeta(s string) string {
 //   - an unsupported shape, disagreeing alias targets, or a failed read
 //     -> ServiceUnavailable, warning and retry after accessKeyFieldRetryInterval
 //
-// Only agreement across every supported backing index is memoized. Never
-// guess a subfield: an unmapped field can return zero buckets with HTTP 200.
+// Only agreement across every supported backing index is cached, and successful
+// resolutions are revalidated every five minutes. Never reuse an expired field
+// after failed revalidation: an unmapped subfield can return zero buckets with HTTP 200.
 // Anonymous public counts do not need the field and are unaffected. The read
 // runs outside the lock so concurrent requests are not serialized behind it.
 //
@@ -516,7 +521,7 @@ func (os *OpenSearchSearcher) readAccessKeyField(ctx context.Context) (string, e
 	}
 
 	os.accessKeyFieldMu.Lock()
-	if os.accessKeyField != "" {
+	if os.accessKeyField != "" && !os.accessKeyFieldResolvedAt.IsZero() && now().Before(os.accessKeyFieldResolvedAt.Add(accessKeyFieldRevalidateInterval)) {
 		field := os.accessKeyField
 		os.accessKeyFieldMu.Unlock()
 		return field, nil
@@ -525,6 +530,11 @@ func (os *OpenSearchSearcher) readAccessKeyField(ctx context.Context) (string, e
 		os.accessKeyFieldMu.Unlock()
 		return "", errors.NewServiceUnavailable("index mapping unavailable; access-checked counts cannot be answered until the next mapping read")
 	}
+	previousField := os.accessKeyField
+	// Discard the expired success before I/O. Every failure path below must
+	// leave it unavailable instead of falling back to stale alias mappings.
+	os.accessKeyField = ""
+	os.accessKeyFieldResolvedAt = time.Time{}
 	os.accessKeyFieldMu.Unlock()
 
 	// The outcome is process-wide, so the read must not inherit the
@@ -540,10 +550,6 @@ func (os *OpenSearchSearcher) readAccessKeyField(ctx context.Context) (string, e
 
 	os.accessKeyFieldMu.Lock()
 	defer os.accessKeyFieldMu.Unlock()
-	if os.accessKeyField != "" {
-		// Another request resolved it while this one was on the wire.
-		return os.accessKeyField, nil
-	}
 	if err != nil {
 		os.accessKeyFieldRetryAt = now().Add(accessKeyFieldRetryInterval)
 		slog.WarnContext(ctx, "could not read index mapping; access-checked counts fail closed until the next retry",
@@ -582,12 +588,15 @@ func (os *OpenSearchSearcher) readAccessKeyField(ctx context.Context) (string, e
 	}
 	// Do not memoize until every backing index has been checked.
 	os.accessKeyField = commonField
+	os.accessKeyFieldResolvedAt = now()
 	os.accessKeyFieldRetryAt = time.Time{}
 
-	slog.InfoContext(ctx, "resolved access key field",
-		"index", os.index,
-		"access_key_field", os.accessKeyField,
-	)
+	if os.accessKeyField != previousField {
+		slog.InfoContext(ctx, "resolved access key field",
+			"index", os.index,
+			"access_key_field", os.accessKeyField,
+		)
+	}
 	return os.accessKeyField, nil
 }
 

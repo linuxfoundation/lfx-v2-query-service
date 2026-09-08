@@ -1332,7 +1332,7 @@ func TestResolveAccessKeyField(t *testing.T) {
 
 	t.Run("preset field skips the mapping call", func(t *testing.T) {
 		client := NewMockOpenSearchClient()
-		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: "preset"}
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: "preset", accessKeyFieldResolvedAt: time.Now()}
 		field, err := searcher.resolveAccessKeyField(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, "preset", field)
@@ -1428,7 +1428,7 @@ func TestOpenSearchSearcherAccessBuckets(t *testing.T) {
 				},
 			},
 		})
-		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField, accessKeyFieldResolvedAt: time.Now()}
 
 		page, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
 		assert.NoError(t, err)
@@ -1443,7 +1443,7 @@ func TestOpenSearchSearcherAccessBuckets(t *testing.T) {
 	t.Run("second page forwards the after key, including an empty one", func(t *testing.T) {
 		client := NewMockOpenSearchClient()
 		client.SetAggregationResponse(map[string]any{"access_keys": map[string]any{"buckets": []map[string]any{}}})
-		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField, accessKeyFieldResolvedAt: time.Now()}
 
 		after := "v1_past_meeting:m2#viewer"
 		_, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2, After: &after})
@@ -1459,7 +1459,7 @@ func TestOpenSearchSearcherAccessBuckets(t *testing.T) {
 	t.Run("last page has no after key", func(t *testing.T) {
 		client := NewMockOpenSearchClient()
 		client.SetAggregationResponse(map[string]any{"access_keys": map[string]any{"buckets": []map[string]any{}}})
-		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField, accessKeyFieldResolvedAt: time.Now()}
 
 		page, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
 		assert.NoError(t, err)
@@ -1472,7 +1472,7 @@ func TestOpenSearchSearcherAccessBuckets(t *testing.T) {
 		// against; the response shape must be present.
 		client := NewMockOpenSearchClient()
 		client.SetAggregationResponse(map[string]any{})
-		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField, accessKeyFieldResolvedAt: time.Now()}
 
 		_, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
 		assert.Error(t, err)
@@ -1481,7 +1481,7 @@ func TestOpenSearchSearcherAccessBuckets(t *testing.T) {
 	t.Run("propagates search errors", func(t *testing.T) {
 		client := NewMockOpenSearchClient()
 		client.SetAggregationError(errors.New("opensearch aggregation failed"))
-		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+		searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField, accessKeyFieldResolvedAt: time.Now()}
 		_, err := searcher.AccessBuckets(context.Background(), private, model.AccessBucketRequest{PageSize: 2})
 		assert.Error(t, err)
 	})
@@ -1505,7 +1505,7 @@ func TestGroupByStripsPrefix(t *testing.T) {
 			},
 		},
 	})
-	searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+	searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField, accessKeyFieldResolvedAt: time.Now()}
 
 	result, err := searcher.AuthorizedAggregation(context.Background(),
 		model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")},

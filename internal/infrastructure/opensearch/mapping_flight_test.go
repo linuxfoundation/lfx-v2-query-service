@@ -94,7 +94,19 @@ func TestMappingReadSingleflight(t *testing.T) {
 			before := client.calls.Load()
 			_, err := searcher.resolveAccessKeyField(context.Background())
 			require.NoError(t, err)
-			require.Equal(t, before, client.calls.Load(), "success remains memoized")
+			require.Equal(t, before, client.calls.Load(), "success remains cached within the interval")
+
+			clock = clock.Add(5 * time.Minute)
+			run()
+			require.Equal(t, before+1, client.calls.Load(), "32 expiry callers share one revalidation")
+			clock = clock.Add(5 * time.Minute)
+			client.fail = true
+			run()
+			require.Equal(t, before+2, client.calls.Load(), "failed revalidation is also singleflight")
+			clock = clock.Add(accessKeyFieldRetryInterval)
+			client.fail = false
+			run()
+			require.Equal(t, before+3, client.calls.Load(), "recovery after expired success shares one read")
 		})
 	}
 }

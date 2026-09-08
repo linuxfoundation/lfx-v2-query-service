@@ -205,8 +205,10 @@ go run ./cmd
 The count route reads the index mapping on first use to pick the access-check
 field in every backing index. Failed reads, unsupported shapes, or disagreeing
 alias mappings return `503` for authenticated counts until resolution is retried
-(30 s), with a warning; there is no guessed-field fallback. Anonymous counts
-and public-only aggregations do not read the mapping and are unaffected.
+(30 s), with a warning; there is no guessed-field fallback. The resolution is
+revalidated every 5 minutes; a failed or unsupported revalidation fails closed
+like the first read. Anonymous counts and public-only aggregations do not read
+the mapping and are unaffected.
 
 **Clearbit Configuration:**
 

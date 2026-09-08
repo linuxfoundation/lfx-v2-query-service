@@ -6,6 +6,7 @@ package opensearch
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ func TestCountQueriesDoNotLogValues(t *testing.T) {
 		map[string]any{"access_keys": map[string]any{"buckets": []any{}}},
 		map[string]any{"group_by": map[string]any{"buckets": []any{}}},
 	)
-	searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField}
+	searcher := &OpenSearchSearcher{client: client, index: "test-index", accessKeyField: accessCheckQueryField, accessKeyFieldResolvedAt: time.Now()}
 	sentinel := "sensitive-marker@example.com"
 	criteria := model.SearchCriteria{Name: &sentinel, TagsAll: []string{"email:" + sentinel}, PageSize: -1, PublicOnly: true}
 	_, err := searcher.CountPublic(context.Background(), criteria)

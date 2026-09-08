@@ -204,8 +204,10 @@ grouped by access-check key and access-checks each page of keys.
   and `metric` into a `model.CountAggregation`. The converters do not
   know the access field name.
 - `internal/infrastructure/opensearch/searcher.go::resolveAccessKeyField`
-  reads the index mapping once and picks `access_check_query` (keyword)
-  or `access_check_query.keyword` (text + keyword subfield). Never
+  checks every backing index and caches one supported common field for five
+  minutes: `access_check_query` (keyword) or `access_check_query.keyword`
+  (text + keyword subfield). Failed or unsupported revalidation fails closed
+  rather than reusing the expired field. Never
   hardcode the field: on a plain-keyword index the `.keyword` aggregation
   returns zero buckets with HTTP 200.
 - `internal/service/resource_search.go::walkAccessBuckets` pages a
