@@ -33,7 +33,7 @@ type MockOpenSearchClient struct {
 	aggregationError     error
 	aggregationCalls     int
 	aggregationQueries   [][]byte
-	mappingResponse      *IndexMapping
+	mappingResponse      IndexMappings
 	mappingError         error
 	mappingCalls         int
 	lastPageSize         int
@@ -74,7 +74,7 @@ func (m *MockOpenSearchClient) AggregationSearch(ctx context.Context, index stri
 	return m.aggregationResponses[idx], nil
 }
 
-func (m *MockOpenSearchClient) GetMapping(ctx context.Context, index string) (*IndexMapping, error) {
+func (m *MockOpenSearchClient) GetMapping(ctx context.Context, index string) (IndexMappings, error) {
 	m.mappingCalls++
 	if m.mappingError != nil {
 		return nil, m.mappingError
@@ -118,7 +118,10 @@ func (m *MockOpenSearchClient) SetAggregationError(err error) {
 }
 
 func (m *MockOpenSearchClient) SetMappingResponse(response *IndexMapping) {
-	m.mappingResponse = response
+	m.mappingResponse = nil
+	if response != nil {
+		m.mappingResponse = IndexMappings{"test-index": *response}
+	}
 }
 
 func (m *MockOpenSearchClient) SetMappingError(err error) {
@@ -973,7 +976,7 @@ type ctxAwareMappingClient struct {
 	*MockOpenSearchClient
 }
 
-func (c *ctxAwareMappingClient) GetMapping(ctx context.Context, index string) (*IndexMapping, error) {
+func (c *ctxAwareMappingClient) GetMapping(ctx context.Context, index string) (IndexMappings, error) {
 	if err := ctx.Err(); err != nil {
 		c.mappingCalls++
 		return nil, err
@@ -987,7 +990,7 @@ type lockedMappingClient struct {
 	mu sync.Mutex
 }
 
-func (l *lockedMappingClient) GetMapping(ctx context.Context, index string) (*IndexMapping, error) {
+func (l *lockedMappingClient) GetMapping(ctx context.Context, index string) (IndexMappings, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.MockOpenSearchClient.GetMapping(ctx, index)

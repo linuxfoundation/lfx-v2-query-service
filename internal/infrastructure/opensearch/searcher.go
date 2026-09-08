@@ -157,7 +157,7 @@ type OpenSearchClientRetriever interface {
 	Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error)
 	Count(ctx context.Context, index string, query []byte) (*CountResponse, error)
 	AggregationSearch(ctx context.Context, index string, query []byte) (json.RawMessage, error)
-	GetMapping(ctx context.Context, index string) (*IndexMapping, error)
+	GetMapping(ctx context.Context, index string) (IndexMappings, error)
 	IsReady(ctx context.Context) error
 }
 
@@ -519,9 +519,9 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) (string
 	// would otherwise open the retry window for everyone. Trace values are
 	// kept; only cancellation is dropped.
 	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accessKeyFieldReadTimeout)
-	mapping, err := os.client.GetMapping(readCtx, os.index)
+	mappings, err := os.client.GetMapping(readCtx, os.index)
 	cancel()
-	if err == nil && mapping == nil {
+	if err == nil && len(mappings) == 0 {
 		err = fmt.Errorf("opensearch get mapping returned no mapping")
 	}
 
@@ -541,30 +541,33 @@ func (os *OpenSearchSearcher) resolveAccessKeyField(ctx context.Context) (string
 		return "", errors.NewServiceUnavailable("index mapping unavailable; access-checked counts cannot be answered until the next mapping read", err)
 	}
 
-	field, resolved := accessKeyFieldFromMapping(mapping)
-	if !resolved {
-		observed, _ := json.Marshal(mapping.Properties[accessCheckQueryField])
-		slog.WarnContext(ctx, "unexpected access_check_query mapping; using default access key field",
-			"index", os.index,
-			"access_key_field", field,
-			"observed_mapping", string(observed),
-		)
+	var commonField string
+	for name, mapping := range mappings {
+		field, resolved := accessKeyFieldFromMapping(&mapping)
+		if len(mappings) > 1 && (!resolved || (commonField != "" && field != commonField)) {
+			os.accessKeyFieldRetryAt = now().Add(accessKeyFieldRetryInterval)
+			slog.WarnContext(ctx, "access_check_query alias mappings disagree or are unsupported",
+				"index", os.index, "backing_index", name, "index_count", len(mappings))
+			return "", errors.NewServiceUnavailable("index mappings must agree on one supported access_check_query field; repair the alias mappings and retry")
+		}
+		if !resolved {
+			observed, _ := json.Marshal(mapping.Properties[accessCheckQueryField])
+			slog.WarnContext(ctx, "unexpected access_check_query mapping; using default access key field",
+				"index", name, "access_key_field", field, "observed_mapping", string(observed))
+		}
+		commonField = field
+		if tags, ok := mapping.Properties["tags"]; !ok || tags.Type != "keyword" {
+			slog.WarnContext(ctx, "tags is not mapped as keyword; grouped counts and cardinality metrics may not work",
+				"index", name, "observed_type", tags.Type)
+		}
+		if data, ok := mapping.Properties["data"]; !ok || data.Type != "flat_object" {
+			slog.WarnContext(ctx, "data is not mapped as flat_object; the count route assumes data fields are not aggregatable",
+				"index", name, "observed_type", data.Type)
+		}
 	}
-	os.accessKeyField = field
+	// Do not memoize until every backing index has been checked.
+	os.accessKeyField = commonField
 	os.accessKeyFieldRetryAt = time.Time{}
-
-	if tags, ok := mapping.Properties["tags"]; !ok || tags.Type != "keyword" {
-		slog.WarnContext(ctx, "tags is not mapped as keyword; grouped counts and cardinality metrics may not work",
-			"index", os.index,
-			"observed_type", tags.Type,
-		)
-	}
-	if data, ok := mapping.Properties["data"]; !ok || data.Type != "flat_object" {
-		slog.WarnContext(ctx, "data is not mapped as flat_object; the count route assumes data fields are not aggregatable",
-			"index", os.index,
-			"observed_type", data.Type,
-		)
-	}
 
 	slog.InfoContext(ctx, "resolved access key field",
 		"index", os.index,

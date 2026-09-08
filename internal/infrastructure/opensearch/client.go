@@ -136,10 +136,9 @@ func (c *httpClient) AggregationSearch(ctx context.Context, index string, query 
 	return searchResponse.Aggregations, nil
 }
 
-// GetMapping returns the top-level property mappings of the index. When the
-// configured name is an alias covering several indices, the first mapping
-// returned is used and a warning is logged.
-func (c *httpClient) GetMapping(ctx context.Context, index string) (*IndexMapping, error) {
+// GetMapping returns every backing index's properties, preserving the index
+// names so the searcher can validate agreement before selecting a field.
+func (c *httpClient) GetMapping(ctx context.Context, index string) (IndexMappings, error) {
 	mappingResponse, err := c.client.Indices.Mapping.Get(ctx, &opensearchapi.MappingGetReq{
 		Indices: []string{index},
 	})
@@ -149,24 +148,15 @@ func (c *httpClient) GetMapping(ctx context.Context, index string) (*IndexMappin
 	if len(mappingResponse.Indices) == 0 {
 		return nil, fmt.Errorf("opensearch get mapping returned no index for %q", index)
 	}
-	if len(mappingResponse.Indices) > 1 {
-		names := make([]string, 0, len(mappingResponse.Indices))
-		for name := range mappingResponse.Indices {
-			names = append(names, name)
-		}
-		slog.WarnContext(ctx, "opensearch index name resolves to several indices; using the first mapping",
-			"index", index,
-			"indices", names,
-		)
-	}
-	for _, entry := range mappingResponse.Indices {
+	mappings := make(IndexMappings, len(mappingResponse.Indices))
+	for name, entry := range mappingResponse.Indices {
 		var mapping IndexMapping
 		if err := json.Unmarshal(entry.Mappings, &mapping); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal index mapping: %w", err)
 		}
-		return &mapping, nil
+		mappings[name] = mapping
 	}
-	return nil, fmt.Errorf("opensearch get mapping returned no index for %q", index)
+	return mappings, nil
 }
 
 func (c *httpClient) Count(ctx context.Context, index string, query []byte) (*CountResponse, error) {

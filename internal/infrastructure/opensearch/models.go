@@ -72,6 +72,9 @@ type IndexMapping struct {
 	Properties map[string]FieldMapping `json:"properties"`
 }
 
+// IndexMappings retains every backing index returned for an index or alias.
+type IndexMappings map[string]IndexMapping
+
 // Hits represents the hits in the search response
 type Hits struct {
 	Total `json:"total"`

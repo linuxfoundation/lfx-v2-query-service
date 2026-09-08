@@ -104,7 +104,7 @@ func TestHTTPClientGetMapping(t *testing.T) {
 		})
 		mapping, err := client.GetMapping(context.Background(), "resources")
 		assert.NoError(t, err)
-		assert.Equal(t, "keyword", mapping.Properties["access_check_query"].Type)
+		assert.Equal(t, "keyword", mapping["resources"].Properties["access_check_query"].Type)
 	})
 
 	t.Run("no index in the response is an error", func(t *testing.T) {
@@ -116,14 +116,16 @@ func TestHTTPClientGetMapping(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("an alias over several indices uses one and warns", func(t *testing.T) {
+	t.Run("an alias preserves every backing index mapping", func(t *testing.T) {
 		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"resources-a":{"mappings":{"properties":{"access_check_query":{"type":"keyword"}}}},"resources-b":{"mappings":{"properties":{"access_check_query":{"type":"keyword"}}}}}`))
 		})
 		mapping, err := client.GetMapping(context.Background(), "resources")
 		assert.NoError(t, err)
-		assert.Equal(t, "keyword", mapping.Properties["access_check_query"].Type)
+		assert.Len(t, mapping, 2)
+		assert.Equal(t, "keyword", mapping["resources-a"].Properties["access_check_query"].Type)
+		assert.Equal(t, "keyword", mapping["resources-b"].Properties["access_check_query"].Type)
 	})
 
 	t.Run("an HTTP error is an error", func(t *testing.T) {
