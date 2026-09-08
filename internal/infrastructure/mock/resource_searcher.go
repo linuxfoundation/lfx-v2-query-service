@@ -476,10 +476,15 @@ func (m *MockResourceSearcher) AuthorizedAggregation(ctx context.Context, criter
 		prefix := aggregation.GroupByPrefix + ":"
 		counts := make(map[string]uint64)
 		for _, resource := range authorized {
+			// Match terms aggregation: count a resource once per distinct value.
+			keys := make(map[string]struct{})
 			for _, tag := range resourceTags(resource) {
 				if strings.HasPrefix(tag, prefix) {
-					counts[strings.TrimPrefix(tag, prefix)]++
+					keys[strings.TrimPrefix(tag, prefix)] = struct{}{}
 				}
+			}
+			for key := range keys {
+				counts[key]++
 			}
 		}
 		groups := make([]model.CountGroup, 0, len(counts))

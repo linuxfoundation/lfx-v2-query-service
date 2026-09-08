@@ -134,6 +134,38 @@ func TestMockResourceSearcherAuthorizedAggregation(t *testing.T) {
 		assertion.Equal([]model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 1}}, result.Groups)
 	})
 
+	for _, tc := range []struct {
+		name   string
+		tags   []string
+		groups []model.CountGroup
+	}{
+		{
+			name:   "duplicate group tag counts the resource once",
+			tags:   []string{"project_uid:P1", "project_uid:P1"},
+			groups: []model.CountGroup{{Key: "P1", Count: 1}},
+		},
+		{
+			name:   "distinct group tags count once per value",
+			tags:   []string{"project_uid:P1", "project_uid:P2"},
+			groups: []model.CountGroup{{Key: "P1", Count: 1}, {Key: "P2", Count: 1}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			searcher := NewMockResourceSearcher()
+			searcher.ClearResources()
+			searcher.AddResource(NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": tc.tags}, true))
+			result, err := searcher.AuthorizedAggregation(ctx,
+				model.SearchCriteria{ResourceType: stringPtr("v1_past_meeting")},
+				model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: 100, IncludePublic: true},
+			)
+			if !assert.NoError(t, err) {
+				return
+			}
+			assert.Equal(t, tc.groups, result.Groups)
+			assert.True(t, result.GroupsComplete)
+		})
+	}
+
 	t.Run("denied private resources are excluded", func(t *testing.T) {
 		searcher := newSearcher()
 		result, err := searcher.AuthorizedAggregation(ctx,
