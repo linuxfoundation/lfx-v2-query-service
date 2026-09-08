@@ -196,12 +196,20 @@ var _ = dsl.Service("query-svc", func() {
 		})
 
 		dsl.Result(func() {
-			dsl.Attribute("count", dsl.UInt64, "Count of resources found")
+			// Goa renders UInt64 as int64 in OpenAPI; keep scalar samples in range.
+			// The named result examples below keep the two response modes separate.
+			dsl.Attribute("count", dsl.UInt64, "Count of resources found", func() {
+				dsl.Example(42)
+			})
 			dsl.Attribute("has_more", dsl.Boolean, "True if count is not guaranteed to be exhaustive: client should request a narrower query")
 			dsl.Attribute("groups", dsl.ArrayOf(CountGroup), "Per-group counts when group_by is set, ordered by count descending then key ascending; omitted when no group matched")
 			dsl.Attribute("groups_complete", dsl.Boolean, "True when every group is present; false when more groups exist than group_by_size or when has_more is true")
-			dsl.Attribute("group_count_error_upper_bound", dsl.UInt64, "Maximum possible undercount per returned group within the walked authorized set; zero means exact")
-			dsl.Attribute("metric_value", dsl.UInt64, "Value of the requested metric")
+			dsl.Attribute("group_count_error_upper_bound", dsl.UInt64, "Maximum possible undercount per returned group within the walked authorized set; zero means exact", func() {
+				dsl.Example(0)
+			})
+			dsl.Attribute("metric_value", dsl.UInt64, "Value of the requested metric", func() {
+				dsl.Example(17)
+			})
 			dsl.Attribute("metric_complete", dsl.Boolean, "True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true")
 			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
 				dsl.Example("public, max-age=300")

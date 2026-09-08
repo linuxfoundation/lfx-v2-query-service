@@ -66,7 +66,7 @@ var CountGroup = dsl.Type("CountGroup", func() {
 		dsl.Example("a1b2c3d4")
 	})
 	dsl.Attribute("count", dsl.UInt64, "Number of authorized resources in the group", func() {
-		dsl.Example(12)
+		dsl.Example(30)
 	})
 	dsl.Required("key", "count")
 })

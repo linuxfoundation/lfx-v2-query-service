@@ -463,7 +463,7 @@ definitions:
             count:
                 type: integer
                 description: Number of authorized resources in the group
-                example: 12
+                example: 30
                 format: int64
             key:
                 type: string
@@ -471,7 +471,7 @@ definitions:
                 example: a1b2c3d4
         description: One group of a grouped resource count.
         example:
-            count: 12
+            count: 30
             key: a1b2c3d4
         required:
             - key
@@ -563,12 +563,12 @@ definitions:
             count:
                 type: integer
                 description: Count of resources found
-                example: 5706683997245189647
+                example: 42
                 format: int64
             group_count_error_upper_bound:
                 type: integer
                 description: Maximum possible undercount per returned group within the walked authorized set; zero means exact
-                example: 17756444737383148625
+                example: 0
                 format: int64
             groups:
                 type: array
@@ -576,30 +576,30 @@ definitions:
                     $ref: '#/definitions/CountGroup'
                 description: Per-group counts when group_by is set, ordered by count descending then key ascending; omitted when no group matched
                 example:
-                    - count: 12
+                    - count: 30
                       key: a1b2c3d4
-                    - count: 12
+                    - count: 30
                       key: a1b2c3d4
-                    - count: 12
+                    - count: 30
                       key: a1b2c3d4
-                    - count: 12
+                    - count: 30
                       key: a1b2c3d4
             groups_complete:
                 type: boolean
                 description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
-                example: false
+                example: true
             has_more:
                 type: boolean
                 description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
-                example: true
+                example: false
             metric_complete:
                 type: boolean
                 description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
-                example: true
+                example: false
             metric_value:
                 type: integer
                 description: Value of the requested metric
-                example: 4851047980279068805
+                example: 17
                 format: int64
         example:
             count: 42
@@ -692,17 +692,8 @@ definitions:
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
-                    - domain: linuxfoundation.org
-                      logo: https://example.com/logo.png
-                      name: Linux Foundation
-                    - domain: linuxfoundation.org
-                      logo: https://example.com/logo.png
-                      name: Linux Foundation
         example:
             suggestions:
-                - domain: linuxfoundation.org
-                  logo: https://example.com/logo.png
-                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation
