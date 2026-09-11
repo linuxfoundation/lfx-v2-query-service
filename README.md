@@ -254,7 +254,7 @@ Authorization: Bearer <jwt_token>
 - `filters_all`: Preferred array of exact field filters with AND logic (same `field:value` format). If both `filters` and `filters_all` are provided, both sets of filters are applied and combined with AND logic
 - `filters_or`: Array of exact field filters with OR logic — at least one must match (same `field:value` format)
 - `filter_grants`: `direct` to pre-filter to resources with direct FGA grants (requires `type`)
-- `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](#cel-filter) section)
+- `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](docs/query-service-contract.md#cel-filter))
 - `date_field`: Date field to filter on (within data object) - used with date_from and/or date_to
 - `date_from`: Start date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses start of day UTC
 - `date_to`: End date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses end of day UTC
