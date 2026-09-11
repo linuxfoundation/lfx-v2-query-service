@@ -19,7 +19,7 @@ import (
 
 // BuildQueryResourcesPayload builds the payload for the query-svc
 // query-resources endpoint from CLI flags.
-func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesFiltersAll string, querySvcQueryResourcesFiltersOr string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesPageSize string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
+func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQueryResourcesName string, querySvcQueryResourcesParent string, querySvcQueryResourcesType string, querySvcQueryResourcesTags string, querySvcQueryResourcesTagsAll string, querySvcQueryResourcesDateField string, querySvcQueryResourcesDateFrom string, querySvcQueryResourcesDateTo string, querySvcQueryResourcesFilters string, querySvcQueryResourcesFiltersAll string, querySvcQueryResourcesFiltersOr string, querySvcQueryResourcesCelFilter string, querySvcQueryResourcesFilterGrants string, querySvcQueryResourcesSort string, querySvcQueryResourcesPageToken string, querySvcQueryResourcesPageSize string, querySvcQueryResourcesBearerToken string) (*querysvc.QueryResourcesPayload, error) {
 	var err error
 	var version string
 	{
@@ -47,7 +47,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	{
 		if querySvcQueryResourcesParent != "" {
 			parent = &querySvcQueryResourcesParent
-			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z]+:[a-zA-Z0-9_-]+$"))
+			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$"))
 			if err != nil {
 				return nil, err
 			}
@@ -134,12 +134,24 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 			}
 		}
 	}
+	var filterGrants *string
+	{
+		if querySvcQueryResourcesFilterGrants != "" {
+			filterGrants = &querySvcQueryResourcesFilterGrants
+			if !(*filterGrants == "direct") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("filter_grants", *filterGrants, []any{"direct"}))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var sort string
 	{
 		if querySvcQueryResourcesSort != "" {
 			sort = querySvcQueryResourcesSort
-			if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc") {
-				err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc"}))
+			if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc" || sort == "best_match") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc", "best_match"}))
 			}
 			if err != nil {
 				return nil, err
@@ -190,6 +202,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	v.FiltersAll = filtersAll
 	v.FiltersOr = filtersOr
 	v.CelFilter = celFilter
+	v.FilterGrants = filterGrants
 	v.Sort = sort
 	v.PageToken = pageToken
 	v.PageSize = pageSize
@@ -200,7 +213,7 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 
 // BuildQueryResourcesCountPayload builds the payload for the query-svc
 // query-resources-count endpoint from CLI flags.
-func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountFiltersAll string, querySvcQueryResourcesCountFiltersOr string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
+func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountFiltersAll string, querySvcQueryResourcesCountFiltersOr string, querySvcQueryResourcesCountGroupBy string, querySvcQueryResourcesCountGroupBySize string, querySvcQueryResourcesCountMetric string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {
 	var err error
 	var version string
 	{
@@ -228,6 +241,10 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 	{
 		if querySvcQueryResourcesCountParent != "" {
 			parent = &querySvcQueryResourcesCountParent
+			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$"))
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	var type_ *string
@@ -299,6 +316,52 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 			}
 		}
 	}
+	var groupBy *string
+	{
+		if querySvcQueryResourcesCountGroupBy != "" {
+			groupBy = &querySvcQueryResourcesCountGroupBy
+			err = goa.MergeErrors(err, goa.ValidatePattern("group_by", *groupBy, "^[a-z][a-z0-9_]*$"))
+			if utf8.RuneCountInString(*groupBy) > 64 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("group_by", *groupBy, utf8.RuneCountInString(*groupBy), 64, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var groupBySize *int
+	{
+		if querySvcQueryResourcesCountGroupBySize != "" {
+			var v int64
+			v, err = strconv.ParseInt(querySvcQueryResourcesCountGroupBySize, 10, strconv.IntSize)
+			val := int(v)
+			groupBySize = &val
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for groupBySize, must be INT")
+			}
+			if *groupBySize < 1 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("group_by_size", *groupBySize, 1, true))
+			}
+			if *groupBySize > 1000 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("group_by_size", *groupBySize, 1000, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var metric *string
+	{
+		if querySvcQueryResourcesCountMetric != "" {
+			metric = &querySvcQueryResourcesCountMetric
+			if utf8.RuneCountInString(*metric) > 80 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("metric", *metric, utf8.RuneCountInString(*metric), 80, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	var bearerToken string
 	{
 		bearerToken = querySvcQueryResourcesCountBearerToken
@@ -316,6 +379,9 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 	v.Filters = filters
 	v.FiltersAll = filtersAll
 	v.FiltersOr = filtersOr
+	v.GroupBy = groupBy
+	v.GroupBySize = groupBySize
+	v.Metric = metric
 	v.BearerToken = bearerToken
 
 	return v, nil

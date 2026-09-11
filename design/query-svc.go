@@ -45,7 +45,7 @@ var _ = dsl.Service("query-svc", func() {
 			})
 			dsl.Attribute("parent", dsl.String, "Parent (for navigation; varies by object type)", func() {
 				dsl.Example("project:123")
-				dsl.Pattern(`^[a-zA-Z]+:[a-zA-Z0-9_-]+$`)
+				dsl.Pattern(`^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$`)
 			})
 			dsl.Attribute("type", dsl.String, "Resource type to search", func() {
 				dsl.Example("committee")
@@ -78,6 +78,10 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Example(`data.slug == "tlf"`)
 				dsl.MaxLength(1000)
 			})
+			dsl.Attribute("filter_grants", dsl.String, "Filter results to only resources the authenticated user has direct FGA grants on. Requires type. Use 'direct' to filter by direct grants.", func() {
+				dsl.Enum("direct")
+				dsl.Example("direct")
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
@@ -107,6 +111,7 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("filters_all")
 			dsl.Param("filters_or")
 			dsl.Param("cel_filter")
+			dsl.Param("filter_grants")
 			dsl.Param("sort")
 			dsl.Param("page_token")
 			dsl.Param("page_size")
@@ -140,6 +145,7 @@ var _ = dsl.Service("query-svc", func() {
 			})
 			dsl.Attribute("parent", dsl.String, "Parent (for navigation; varies by object type)", func() {
 				dsl.Example("project:123")
+				dsl.Pattern(`^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$`)
 			})
 			dsl.Attribute("type", dsl.String, "Resource type to search", func() {
 				dsl.Example("committee")
@@ -168,20 +174,56 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("filters_or", dsl.ArrayOf(dsl.String), "Direct field filters with term clauses on data fields using OR logic - format: 'field:value' (e.g., 'status:active'). Fields are automatically prefixed with 'data.'. Matches resources that satisfy at least one of the provided filters.", func() {
 				dsl.Example([]string{"mailing_list_id:abc", "mailing_list_id:xyz"})
 			})
+			dsl.Attribute("group_by", dsl.String, "Tag prefix to group the count by; groups are keyed by the tag value after '<prefix>:'", func() {
+				dsl.Example("project_uid")
+				dsl.Pattern(`^[a-z][a-z0-9_]*$`)
+				dsl.MaxLength(64)
+			})
+			dsl.Attribute("group_by_size", dsl.Int, "Maximum number of groups returned (default 100); requires group_by", func() {
+				dsl.Example(100)
+				dsl.Minimum(1)
+				dsl.Maximum(1000)
+			})
+			dsl.Attribute("metric", dsl.String, "Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported", func() {
+				// Goa's CLI emits every flag using the last example. Its payload
+				// builder omits empty optional strings, so keep grouped mode as
+				// the default while documenting cardinality as an alternative.
+				dsl.Example("cardinality mode (group_by omitted)", "cardinality:email")
+				dsl.Example("grouped mode (metric omitted)", "")
+				dsl.MaxLength(80)
+			})
 			dsl.Required("bearer_token", "version")
 		})
 
 		dsl.Result(func() {
+			// Goa renders UInt64 as int64 in OpenAPI; keep scalar samples in range.
+			// The named result examples below keep the two response modes separate.
 			dsl.Attribute("count", dsl.UInt64, "Count of resources found", func() {
-				dsl.Example(1234)
+				dsl.Example(42)
 			})
-			dsl.Attribute("has_more", dsl.Boolean, "True if count is not guaranteed to be exhaustive: client should request a narrower query", func() {
-				dsl.Example(false)
+			dsl.Attribute("has_more", dsl.Boolean, "True if count is not guaranteed to be exhaustive: client should request a narrower query")
+			dsl.Attribute("groups", dsl.ArrayOf(CountGroup), "Per-group counts when group_by is set, ordered by count descending then key ascending; omitted when no group matched")
+			dsl.Attribute("groups_complete", dsl.Boolean, "True when every group is present; false when more groups exist than group_by_size or when has_more is true")
+			dsl.Attribute("group_count_error_upper_bound", dsl.UInt64, "Maximum possible undercount per returned group within the walked authorized set; zero means exact", func() {
+				dsl.Example(0)
 			})
+			dsl.Attribute("metric_value", dsl.UInt64, "Value of the requested metric", func() {
+				dsl.Example(17)
+			})
+			dsl.Attribute("metric_complete", dsl.Boolean, "True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true")
 			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
 				dsl.Example("public, max-age=300")
 			})
 			dsl.Required("count", "has_more")
+			dsl.Example("grouped", dsl.Val{
+				"count": 42, "has_more": false,
+				"groups":          []dsl.Val{{"key": "P1", "count": 30}, {"key": "P2", "count": 12}},
+				"groups_complete": true, "group_count_error_upper_bound": 0,
+			})
+			dsl.Example("cardinality", dsl.Val{
+				"count": 42, "has_more": false,
+				"metric_value": 17, "metric_complete": true,
+			})
 		})
 
 		dsl.HTTP(func() {
@@ -198,6 +240,9 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Param("filters")
 			dsl.Param("filters_all")
 			dsl.Param("filters_or")
+			dsl.Param("group_by")
+			dsl.Param("group_by_size")
+			dsl.Param("metric")
 			dsl.Header("bearer_token:Authorization")
 			dsl.Response(dsl.StatusOK, func() {
 				dsl.Header("cache_control:Cache-Control")

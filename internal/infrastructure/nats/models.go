@@ -31,3 +31,16 @@ type AccessCheckNATSRequest struct {
 
 // AccessCheckNATSResponse represents a NATS response for access checking
 type AccessCheckNATSResponse map[string]string
+
+// ReadTuplesNATSRequest represents a NATS request for reading FGA tuples
+type ReadTuplesNATSRequest struct {
+	User       string        `json:"user"`
+	ObjectType string        `json:"object_type"`
+	Timeout    time.Duration `json:"-"`
+}
+
+// ReadTuplesNATSResponse represents a NATS response for reading FGA tuples
+type ReadTuplesNATSResponse struct {
+	Results []string `json:"results"`
+	Error   string   `json:"error,omitempty"`
+}

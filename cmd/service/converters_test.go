@@ -5,12 +5,17 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	server "github.com/linuxfoundation/lfx-v2-query-service/gen/http/query_svc/server"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/service"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,8 +25,7 @@ func TestPayloadToCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	// Setup environment variable for page token secret
 	t.Setenv("PAGE_TOKEN_SECRET", "12345678901234567890123456789012") // 32 chars
@@ -123,6 +127,21 @@ func TestPayloadToCriteria(t *testing.T) {
 			expectedError: false,
 		},
 		{
+			name: "payload with sorting - best_match",
+			payload: &querysvc.QueryResourcesPayload{
+				Name:     stringPtr("test"),
+				Sort:     "best_match",
+				PageSize: constants.DefaultPageSize,
+			},
+			expectedCriteria: model.SearchCriteria{
+				Name:      stringPtr("test"),
+				SortBy:    "_score",
+				SortOrder: "desc",
+				PageSize:  constants.DefaultPageSize,
+			},
+			expectedError: false,
+		},
+		{
 			name: "payload with explicit page_size",
 			payload: &querysvc.QueryResourcesPayload{
 				Name:     stringPtr("test"),
@@ -186,8 +205,7 @@ func TestDomainResultToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -311,8 +329,7 @@ func TestPayloadToOrganizationCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -378,8 +395,7 @@ func TestDomainOrganizationToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -458,8 +474,7 @@ func TestPayloadToOrganizationSuggestionCriteria(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -514,8 +529,7 @@ func TestDomainOrganizationSuggestionsToResponse(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name             string
@@ -813,8 +827,7 @@ func TestPayloadToCriteriaWithDateFilters(t *testing.T) {
 	mockAccessChecker := mock.NewMockAccessControlChecker()
 	mockOrgSearcher := mock.NewMockOrganizationSearcher()
 	mockAuth := mock.NewMockAuthService()
-	service := NewQuerySvc(mockResourceSearcher, mockAccessChecker, mock.NewMockResourceFilter(), mockOrgSearcher, mockAuth)
-	svc := service.(*querySvcsrvc)
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
 
 	tests := []struct {
 		name          string
@@ -956,6 +969,498 @@ func TestPayloadToCriteriaWithDateFilters(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestApplyCommonFields(t *testing.T) {
+	tests := []struct {
+		name          string
+		params        commonQueryParams
+		seed          model.SearchCriteria // pre-populated caller fields
+		expectError   bool
+		errorContains string
+		check         func(*testing.T, model.SearchCriteria)
+	}{
+		{
+			name: "sets name, parent, type",
+			params: commonQueryParams{
+				Name:   stringPtr("my-resource"),
+				Parent: stringPtr("parent-id"),
+				Type:   stringPtr("project"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("my-resource"), c.Name)
+				assert.Equal(t, stringPtr("parent-id"), c.Parent)
+				assert.Equal(t, stringPtr("project"), c.ResourceType)
+			},
+		},
+		{
+			name: "parses filters and tags",
+			params: commonQueryParams{
+				Tags:       []string{"active"},
+				TagsAll:    []string{"governance"},
+				Filters:    []string{"status:active"},
+				FiltersAll: []string{"priority:high"},
+				FiltersOr:  []string{"region:us"},
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, []string{"active"}, c.Tags)
+				assert.Equal(t, []string{"governance"}, c.TagsAll)
+				assert.Equal(t, []model.FieldFilter{{Field: "data.status", Value: "active"}}, c.Filters)
+				assert.Equal(t, []model.FieldFilter{{Field: "data.priority", Value: "high"}}, c.FiltersAll)
+				assert.Equal(t, []model.FieldFilter{{Field: "data.region", Value: "us"}}, c.FiltersOr)
+			},
+		},
+		{
+			name: "date range with ISO 8601",
+			params: commonQueryParams{
+				DateField: stringPtr("updated_at"),
+				DateFrom:  stringPtr("2025-01-10T00:00:00Z"),
+				DateTo:    stringPtr("2025-01-28T23:59:59Z"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.updated_at"), c.DateField)
+				assert.Equal(t, stringPtr("2025-01-10T00:00:00Z"), c.DateFrom)
+				assert.Equal(t, stringPtr("2025-01-28T23:59:59Z"), c.DateTo)
+			},
+		},
+		{
+			name: "date range with date-only format",
+			params: commonQueryParams{
+				DateField: stringPtr("created_at"),
+				DateFrom:  stringPtr("2025-01-10"),
+				DateTo:    stringPtr("2025-01-28"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.created_at"), c.DateField)
+				assert.Equal(t, stringPtr("2025-01-10T00:00:00Z"), c.DateFrom)
+				assert.Equal(t, stringPtr("2025-01-28T23:59:59Z"), c.DateTo)
+			},
+		},
+		{
+			name: "date_field only (no date_from or date_to)",
+			params: commonQueryParams{
+				DateField: stringPtr("updated_at"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.updated_at"), c.DateField)
+				assert.Nil(t, c.DateFrom)
+				assert.Nil(t, c.DateTo)
+			},
+		},
+		{
+			name:          "date_from without date_field returns error",
+			params:        commonQueryParams{DateFrom: stringPtr("2025-01-10")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+		{
+			name:          "date_to without date_field returns error",
+			params:        commonQueryParams{DateTo: stringPtr("2025-01-28")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+		{
+			name:          "invalid filter format returns error",
+			params:        commonQueryParams{Filters: []string{"no-colon"}},
+			expectError:   true,
+			errorContains: "invalid filter",
+		},
+		{
+			name:          "invalid date_from returns error",
+			params:        commonQueryParams{DateField: stringPtr("f"), DateFrom: stringPtr("not-a-date")},
+			expectError:   true,
+			errorContains: "invalid date_from",
+		},
+		{
+			name:          "invalid date_to returns error",
+			params:        commonQueryParams{DateField: stringPtr("f"), DateTo: stringPtr("01/28/2025")},
+			expectError:   true,
+			errorContains: "invalid date_to",
+		},
+		{
+			name:   "preserves caller-set fields in seed criteria",
+			params: commonQueryParams{},
+			seed:   model.SearchCriteria{PageSize: 42, PublicOnly: true},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, 42, c.PageSize)
+				assert.True(t, c.PublicOnly)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			criteria := tc.seed
+			err := applyCommonFields(&criteria, tc.params)
+
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			if tc.check != nil {
+				tc.check(t, criteria)
+			}
+		})
+	}
+}
+
+func TestPayloadToCountPublicCriteria(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+
+	tests := []struct {
+		name          string
+		payload       *querysvc.QueryResourcesCountPayload
+		expectError   bool
+		errorContains string
+		check         func(*testing.T, model.SearchCriteria)
+	}{
+		{
+			name:    "empty payload sets public-only defaults",
+			payload: &querysvc.QueryResourcesCountPayload{},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.True(t, c.PublicOnly)
+				assert.False(t, c.PrivateOnly)
+				assert.Equal(t, -1, c.PageSize)
+			},
+		},
+		{
+			name: "sets name, parent, type from payload",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Name:   stringPtr("my-project"),
+				Parent: stringPtr("p1"),
+				Type:   stringPtr("project"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("my-project"), c.Name)
+				assert.Equal(t, stringPtr("p1"), c.Parent)
+				assert.Equal(t, stringPtr("project"), c.ResourceType)
+			},
+		},
+		{
+			name: "date range is applied",
+			payload: &querysvc.QueryResourcesCountPayload{
+				DateField: stringPtr("created_at"),
+				DateFrom:  stringPtr("2025-01-01"),
+				DateTo:    stringPtr("2025-12-31"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.created_at"), c.DateField)
+				assert.NotNil(t, c.DateFrom)
+				assert.NotNil(t, c.DateTo)
+			},
+		},
+		{
+			name:          "invalid filter returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{Filters: []string{"bad"}},
+			expectError:   true,
+			errorContains: "invalid filter",
+		},
+		{
+			name:          "date_from without date_field returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{DateFrom: stringPtr("2025-01-01")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.payloadToCountPublicCriteria(tc.payload)
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			if tc.check != nil {
+				tc.check(t, result)
+			}
+		})
+	}
+}
+
+func TestPayloadToCountPrivateCriteria(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+
+	tests := []struct {
+		name          string
+		payload       *querysvc.QueryResourcesCountPayload
+		expectError   bool
+		errorContains string
+		check         func(*testing.T, model.SearchCriteria)
+	}{
+		{
+			name:    "empty payload sets private-only defaults",
+			payload: &querysvc.QueryResourcesCountPayload{},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.True(t, c.PrivateOnly)
+				assert.False(t, c.PublicOnly)
+				assert.Equal(t, 0, c.PageSize)
+			},
+		},
+		{
+			name: "sets name, parent, type from payload",
+			payload: &querysvc.QueryResourcesCountPayload{
+				Name:   stringPtr("my-project"),
+				Parent: stringPtr("p1"),
+				Type:   stringPtr("project"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("my-project"), c.Name)
+				assert.Equal(t, stringPtr("p1"), c.Parent)
+				assert.Equal(t, stringPtr("project"), c.ResourceType)
+			},
+		},
+		{
+			name: "date range is applied",
+			payload: &querysvc.QueryResourcesCountPayload{
+				DateField: stringPtr("updated_at"),
+				DateFrom:  stringPtr("2025-06-01"),
+			},
+			check: func(t *testing.T, c model.SearchCriteria) {
+				assert.Equal(t, stringPtr("data.updated_at"), c.DateField)
+				assert.NotNil(t, c.DateFrom)
+				assert.Nil(t, c.DateTo)
+			},
+		},
+		{
+			name:          "invalid filters_all returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{FiltersAll: []string{"no-colon"}},
+			expectError:   true,
+			errorContains: "invalid filter",
+		},
+		{
+			name:          "date_to without date_field returns error",
+			payload:       &querysvc.QueryResourcesCountPayload{DateTo: stringPtr("2025-12-31")},
+			expectError:   true,
+			errorContains: "date_field is required",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.payloadToCountPrivateCriteria(tc.payload)
+			if tc.expectError {
+				assert.Error(t, err)
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			if tc.check != nil {
+				tc.check(t, result)
+			}
+		})
+	}
+}
+
+func TestPayloadToCountAggregation(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+
+	intPtr := func(v int) *int { return &v }
+
+	tests := []struct {
+		name          string
+		payload       *querysvc.QueryResourcesCountPayload
+		expectError   bool
+		errorContains string
+		expected      model.CountAggregation
+	}{
+		{
+			name:     "empty payload asks for nothing",
+			payload:  &querysvc.QueryResourcesCountPayload{},
+			expected: model.CountAggregation{GroupBySize: constants.DefaultGroupBySize},
+		},
+		{
+			name:     "group_by sets the prefix with the default size",
+			payload:  &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("project_uid")},
+			expected: model.CountAggregation{GroupByPrefix: "project_uid", GroupBySize: constants.DefaultGroupBySize},
+		},
+		{
+			name:          "group_by_size without group_by is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBySize: intPtr(10)},
+			expectError:   true,
+			errorContains: "group_by_size requires group_by",
+		},
+		{
+			name:          "group_by_size with a metric is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBySize: intPtr(10), Metric: stringPtr("cardinality:email")},
+			expectError:   true,
+			errorContains: "group_by_size requires group_by",
+		},
+		{
+			name:     "group_by_size overrides the default",
+			payload:  &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("meeting_type"), GroupBySize: intPtr(1)},
+			expected: model.CountAggregation{GroupByPrefix: "meeting_type", GroupBySize: 1},
+		},
+		{
+			name:          "group_by_size above the maximum is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("x"), GroupBySize: intPtr(constants.MaxGroupBySize + 1)},
+			expectError:   true,
+			errorContains: "group_by_size must be between 1 and 1000",
+		},
+		{
+			name:          "group_by_size below one is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("x"), GroupBySize: intPtr(0)},
+			expectError:   true,
+			errorContains: "group_by_size must be between 1 and 1000",
+		},
+		{
+			name:          "group_by outside the tag prefix pattern is rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("Project-UID")},
+			expectError:   true,
+			errorContains: "group_by must match",
+		},
+		{
+			name:     "cardinality metric sets the prefix",
+			payload:  &querysvc.QueryResourcesCountPayload{Metric: stringPtr("cardinality:email")},
+			expected: model.CountAggregation{CardinalityPrefix: "email", GroupBySize: constants.DefaultGroupBySize},
+		},
+		{
+			name:          "sum metric is declined with the flat_object reason",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("sum:duration")},
+			expectError:   true,
+			errorContains: "sum is not available on this index",
+		},
+		{
+			name:          "unknown metric family is declined",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("avg:duration")},
+			expectError:   true,
+			errorContains: "metric must be cardinality:<tag_prefix>",
+		},
+		{
+			name:          "cardinality with an invalid prefix is declined",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("cardinality:E-Mail")},
+			expectError:   true,
+			errorContains: "metric must be cardinality:<tag_prefix>",
+		},
+		{
+			name:          "cardinality with an empty prefix is declined",
+			payload:       &querysvc.QueryResourcesCountPayload{Metric: stringPtr("cardinality:")},
+			expectError:   true,
+			errorContains: "metric must be cardinality:<tag_prefix>",
+		},
+		{
+			name:          "group_by and metric together are rejected",
+			payload:       &querysvc.QueryResourcesCountPayload{GroupBy: stringPtr("project_uid"), Metric: stringPtr("cardinality:email")},
+			expectError:   true,
+			errorContains: "metric per group is not supported",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := svc.payloadToCountAggregation(tc.payload)
+			if tc.expectError {
+				assert.Error(t, err)
+				var validation errors.Validation
+				assert.ErrorAs(t, err, &validation, "count parameter errors must map to 400")
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains)
+				}
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestDomainCountResultToResponse(t *testing.T) {
+	mockResourceSearcher := mock.NewMockResourceSearcher()
+	mockAccessChecker := mock.NewMockAccessControlChecker()
+	mockOrgSearcher := mock.NewMockOrganizationSearcher()
+	mockAuth := mock.NewMockAuthService()
+	svc := newTestQuerySvc(t, mockResourceSearcher, mockAccessChecker, mockOrgSearcher, mockAuth)
+
+	boolPtr := func(v bool) *bool { return &v }
+	uint64Ptr := func(v uint64) *uint64 { return &v }
+	cacheControl := "public, max-age=300"
+
+	t.Run("plain count omits groups and metric", func(t *testing.T) {
+		response := svc.domainCountResultToResponse(&model.CountResult{Count: 5, HasMore: true, CacheControl: &cacheControl})
+		assert.Equal(t, uint64(5), response.Count)
+		assert.True(t, response.HasMore)
+		assert.Nil(t, response.Groups)
+		assert.Nil(t, response.GroupsComplete)
+		assert.Nil(t, response.GroupCountErrorUpperBound)
+		assert.Nil(t, response.MetricValue)
+		assert.Nil(t, response.MetricComplete)
+		assert.Equal(t, &cacheControl, response.CacheControl)
+	})
+
+	t.Run("grouped count renders groups in domain order", func(t *testing.T) {
+		response := svc.domainCountResultToResponse(&model.CountResult{
+			Count:                     5,
+			Groups:                    []model.CountGroup{{Key: "P1", Count: 2}, {Key: "P2", Count: 2}, {Key: "P3", Count: 1}},
+			GroupsComplete:            boolPtr(true),
+			GroupCountErrorUpperBound: uint64Ptr(7),
+		})
+		assert.Equal(t, uint64Ptr(7), response.GroupCountErrorUpperBound)
+		encoded, err := json.Marshal(server.NewQueryResourcesCountResponseBody(response))
+		assert.NoError(t, err)
+		assert.Contains(t, string(encoded), `"group_count_error_upper_bound":7`)
+		assert.Len(t, response.Groups, 3)
+		assert.Equal(t, "P1", response.Groups[0].Key)
+		assert.Equal(t, uint64(2), response.Groups[0].Count)
+		assert.Equal(t, "P3", response.Groups[2].Key)
+		assert.Equal(t, boolPtr(true), response.GroupsComplete)
+	})
+
+	t.Run("grouped count with no groups: groups_complete is the presence signal on the wire", func(t *testing.T) {
+		// Goa renders optional arrays with omitempty, so an empty groups slice
+		// is dropped from the JSON body; groups_complete (a pointer) survives
+		// and tells the client group_by was honoured. Pin that wire shape.
+		response := svc.domainCountResultToResponse(&model.CountResult{GroupsComplete: boolPtr(true), GroupCountErrorUpperBound: uint64Ptr(0)})
+		assert.Len(t, response.Groups, 0)
+		assert.NotNil(t, response.GroupsComplete)
+
+		body := server.NewQueryResourcesCountResponseBody(response)
+		encoded, err := json.Marshal(body)
+		assert.NoError(t, err)
+		assert.JSONEq(t, `{"count":0,"has_more":false,"groups_complete":true,"group_count_error_upper_bound":0}`, string(encoded))
+	})
+
+	t.Run("metric renders value and completeness", func(t *testing.T) {
+		response := svc.domainCountResultToResponse(&model.CountResult{
+			Count:          4,
+			MetricValue:    uint64Ptr(2),
+			MetricComplete: boolPtr(false),
+		})
+		assert.Equal(t, uint64Ptr(2), response.MetricValue)
+		assert.Equal(t, boolPtr(false), response.MetricComplete)
+		assert.Nil(t, response.Groups)
+		assert.Nil(t, response.GroupCountErrorUpperBound)
+	})
+}
+
+// newTestQuerySvc wires the service with the default resource search config.
+func newTestQuerySvc(t *testing.T, searcher port.ResourceSearcher, checker port.AccessControlChecker, orgs port.OrganizationSearcher, auth port.Authenticator) *querySvcsrvc {
+	t.Helper()
+	svc, err := NewQuerySvc(searcher, checker, mock.NewMockResourceFilter(), orgs, auth, service.DefaultConfig())
+	if err != nil {
+		t.Fatalf("NewQuerySvc: %v", err)
+	}
+	return svc.(*querySvcsrvc)
 }
 
 // Helper function to create string pointers

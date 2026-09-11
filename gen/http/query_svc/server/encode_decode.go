@@ -40,24 +40,25 @@ func EncodeQueryResourcesResponse(encoder func(context.Context, http.ResponseWri
 func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
 	return func(r *http.Request) (any, error) {
 		var (
-			version     string
-			name        *string
-			parent      *string
-			type_       *string
-			tags        []string
-			tagsAll     []string
-			dateField   *string
-			dateFrom    *string
-			dateTo      *string
-			filters     []string
-			filtersAll  []string
-			filtersOr   []string
-			celFilter   *string
-			sort        string
-			pageToken   *string
-			pageSize    int
-			bearerToken string
-			err         error
+			version      string
+			name         *string
+			parent       *string
+			type_        *string
+			tags         []string
+			tagsAll      []string
+			dateField    *string
+			dateFrom     *string
+			dateTo       *string
+			filters      []string
+			filtersAll   []string
+			filtersOr    []string
+			celFilter    *string
+			filterGrants *string
+			sort         string
+			pageToken    *string
+			pageSize     int
+			bearerToken  string
+			err          error
 		)
 		qp := r.URL.Query()
 		version = qp.Get("v")
@@ -81,7 +82,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 			parent = &parentRaw
 		}
 		if parent != nil {
-			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z]+:[a-zA-Z0-9_-]+$"))
+			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$"))
 		}
 		type_Raw := qp.Get("type")
 		if type_Raw != "" {
@@ -113,14 +114,23 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 				err = goa.MergeErrors(err, goa.InvalidLengthError("cel_filter", *celFilter, utf8.RuneCountInString(*celFilter), 1000, false))
 			}
 		}
+		filterGrantsRaw := qp.Get("filter_grants")
+		if filterGrantsRaw != "" {
+			filterGrants = &filterGrantsRaw
+		}
+		if filterGrants != nil {
+			if !(*filterGrants == "direct") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("filter_grants", *filterGrants, []any{"direct"}))
+			}
+		}
 		sortRaw := qp.Get("sort")
 		if sortRaw != "" {
 			sort = sortRaw
 		} else {
 			sort = "name_asc"
 		}
-		if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc"}))
+		if !(sort == "name_asc" || sort == "name_desc" || sort == "updated_asc" || sort == "updated_desc" || sort == "best_match") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("sort", sort, []any{"name_asc", "name_desc", "updated_asc", "updated_desc", "best_match"}))
 		}
 		pageTokenRaw := qp.Get("page_token")
 		if pageTokenRaw != "" {
@@ -151,7 +161,7 @@ func DecodeQueryResourcesRequest(mux goahttp.Muxer, decoder func(*http.Request) 
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, celFilter, sort, pageToken, pageSize, bearerToken)
+		payload := NewQueryResourcesPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, celFilter, filterGrants, sort, pageToken, pageSize, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
@@ -249,6 +259,9 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 			filters     []string
 			filtersAll  []string
 			filtersOr   []string
+			groupBy     *string
+			groupBySize *int
+			metric      *string
 			bearerToken string
 			err         error
 		)
@@ -273,6 +286,9 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		if parentRaw != "" {
 			parent = &parentRaw
 		}
+		if parent != nil {
+			err = goa.MergeErrors(err, goa.ValidatePattern("parent", *parent, "^[a-zA-Z][a-zA-Z0-9_]*:[a-zA-Z0-9_-]+$"))
+		}
 		type_Raw := qp.Get("type")
 		if type_Raw != "" {
 			type_ = &type_Raw
@@ -294,6 +310,48 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		filters = qp["filters"]
 		filtersAll = qp["filters_all"]
 		filtersOr = qp["filters_or"]
+		groupByRaw := qp.Get("group_by")
+		if groupByRaw != "" {
+			groupBy = &groupByRaw
+		}
+		if groupBy != nil {
+			err = goa.MergeErrors(err, goa.ValidatePattern("group_by", *groupBy, "^[a-z][a-z0-9_]*$"))
+		}
+		if groupBy != nil {
+			if utf8.RuneCountInString(*groupBy) > 64 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("group_by", *groupBy, utf8.RuneCountInString(*groupBy), 64, false))
+			}
+		}
+		{
+			groupBySizeRaw := qp.Get("group_by_size")
+			if groupBySizeRaw != "" {
+				v, err2 := strconv.ParseInt(groupBySizeRaw, 10, strconv.IntSize)
+				if err2 != nil {
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("group_by_size", groupBySizeRaw, "integer"))
+				}
+				pv := int(v)
+				groupBySize = &pv
+			}
+		}
+		if groupBySize != nil {
+			if *groupBySize < 1 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("group_by_size", *groupBySize, 1, true))
+			}
+		}
+		if groupBySize != nil {
+			if *groupBySize > 1000 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("group_by_size", *groupBySize, 1000, false))
+			}
+		}
+		metricRaw := qp.Get("metric")
+		if metricRaw != "" {
+			metric = &metricRaw
+		}
+		if metric != nil {
+			if utf8.RuneCountInString(*metric) > 80 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("metric", *metric, utf8.RuneCountInString(*metric), 80, false))
+			}
+		}
 		bearerToken = r.Header.Get("Authorization")
 		if bearerToken == "" {
 			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
@@ -301,7 +359,7 @@ func DecodeQueryResourcesCountRequest(mux goahttp.Muxer, decoder func(*http.Requ
 		if err != nil {
 			return nil, err
 		}
-		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, bearerToken)
+		payload := NewQueryResourcesCountPayload(version, name, parent, type_, tags, tagsAll, dateField, dateFrom, dateTo, filters, filtersAll, filtersOr, groupBy, groupBySize, metric, bearerToken)
 		if strings.Contains(payload.BearerToken, " ") {
 			// Remove authorization scheme prefix (e.g. "Bearer")
 			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
@@ -672,6 +730,20 @@ func marshalQuerysvcResourceToResourceResponseBody(v *querysvc.Resource) *Resour
 		Type: v.Type,
 		ID:   v.ID,
 		Data: v.Data,
+	}
+
+	return res
+}
+
+// marshalQuerysvcCountGroupToCountGroupResponseBody builds a value of type
+// *CountGroupResponseBody from a value of type *querysvc.CountGroup.
+func marshalQuerysvcCountGroupToCountGroupResponseBody(v *querysvc.CountGroup) *CountGroupResponseBody {
+	if v == nil {
+		return nil
+	}
+	res := &CountGroupResponseBody{
+		Key:   v.Key,
+		Count: v.Count,
 	}
 
 	return res

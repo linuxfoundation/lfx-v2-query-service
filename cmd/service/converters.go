@@ -7,12 +7,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
+	"regexp"
 	"strings"
+	"time"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/global"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
 )
@@ -51,6 +53,69 @@ func parseDateFilter(dateStr string, isEndDate bool) (string, error) {
 	}
 
 	return t.Format(time.RFC3339), nil
+}
+
+// commonQueryParams holds the query fields shared by QueryResourcesPayload and
+// QueryResourcesCountPayload. Populate it from either payload type and pass it
+// to applyCommonFields to avoid repeating filter-parsing and date-handling logic
+// in every converter.
+type commonQueryParams struct {
+	Name       *string
+	Parent     *string
+	Type       *string
+	Tags       []string
+	TagsAll    []string
+	Filters    []string
+	FiltersAll []string
+	FiltersOr  []string
+	DateField  *string
+	DateFrom   *string
+	DateTo     *string
+}
+
+// applyCommonFields populates the shared filter and date fields on criteria from p.
+// It returns an error for invalid filter formats or date parameter combinations.
+// It does not log; callers are responsible for logging and wrapping the error.
+func applyCommonFields(criteria *model.SearchCriteria, p commonQueryParams) error {
+	filters, filtersAll, filtersOr, err := parseFilterSets(p.Filters, p.FiltersAll, p.FiltersOr)
+	if err != nil {
+		return err
+	}
+	criteria.Name = p.Name
+	criteria.Parent = p.Parent
+	criteria.ResourceType = p.Type
+	criteria.Tags = p.Tags
+	criteria.TagsAll = p.TagsAll
+	criteria.Filters = filters
+	criteria.FiltersAll = filtersAll
+	criteria.FiltersOr = filtersOr
+
+	if (p.DateFrom != nil || p.DateTo != nil) && p.DateField == nil {
+		return fmt.Errorf("date_field is required when using date_from or date_to")
+	}
+
+	if p.DateField != nil {
+		prefixedField := "data." + *p.DateField
+		criteria.DateField = &prefixedField
+
+		if p.DateFrom != nil {
+			normalizedFrom, err := parseDateFilter(*p.DateFrom, false)
+			if err != nil {
+				return fmt.Errorf("invalid date_from: %w", err)
+			}
+			criteria.DateFrom = &normalizedFrom
+		}
+
+		if p.DateTo != nil {
+			normalizedTo, err := parseDateFilter(*p.DateTo, true)
+			if err != nil {
+				return fmt.Errorf("invalid date_to: %w", err)
+			}
+			criteria.DateTo = &normalizedTo
+		}
+	}
+
+	return nil
 }
 
 // parseFilterSets parses the three filter params (filters, filters_all, filters_or) in one call.
@@ -99,26 +164,25 @@ func parseFilters(filters []string) ([]model.FieldFilter, error) {
 
 // payloadToCriteria converts the generated payload to domain search criteria
 func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryResourcesPayload) (model.SearchCriteria, error) {
-	filters, filtersAll, filtersOr, err := parseFilterSets(p.Filters, p.FiltersAll, p.FiltersOr)
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to parse filters", "error", err)
-		return model.SearchCriteria{}, wrapError(ctx, err)
-	}
-
 	criteria := model.SearchCriteria{
-		Name:         p.Name,
-		Parent:       p.Parent,
-		ResourceType: p.Type,
-		Tags:         p.Tags,
-		TagsAll:      p.TagsAll,
-		Filters:      filters,
-		FiltersAll:   filtersAll,
-		FiltersOr:    filtersOr,
 		CelFilter:    p.CelFilter,
+		FilterGrants: p.FilterGrants,
 		SortBy:       p.Sort,
 		PageToken:    p.PageToken,
 		PageSize:     p.PageSize,
 	}
+
+	params := commonQueryParams{
+		Name: p.Name, Parent: p.Parent, Type: p.Type,
+		Tags: p.Tags, TagsAll: p.TagsAll,
+		Filters: p.Filters, FiltersAll: p.FiltersAll, FiltersOr: p.FiltersOr,
+		DateField: p.DateField, DateFrom: p.DateFrom, DateTo: p.DateTo,
+	}
+	if err := applyCommonFields(&criteria, params); err != nil {
+		slog.ErrorContext(ctx, "invalid query parameters", "error", err)
+		return model.SearchCriteria{}, wrapError(ctx, err)
+	}
+
 	switch p.Sort {
 	case "name_asc":
 		criteria.SortBy = "sort_name"
@@ -131,6 +195,9 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 		criteria.SortOrder = "asc"
 	case "updated_desc":
 		criteria.SortBy = "updated_at"
+		criteria.SortOrder = "desc"
+	case "best_match":
+		criteria.SortBy = "_score"
 		criteria.SortOrder = "desc"
 	}
 
@@ -145,40 +212,6 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 			"page_token", *criteria.PageToken,
 			"decoded", pageToken,
 		)
-	}
-
-	// Validate date filtering parameters
-	if (p.DateFrom != nil || p.DateTo != nil) && p.DateField == nil {
-		err := fmt.Errorf("date_field is required when using date_from or date_to")
-		slog.ErrorContext(ctx, "invalid date filter parameters", "error", err)
-		return criteria, wrapError(ctx, err)
-	}
-
-	// Handle date filtering parameters
-	if p.DateField != nil {
-		// Auto-prefix with "data." to scope to data object
-		prefixedField := "data." + *p.DateField
-		criteria.DateField = &prefixedField
-
-		// Parse and normalize date_from
-		if p.DateFrom != nil {
-			normalizedFrom, err := parseDateFilter(*p.DateFrom, false)
-			if err != nil {
-				slog.ErrorContext(ctx, "invalid date_from format", "error", err, "date_from", *p.DateFrom)
-				return criteria, wrapError(ctx, err)
-			}
-			criteria.DateFrom = &normalizedFrom
-		}
-
-		// Parse and normalize date_to
-		if p.DateTo != nil {
-			normalizedTo, err := parseDateFilter(*p.DateTo, true)
-			if err != nil {
-				slog.ErrorContext(ctx, "invalid date_to format", "error", err, "date_to", *p.DateTo)
-				return criteria, wrapError(ctx, err)
-			}
-			criteria.DateTo = &normalizedTo
-		}
 	}
 
 	return criteria, nil
@@ -206,143 +239,119 @@ func (s *querySvcsrvc) domainResultToResponse(result *model.SearchResult) *query
 	return response
 }
 
+// countCommonParams extracts the shared search parameters of a count payload.
+func countCommonParams(payload *querysvc.QueryResourcesCountPayload) commonQueryParams {
+	return commonQueryParams{
+		Name: payload.Name, Parent: payload.Parent, Type: payload.Type,
+		Tags: payload.Tags, TagsAll: payload.TagsAll,
+		Filters: payload.Filters, FiltersAll: payload.FiltersAll, FiltersOr: payload.FiltersOr,
+		DateField: payload.DateField, DateFrom: payload.DateFrom, DateTo: payload.DateTo,
+	}
+}
+
+// payloadToCountPublicCriteria builds the criteria of the public /_count.
 func (s *querySvcsrvc) payloadToCountPublicCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
-	// Parameters used for /<index>/_count search.
 	criteria := model.SearchCriteria{
-		GroupBySize: constants.DefaultBucketSize,
-		// Page size is not passed to this endpoint.
-		PageSize: -1,
-		// For _count, we only want public resources.
-		PublicOnly: true,
+		PageSize:   -1,   // page size is not used for _count
+		PublicOnly: true, // _count only counts public resources
 	}
-
-	filters, filtersAll, filtersOr, err := parseFilterSets(payload.Filters, payload.FiltersAll, payload.FiltersOr)
-	if err != nil {
-		return criteria, err
-	}
-
-	// Set the criteria from the payload
-	criteria.Tags = payload.Tags
-	criteria.TagsAll = payload.TagsAll
-	criteria.Filters = filters
-	criteria.FiltersAll = filtersAll
-	criteria.FiltersOr = filtersOr
-	if payload.Name != nil {
-		criteria.Name = payload.Name
-	}
-	if payload.Type != nil {
-		criteria.ResourceType = payload.Type
-	}
-	if payload.Parent != nil {
-		criteria.Parent = payload.Parent
-	}
-
-	// Validate date filtering parameters
-	if (payload.DateFrom != nil || payload.DateTo != nil) && payload.DateField == nil {
-		return criteria, fmt.Errorf("date_field is required when using date_from or date_to")
-	}
-
-	// Handle date filtering parameters
-	if payload.DateField != nil {
-		// Auto-prefix with "data." to scope to data object
-		prefixedField := "data." + *payload.DateField
-		criteria.DateField = &prefixedField
-
-		// Parse and normalize date_from
-		if payload.DateFrom != nil {
-			normalizedFrom, err := parseDateFilter(*payload.DateFrom, false)
-			if err != nil {
-				return criteria, fmt.Errorf("invalid date_from: %w", err)
-			}
-			criteria.DateFrom = &normalizedFrom
-		}
-
-		// Parse and normalize date_to
-		if payload.DateTo != nil {
-			normalizedTo, err := parseDateFilter(*payload.DateTo, true)
-			if err != nil {
-				return criteria, fmt.Errorf("invalid date_to: %w", err)
-			}
-			criteria.DateTo = &normalizedTo
-		}
-	}
-
-	return criteria, nil
+	err := applyCommonFields(&criteria, countCommonParams(payload))
+	return criteria, err
 }
 
-func (s *querySvcsrvc) payloadToCountAggregationCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
-	// Parameters used for the "group by" aggregated /<index>/_search search.
+// payloadToCountPrivateCriteria builds the criteria of the access-key walk
+// over private resources. The field aggregated on is resolved by the searcher
+// from the live index mapping, not chosen here.
+func (s *querySvcsrvc) payloadToCountPrivateCriteria(payload *querysvc.QueryResourcesCountPayload) (model.SearchCriteria, error) {
 	criteria := model.SearchCriteria{
-		GroupBySize: constants.DefaultBucketSize,
-		// We only want the aggregation, not the actual results.
-		PageSize: 0,
-		// The aggregation results will only count private resources.
-		PrivateOnly: true,
-		// Set the attribute to aggregate on.
-		// Use .keyword subfield for aggregation on text fields
-		GroupBy: "access_check_query.keyword",
+		PageSize:    0,    // aggregation only; no result hits needed
+		PrivateOnly: true, // the walk covers private resources only
 	}
-
-	filters, filtersAll, filtersOr, err := parseFilterSets(payload.Filters, payload.FiltersAll, payload.FiltersOr)
-	if err != nil {
-		return criteria, err
-	}
-
-	// Set the criteria from the payload
-	criteria.Tags = payload.Tags
-	criteria.TagsAll = payload.TagsAll
-	criteria.Filters = filters
-	criteria.FiltersAll = filtersAll
-	criteria.FiltersOr = filtersOr
-	if payload.Name != nil {
-		criteria.Name = payload.Name
-	}
-	if payload.Type != nil {
-		criteria.ResourceType = payload.Type
-	}
-	if payload.Parent != nil {
-		criteria.Parent = payload.Parent
-	}
-
-	// Validate date filtering parameters
-	if (payload.DateFrom != nil || payload.DateTo != nil) && payload.DateField == nil {
-		return criteria, fmt.Errorf("date_field is required when using date_from or date_to")
-	}
-
-	// Handle date filtering parameters
-	if payload.DateField != nil {
-		// Auto-prefix with "data." to scope to data object
-		prefixedField := "data." + *payload.DateField
-		criteria.DateField = &prefixedField
-
-		// Parse and normalize date_from
-		if payload.DateFrom != nil {
-			normalizedFrom, err := parseDateFilter(*payload.DateFrom, false)
-			if err != nil {
-				return criteria, fmt.Errorf("invalid date_from: %w", err)
-			}
-			criteria.DateFrom = &normalizedFrom
-		}
-
-		// Parse and normalize date_to
-		if payload.DateTo != nil {
-			normalizedTo, err := parseDateFilter(*payload.DateTo, true)
-			if err != nil {
-				return criteria, fmt.Errorf("invalid date_to: %w", err)
-			}
-			criteria.DateTo = &normalizedTo
-		}
-	}
-
-	return criteria, nil
+	err := applyCommonFields(&criteria, countCommonParams(payload))
+	return criteria, err
 }
 
+// tagPrefixPattern is the shape of a group_by prefix and of the prefix inside
+// a cardinality metric. It matches the Goa pattern on group_by.
+var tagPrefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+
+const (
+	// metricCardinalityPrefix is the only metric family the count route
+	// supports: "cardinality:<tag_prefix>".
+	metricCardinalityPrefix = "cardinality:"
+	// errMetricShape is returned for any metric that is not
+	// cardinality:<tag_prefix>. Sums are named explicitly because they are
+	// the obvious next ask and impossible on this index: data is a
+	// flat_object, whose subfields cannot be aggregated.
+	errMetricShape = "metric must be cardinality:<tag_prefix>; sum is not available on this index (data fields are flat_object)"
+	// errMetricPerGroup is returned when group_by and metric are combined.
+	errMetricPerGroup = "metric per group is not supported; group first, then count each group with tags"
+)
+
+// payloadToCountAggregation validates group_by, group_by_size and metric and
+// builds the aggregation the count route computes over authorized resources.
+func (s *querySvcsrvc) payloadToCountAggregation(payload *querysvc.QueryResourcesCountPayload) (model.CountAggregation, error) {
+	aggregation := model.CountAggregation{
+		GroupBySize: constants.DefaultGroupBySize,
+	}
+
+	if payload.GroupBy != nil && payload.Metric != nil {
+		return aggregation, errors.NewValidation(errMetricPerGroup)
+	}
+
+	if payload.GroupBy != nil {
+		if !tagPrefixPattern.MatchString(*payload.GroupBy) {
+			return aggregation, errors.NewValidation("group_by must match ^[a-z][a-z0-9_]*$")
+		}
+		aggregation.GroupByPrefix = *payload.GroupBy
+	}
+	if payload.GroupBySize != nil {
+		if payload.GroupBy == nil {
+			return aggregation, errors.NewValidation("group_by_size requires group_by; omit group_by_size for plain counts or metrics")
+		}
+		if *payload.GroupBySize < 1 || *payload.GroupBySize > constants.MaxGroupBySize {
+			return aggregation, errors.NewValidation(fmt.Sprintf("group_by_size must be between 1 and %d", constants.MaxGroupBySize))
+		}
+		aggregation.GroupBySize = *payload.GroupBySize
+	}
+
+	if payload.Metric != nil {
+		metric := *payload.Metric
+		if !strings.HasPrefix(metric, metricCardinalityPrefix) {
+			return aggregation, errors.NewValidation(errMetricShape)
+		}
+		prefix := strings.TrimPrefix(metric, metricCardinalityPrefix)
+		if !tagPrefixPattern.MatchString(prefix) {
+			return aggregation, errors.NewValidation(errMetricShape)
+		}
+		aggregation.CardinalityPrefix = prefix
+	}
+
+	return aggregation, nil
+}
+
+// domainCountResultToResponse converts the domain count result; the group and
+// metric attributes are present only when they were requested.
 func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *querysvc.QueryResourcesCountResult {
-	return &querysvc.QueryResourcesCountResult{
-		Count:        uint64(result.Count),
-		HasMore:      result.HasMore,
-		CacheControl: result.CacheControl,
+	response := &querysvc.QueryResourcesCountResult{
+		Count:                     uint64(result.Count),
+		HasMore:                   result.HasMore,
+		GroupsComplete:            result.GroupsComplete,
+		GroupCountErrorUpperBound: result.GroupCountErrorUpperBound,
+		MetricValue:               result.MetricValue,
+		MetricComplete:            result.MetricComplete,
+		CacheControl:              result.CacheControl,
 	}
+	if result.GroupsComplete != nil {
+		response.Groups = make([]*querysvc.CountGroup, 0, len(result.Groups))
+		for _, group := range result.Groups {
+			response.Groups = append(response.Groups, &querysvc.CountGroup{
+				Key:   group.Key,
+				Count: group.Count,
+			})
+		}
+	}
+	return response
 }
 
 // payloadToOrganizationCriteria converts the generated payload to domain organization search criteria

@@ -3,6 +3,11 @@
 ---
 replicaCount: 3
 
+# annotations are additional annotations applied to the Deployment itself.
+# Example:
+#   reloader.stakater.com/auto: "true"
+annotations: {}
+
 # podAnnotations are additional annotations applied to the pod template.
 # Example:
 #   prometheus.io/scrape: "true"
@@ -21,6 +26,16 @@ podDisruptionBudget:
   enabled: false
   # minAvailable: 1
   # maxUnavailable: 1
+
+# topologySpreadConstraints controls how pods are spread across nodes/zones.
+# Empty by default (no constraints). Example:
+#   - maxSkew: 1
+#     topologyKey: kubernetes.io/hostname
+#     whenUnsatisfiable: DoNotSchedule
+#     labelSelector:
+#       matchLabels:
+#         app: lfx-v2-query-service
+topologySpreadConstraints: []
 
 # Override from CLI/CI: --set image.tag=<git-sha>, etc.
 image:
@@ -52,6 +67,17 @@ app:
     ## In case of mock, please set the ORG_SEARCH_SOURCE to mock.
     CLEARBIT_CREDENTIAL:
       value: null
+    ## Access-check and count tunables. Defaults live in code; leave unset
+    ## unless a deployment needs to override them.
+    ## ACCESS_CHECK_TIMEOUT:      # default 15s   - each batched fga-sync access check
+    ##   value: 15s
+    ## READ_TUPLES_TIMEOUT:       # default 15s   - filter_grants=direct tuple read
+    ##   value: 15s
+    ## COUNT_ACCESS_BUCKET_PAGE:  # default 100   - access-key buckets per count page (1-1000)
+    ##   value: "100"
+    ## At most 100 pages per count: ceil(COUNT_MAX_ACCESS_BUCKETS / COUNT_ACCESS_BUCKET_PAGE) <= 100.
+    ## COUNT_MAX_ACCESS_BUCKETS:  # default 5000, page..10000; full pages may overshoot by page-1
+    ##   value: "5000"
   # extraEnv allows injecting additional environment variables before OTEL configuration.
   # Supports both simple values and Kubernetes field references.
   extraEnv: []
@@ -64,7 +90,11 @@ app:
     endpoint: ""
     insecure: "false"
     tracesExporter: "none"
-    tracesSampleRatio: "1.0"
+    tracesSampler: ""
+    # tracesSamplerArg specifies the OTEL_TRACES_SAMPLER_ARG (sampler ratio or parent_sampler_arg).
+    # Used by "traceidratio" and "parentbased_traceidratio" samplers (defaults to 1.0 if empty).
+    # (default: "")
+    tracesSamplerArg: ""
     metricsExporter: "none"
     logsExporter: "none"
     propagators: "tracecontext,baggage,jaeger"
@@ -80,8 +110,6 @@ traefik:
 lfx:
   # domain is the base domain for routing
   domain: k8s.orb.local
-  # namespace is the target namespace for deployment
-  namespace: lfx
 
 # service is the configuration for the Kubernetes service
 service:

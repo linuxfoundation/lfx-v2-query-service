@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"log/slog"
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
@@ -20,18 +21,22 @@ func wrapError(ctx context.Context, err error) error {
 			}
 		}
 
-		switch e := err.(type) {
-		case errors.Validation:
+		var validation errors.Validation
+		var notFound errors.NotFound
+		var serviceUnavailable errors.ServiceUnavailable
+
+		switch {
+		case stderrors.As(err, &validation):
 			return &querysvc.BadRequestError{
-				Message: e.Error(),
+				Message: validation.Error(),
 			}
-		case errors.NotFound:
+		case stderrors.As(err, &notFound):
 			return &querysvc.NotFoundError{
-				Message: e.Error(),
+				Message: notFound.Error(),
 			}
-		case errors.ServiceUnavailable:
+		case stderrors.As(err, &serviceUnavailable):
 			return &querysvc.ServiceUnavailableError{
-				Message: e.Error(),
+				Message: serviceUnavailable.Error(),
 			}
 		default:
 			return &querysvc.InternalServerError{
