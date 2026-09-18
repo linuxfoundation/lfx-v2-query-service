@@ -31,6 +31,8 @@ type MockAccessControlChecker struct {
 	checkAccessError       error
 	checkAccessErrorOnCall int
 	checkAccessCalls       int
+	recordMessages         bool
+	checkAccessMessages    []string
 	isReadyError           error
 	// MockTupleRefs is the list of object refs returned by ReadTuples
 	MockTupleRefs []string
@@ -48,6 +50,11 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	)
 
 	m.checkAccessCalls++
+	if m.recordMessages {
+		// Kept for the tests that assert on the batched message; a mock
+		// wired as the process access checker retains nothing.
+		m.checkAccessMessages = append(m.checkAccessMessages, string(data))
+	}
 
 	// If test has set a mock error, return it (on every call, or only on the
 	// configured call number).
@@ -227,6 +234,19 @@ func (m *MockAccessControlChecker) SetCheckAccessError(err error) {
 func (m *MockAccessControlChecker) SetCheckAccessErrorOnCall(n int, err error) {
 	m.checkAccessError = err
 	m.checkAccessErrorOnCall = n
+}
+
+// RecordCheckAccessMessages makes the mock keep the batched message of each
+// CheckAccess call, for a test that asserts on them.
+func (m *MockAccessControlChecker) RecordCheckAccessMessages() {
+	m.recordMessages = true
+}
+
+// CheckAccessMessages returns the batched access-check message of each
+// CheckAccess call recorded since RecordCheckAccessMessages was called, in
+// call order.
+func (m *MockAccessControlChecker) CheckAccessMessages() []string {
+	return m.checkAccessMessages
 }
 
 // CheckAccessCalls returns how many times CheckAccess was called.

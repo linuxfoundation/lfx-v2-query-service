@@ -65,6 +65,10 @@ type SearchResult struct {
 	Resources []Resource
 	// Opaque token if more results are available
 	PageToken *string
+	// SearchAfter carries the keyset cursor of the last hit, as the sort
+	// values the next page continues from. It is set whenever PageToken is,
+	// and lets a service-side drain continue without decoding the token.
+	SearchAfter *string
 	// Cache control header
 	CacheControl *string
 	// Total number of resources found

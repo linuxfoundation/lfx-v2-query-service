@@ -26,6 +26,10 @@ type ResourceSearcher interface {
 	// caller may see, optionally grouped or reduced to a metric.
 	QueryResourcesCount(ctx context.Context, publicCriteria model.SearchCriteria, privateCriteria model.SearchCriteria, aggregation model.CountAggregation) (*model.CountResult, error)
 
+	// QueryMembershipSummary folds the membership records the caller may see
+	// into one summary per organization and project.
+	QueryMembershipSummary(ctx context.Context, criteria model.MembershipSummaryCriteria) (*model.MembershipSummaryResult, error)
+
 	// IsReady checks if the search service is ready
 	IsReady(ctx context.Context) error
 }
@@ -44,6 +48,10 @@ type Config struct {
 	// MaxAccessBuckets caps the number of access-key buckets a single count
 	// walks before it stops and reports has_more (AccessBucketPage..10000).
 	MaxAccessBuckets int
+	// MaxSummaryRecords caps the number of membership records a single
+	// summary reads before it stops and reports itself incomplete
+	// (1..constants.MaxSummaryRecordCap).
+	MaxSummaryRecords int
 }
 
 // DefaultConfig returns the configuration used when nothing is set in the
@@ -54,6 +62,7 @@ func DefaultConfig() Config {
 		ReadTuplesTimeout:  15 * time.Second,
 		AccessBucketPage:   constants.DefaultAccessBucketPage,
 		MaxAccessBuckets:   constants.DefaultMaxAccessBuckets,
+		MaxSummaryRecords:  constants.DefaultMaxSummaryRecords,
 	}
 }
 
@@ -71,6 +80,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxAccessBuckets == 0 {
 		c.MaxAccessBuckets = defaults.MaxAccessBuckets
+	}
+	if c.MaxSummaryRecords == 0 {
+		c.MaxSummaryRecords = defaults.MaxSummaryRecords
 	}
 	return c
 }
@@ -95,6 +107,12 @@ func (c Config) Validate() error {
 	pages := (c.MaxAccessBuckets + c.AccessBucketPage - 1) / c.AccessBucketPage
 	if pages > constants.MaxCountAccessPages {
 		return fmt.Errorf("max access buckets / access bucket page must not exceed %d pages, got %d (buckets=%d, page=%d)", constants.MaxCountAccessPages, pages, c.MaxAccessBuckets, c.AccessBucketPage)
+	}
+	if c.MaxSummaryRecords < 1 {
+		return fmt.Errorf("max summary records must be positive, got %d", c.MaxSummaryRecords)
+	}
+	if c.MaxSummaryRecords > constants.MaxSummaryRecordCap {
+		return fmt.Errorf("max summary records must not exceed %d, got %d", constants.MaxSummaryRecordCap, c.MaxSummaryRecords)
 	}
 	return nil
 }

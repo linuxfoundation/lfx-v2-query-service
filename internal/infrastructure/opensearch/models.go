@@ -15,6 +15,9 @@ type Config struct {
 type SearchResponse struct {
 	Hits      `json:"hits"`
 	PageToken *string `json:"last_item_id,omitempty"`
+	// SearchAfter holds the sort values of the last hit as a JSON array, the
+	// cursor the next page continues from. It is set alongside PageToken.
+	SearchAfter *string `json:"-"`
 }
 
 type CountResponse struct {
@@ -91,4 +94,7 @@ type Hit struct {
 	ID     string          `json:"_id"`
 	Score  float64         `json:"_score"`
 	Source json.RawMessage `json:"_source"`
+	// Sort holds the hit's sort values as a JSON array; empty when the
+	// search carried no sort.
+	Sort json.RawMessage `json:"sort,omitempty"`
 }

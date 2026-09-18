@@ -11,6 +11,9 @@ type MembershipSummaryCriteria struct {
 	ProjectUID string
 	// B2BOrgUID is the organization whose memberships are summarized.
 	B2BOrgUID string
+	// SearchAfter is the keyset cursor a resumed read continues from, as a
+	// JSON array of sort values; nil for a read from the start.
+	SearchAfter *string
 }
 
 // MembershipTerm is one membership record of an organization on a project, as
@@ -87,6 +90,10 @@ type MembershipSummaryResult struct {
 	// Complete is true when every matching membership record was read, false
 	// when the read stopped at the record cap.
 	Complete bool
+	// SearchAfter is the keyset cursor at the organization the read stopped
+	// inside, as a JSON array of sort values; nil when the read is complete
+	// or cannot resume at an organization boundary.
+	SearchAfter *string
 	// CacheControl is the cache-control header value of the response.
 	CacheControl string
 }
