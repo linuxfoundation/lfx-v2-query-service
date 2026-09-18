@@ -164,11 +164,48 @@ var MembershipTermSummary = dsl.Type("MembershipTermSummary", func() {
 	dsl.Required("b2b_org_uid", "company_name", "project_uid", "project_slug", "term_count", "tier_names", "statuses", "terms")
 })
 
+// membershipTermSummaryExample is the one summary every example of the read
+// shows: two records of one organization on one project.
+var membershipTermSummaryExample = dsl.Val{
+	"b2b_org_uid":            "org-1",
+	"company_name":           "Example Corp",
+	"project_uid":            "proj-1",
+	"project_slug":           "example-project",
+	"term_count":             2,
+	"first_start":            "2023-01-01T00:00:00Z",
+	"last_end":               "2025-01-01T00:00:00Z",
+	"current_status":         "Active",
+	"current_tier_name":      "Gold",
+	"current_start":          "2024-01-01T00:00:00Z",
+	"current_end":            "2025-01-01T00:00:00Z",
+	"current_membership_uid": "m-2",
+	"tier_names":             []string{"Silver", "Gold"},
+	"statuses":               []string{"Expired", "Active"},
+	"terms": []dsl.Val{{
+		"membership_uid": "m-1",
+		"status":         "Expired",
+		"tier_name":      "Silver",
+		"start_date":     "2023-01-01T00:00:00Z",
+		"end_date":       "2024-01-01T00:00:00Z",
+	}, {
+		"membership_uid": "m-2",
+		"status":         "Active",
+		"tier_name":      "Gold",
+		"tier_range":     "Gold Member",
+		"start_date":     "2024-01-01T00:00:00Z",
+		"end_date":       "2025-01-01T00:00:00Z",
+	}},
+}
+
 // MembershipSummaryResult is the result of a membership term summary read.
 var MembershipSummaryResult = dsl.Type("MembershipSummaryResult", func() {
 	dsl.Description("Membership term summaries, one per organization and project.")
 
-	dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that stopped inside a single organization holds that organization as far as it was read")
+	dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that stopped inside a single organization holds that organization as far as it was read", func() {
+		// Declared so the schema example agrees with the terms_total example
+		// below; Goa would otherwise synthesize an array of its own length.
+		dsl.Example([]dsl.Val{membershipTermSummaryExample})
+	})
 	// Goa renders UInt64 as int64 in OpenAPI; keep scalar samples in range.
 	dsl.Attribute("terms_total", dsl.UInt64, "Number of membership records folded into the summaries", func() {
 		dsl.Example(2)
@@ -182,36 +219,7 @@ var MembershipSummaryResult = dsl.Type("MembershipSummaryResult", func() {
 	})
 	dsl.Required("summaries", "terms_total", "complete")
 	dsl.Example("summary", dsl.Val{
-		"summaries": []dsl.Val{{
-			"b2b_org_uid":            "org-1",
-			"company_name":           "Example Corp",
-			"project_uid":            "proj-1",
-			"project_slug":           "example-project",
-			"term_count":             2,
-			"first_start":            "2023-01-01T00:00:00Z",
-			"last_end":               "2025-01-01T00:00:00Z",
-			"current_status":         "Active",
-			"current_tier_name":      "Gold",
-			"current_start":          "2024-01-01T00:00:00Z",
-			"current_end":            "2025-01-01T00:00:00Z",
-			"current_membership_uid": "m-2",
-			"tier_names":             []string{"Silver", "Gold"},
-			"statuses":               []string{"Expired", "Active"},
-			"terms": []dsl.Val{{
-				"membership_uid": "m-1",
-				"status":         "Expired",
-				"tier_name":      "Silver",
-				"start_date":     "2023-01-01T00:00:00Z",
-				"end_date":       "2024-01-01T00:00:00Z",
-			}, {
-				"membership_uid": "m-2",
-				"status":         "Active",
-				"tier_name":      "Gold",
-				"tier_range":     "Gold Member",
-				"start_date":     "2024-01-01T00:00:00Z",
-				"end_date":       "2025-01-01T00:00:00Z",
-			}},
-		}},
+		"summaries":   []dsl.Val{membershipTermSummaryExample},
 		"terms_total": 2,
 		"complete":    true,
 	})

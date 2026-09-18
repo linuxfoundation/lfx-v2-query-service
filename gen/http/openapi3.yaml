@@ -350,7 +350,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Ut est eum necessitatibus labore minima.
+                        example: Facere dolores numquam consequatur ut est.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -366,7 +366,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Voluptas eum sequi dolorum adipisci numquam iusto.
+                        example: Necessitatibus labore minima vitae.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -409,7 +409,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Exercitationem ex vel fuga dolorum.
+                        example: Eum sequi dolorum adipisci numquam iusto ipsum.
                     description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
                     example:
                         - status:active
@@ -425,7 +425,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Itaque et eius alias aliquid nihil tempore.
+                        example: Ex vel fuga.
                     description: 'Direct field filters with term clauses on data fields using AND logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy all of the provided filters.'
                     example:
                         - status:active
@@ -441,7 +441,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Eos velit at cum.
+                        example: Magni itaque et eius alias aliquid.
                     description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
                     example:
                         - mailing_list_id:abc
@@ -627,7 +627,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Corporis qui.
+                        example: Tempore ea.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -643,7 +643,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Reprehenderit ea quia eos pariatur.
+                        example: Velit at cum praesentium corporis qui.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -686,7 +686,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Similique et accusamus et sunt sit non.
+                        example: Reprehenderit ea quia eos pariatur.
                     description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
                     example:
                         - status:active
@@ -702,7 +702,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Itaque enim adipisci vel aut.
+                        example: Similique et accusamus et sunt sit non.
                     description: 'Direct field filters with term clauses on data fields using AND logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy all of the provided filters.'
                     example:
                         - status:active
@@ -718,7 +718,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Voluptate consequatur ex.
+                        example: Itaque enim adipisci vel aut.
                     description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
                     example:
                         - mailing_list_id:abc
@@ -879,7 +879,7 @@ components:
                 complete:
                     type: boolean
                     description: True when every matching membership record was read; false when the read stopped at the record cap, with page_token when it can continue at the next organization
-                    example: true
+                    example: false
                 page_token:
                     type: string
                     description: Opaque token present when more summaries follow; pass it back with the same project_uid and b2b_org_uid to continue the read at the next organization
@@ -890,66 +890,6 @@ components:
                         $ref: '#/components/schemas/MembershipTermSummary'
                     description: Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that stopped inside a single organization holds that organization as far as it was read
                     example:
-                        - b2b_org_uid: org-1
-                          company_name: Example Corp
-                          current_end: "2025-01-01T00:00:00Z"
-                          current_membership_uid: m-2
-                          current_start: "2024-01-01T00:00:00Z"
-                          current_status: Active
-                          current_tier_name: Gold
-                          first_start: "2023-01-01T00:00:00Z"
-                          last_end: "2025-01-01T00:00:00Z"
-                          project_slug: example-project
-                          project_uid: proj-1
-                          statuses:
-                            - Expired
-                            - Active
-                          term_count: 2
-                          terms:
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Expired
-                              tier_name: Silver
-                            - end_date: "2025-01-01T00:00:00Z"
-                              membership_uid: m-2
-                              start_date: "2024-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                          tier_names:
-                            - Silver
-                            - Gold
-                        - b2b_org_uid: org-1
-                          company_name: Example Corp
-                          current_end: "2025-01-01T00:00:00Z"
-                          current_membership_uid: m-2
-                          current_start: "2024-01-01T00:00:00Z"
-                          current_status: Active
-                          current_tier_name: Gold
-                          first_start: "2023-01-01T00:00:00Z"
-                          last_end: "2025-01-01T00:00:00Z"
-                          project_slug: example-project
-                          project_uid: proj-1
-                          statuses:
-                            - Expired
-                            - Active
-                          term_count: 2
-                          terms:
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Expired
-                              tier_name: Silver
-                            - end_date: "2025-01-01T00:00:00Z"
-                              membership_uid: m-2
-                              start_date: "2024-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                          tier_names:
-                            - Silver
-                            - Gold
                         - b2b_org_uid: org-1
                           company_name: Example Corp
                           current_end: "2025-01-01T00:00:00Z"
@@ -1041,96 +981,6 @@ components:
                         $ref: '#/components/schemas/MembershipTermSummary'
                     description: Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that stopped inside a single organization holds that organization as far as it was read
                     example:
-                        - b2b_org_uid: org-1
-                          company_name: Example Corp
-                          current_end: "2025-01-01T00:00:00Z"
-                          current_membership_uid: m-2
-                          current_start: "2024-01-01T00:00:00Z"
-                          current_status: Active
-                          current_tier_name: Gold
-                          first_start: "2023-01-01T00:00:00Z"
-                          last_end: "2025-01-01T00:00:00Z"
-                          project_slug: example-project
-                          project_uid: proj-1
-                          statuses:
-                            - Expired
-                            - Active
-                          term_count: 2
-                          terms:
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Expired
-                              tier_name: Silver
-                            - end_date: "2025-01-01T00:00:00Z"
-                              membership_uid: m-2
-                              start_date: "2024-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                          tier_names:
-                            - Silver
-                            - Gold
-                        - b2b_org_uid: org-1
-                          company_name: Example Corp
-                          current_end: "2025-01-01T00:00:00Z"
-                          current_membership_uid: m-2
-                          current_start: "2024-01-01T00:00:00Z"
-                          current_status: Active
-                          current_tier_name: Gold
-                          first_start: "2023-01-01T00:00:00Z"
-                          last_end: "2025-01-01T00:00:00Z"
-                          project_slug: example-project
-                          project_uid: proj-1
-                          statuses:
-                            - Expired
-                            - Active
-                          term_count: 2
-                          terms:
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Expired
-                              tier_name: Silver
-                            - end_date: "2025-01-01T00:00:00Z"
-                              membership_uid: m-2
-                              start_date: "2024-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                          tier_names:
-                            - Silver
-                            - Gold
-                        - b2b_org_uid: org-1
-                          company_name: Example Corp
-                          current_end: "2025-01-01T00:00:00Z"
-                          current_membership_uid: m-2
-                          current_start: "2024-01-01T00:00:00Z"
-                          current_status: Active
-                          current_tier_name: Gold
-                          first_start: "2023-01-01T00:00:00Z"
-                          last_end: "2025-01-01T00:00:00Z"
-                          project_slug: example-project
-                          project_uid: proj-1
-                          statuses:
-                            - Expired
-                            - Active
-                          term_count: 2
-                          terms:
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Expired
-                              tier_name: Silver
-                            - end_date: "2025-01-01T00:00:00Z"
-                              membership_uid: m-2
-                              start_date: "2024-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                          tier_names:
-                            - Silver
-                            - Gold
                         - b2b_org_uid: org-1
                           company_name: Example Corp
                           current_end: "2025-01-01T00:00:00Z"
@@ -1294,7 +1144,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Voluptatem nobis corporis aperiam.
+                        example: Voluptatem ipsa optio voluptatem nobis.
                     description: Distinct statuses in first appearance order
                     example:
                         - Expired
@@ -1325,7 +1175,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Sequi doloribus voluptatem ipsa.
+                        example: Ullam sequi.
                     description: Distinct tier names in first appearance order
                     example:
                         - Silver
@@ -1460,8 +1310,6 @@ components:
                           key: a1b2c3d4
                         - count: 30
                           key: a1b2c3d4
-                        - count: 30
-                          key: a1b2c3d4
                 groups_complete:
                     type: boolean
                     description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
@@ -1473,7 +1321,7 @@ components:
                 metric_complete:
                     type: boolean
                     description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
-                    example: false
+                    example: true
                 metric_value:
                     type: integer
                     description: Value of the requested metric
@@ -1500,6 +1348,12 @@ components:
                         $ref: '#/components/schemas/Resource'
                     description: Resources found
                     example:
+                        - data:
+                            id: "123"
+                            name: My committee
+                            description: a committee
+                          id: "123"
+                          type: committee
                         - data:
                             id: "123"
                             name: My committee
@@ -1624,9 +1478,6 @@ components:
                           name: Linux Foundation
             example:
                 suggestions:
-                    - domain: linuxfoundation.org
-                      logo: https://example.com/logo.png
-                      name: Linux Foundation
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation

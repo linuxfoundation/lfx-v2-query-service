@@ -568,7 +568,7 @@ definitions:
             complete:
                 type: boolean
                 description: True when every matching membership record was read; false when the read stopped at the record cap, with page_token when it can continue at the next organization
-                example: false
+                example: true
             page_token:
                 type: string
                 description: Opaque token present when more summaries follow; pass it back with the same project_uid and b2b_org_uid to continue the read at the next organization
@@ -579,96 +579,6 @@ definitions:
                     $ref: '#/definitions/MembershipTermSummary'
                 description: Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that stopped inside a single organization holds that organization as far as it was read
                 example:
-                    - b2b_org_uid: org-1
-                      company_name: Example Corp
-                      current_end: "2025-01-01T00:00:00Z"
-                      current_membership_uid: m-2
-                      current_start: "2024-01-01T00:00:00Z"
-                      current_status: Active
-                      current_tier_name: Gold
-                      first_start: "2023-01-01T00:00:00Z"
-                      last_end: "2025-01-01T00:00:00Z"
-                      project_slug: example-project
-                      project_uid: proj-1
-                      statuses:
-                        - Expired
-                        - Active
-                      term_count: 2
-                      terms:
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Expired
-                          tier_name: Silver
-                        - end_date: "2025-01-01T00:00:00Z"
-                          membership_uid: m-2
-                          start_date: "2024-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                      tier_names:
-                        - Silver
-                        - Gold
-                    - b2b_org_uid: org-1
-                      company_name: Example Corp
-                      current_end: "2025-01-01T00:00:00Z"
-                      current_membership_uid: m-2
-                      current_start: "2024-01-01T00:00:00Z"
-                      current_status: Active
-                      current_tier_name: Gold
-                      first_start: "2023-01-01T00:00:00Z"
-                      last_end: "2025-01-01T00:00:00Z"
-                      project_slug: example-project
-                      project_uid: proj-1
-                      statuses:
-                        - Expired
-                        - Active
-                      term_count: 2
-                      terms:
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Expired
-                          tier_name: Silver
-                        - end_date: "2025-01-01T00:00:00Z"
-                          membership_uid: m-2
-                          start_date: "2024-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                      tier_names:
-                        - Silver
-                        - Gold
-                    - b2b_org_uid: org-1
-                      company_name: Example Corp
-                      current_end: "2025-01-01T00:00:00Z"
-                      current_membership_uid: m-2
-                      current_start: "2024-01-01T00:00:00Z"
-                      current_status: Active
-                      current_tier_name: Gold
-                      first_start: "2023-01-01T00:00:00Z"
-                      last_end: "2025-01-01T00:00:00Z"
-                      project_slug: example-project
-                      project_uid: proj-1
-                      statuses:
-                        - Expired
-                        - Active
-                      term_count: 2
-                      terms:
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Expired
-                          tier_name: Silver
-                        - end_date: "2025-01-01T00:00:00Z"
-                          membership_uid: m-2
-                          start_date: "2024-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                      tier_names:
-                        - Silver
-                        - Gold
                     - b2b_org_uid: org-1
                       company_name: Example Corp
                       current_end: "2025-01-01T00:00:00Z"
@@ -1114,14 +1024,14 @@ definitions:
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
-                    - domain: linuxfoundation.org
-                      logo: https://example.com/logo.png
-                      name: Linux Foundation
-                    - domain: linuxfoundation.org
-                      logo: https://example.com/logo.png
-                      name: Linux Foundation
         example:
             suggestions:
+                - domain: linuxfoundation.org
+                  logo: https://example.com/logo.png
+                  name: Linux Foundation
+                - domain: linuxfoundation.org
+                  logo: https://example.com/logo.png
+                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation

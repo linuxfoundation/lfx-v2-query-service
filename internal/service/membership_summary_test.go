@@ -207,6 +207,33 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, 1, searcher.QueryResourceCalls(), "the read stops at the cap instead of asking for the next page")
 	})
 
+	t.Run("a page carrying a cursor counts as a full page against the cap", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(
+			// One converted record on a page that carries a cursor: the
+			// searcher dropped the rest, but the page was read in full.
+			membershipPage(cursor(`["a corp","m-1"]`),
+				membershipRecord("m-1", "project:proj-1", map[string]any{
+					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+					"project_uid": "proj-1", "project_slug": "example-project",
+					"status": "Active", "tier_name": "Gold",
+				}),
+			),
+			membershipPage(nil),
+		)
+		config := DefaultConfig()
+		config.MaxSummaryRecords = constants.MaxPageSize
+		service := newTestResourceSearchWithConfig(t, searcher, mock.NewMockAccessControlChecker(), config)
+
+		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+			B2BOrgUID: "org-1",
+		})
+
+		require.NoError(t, err)
+		require.False(t, result.Complete)
+		require.Equal(t, 1, searcher.QueryResourceCalls(), "a full page reached the cap whatever the searcher converted")
+	})
+
 	t.Run("the record cap cuts at the last organization boundary and returns the cursor that resumes there", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(

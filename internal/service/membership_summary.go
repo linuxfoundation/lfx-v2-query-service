@@ -96,7 +96,16 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			return nil, errors.NewServiceUnavailable("access control check failed", errCheckAccess)
 		}
 
-		recordsRead += len(page.Resources)
+		if page.SearchAfter != nil {
+			// A page that carries a cursor was full: the searcher hands a
+			// cursor back only when the page held as many hits as asked.
+			// Counting the page size rather than the converted records keeps
+			// the cap a bound on the hits read, even when the searcher
+			// dropped a document it could not convert.
+			recordsRead += searchCriteria.PageSize
+		} else {
+			recordsRead += len(page.Resources)
+		}
 		// The organization runs are tracked over every hit, visible or not:
 		// where one organization ends and the next begins is a property of
 		// the index order, not of the caller's visibility.
