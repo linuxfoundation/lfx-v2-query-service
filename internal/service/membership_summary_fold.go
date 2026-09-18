@@ -195,16 +195,23 @@ func membershipField(raw map[string]any, field string) string {
 // groupKey folds the record under its organization UID, or its company name
 // when the UID is missing, and under its project UID, or its project slug when
 // the UID is missing. Labels are trimmed and case-folded so the same
-// organization or project keeps one summary.
+// organization or project keeps one summary. Each half names the kind of
+// identity it holds, so a UID never collides with a label that happens to
+// spell the same.
 func (r membershipRow) groupKey() membershipGroupKey {
-	key := membershipGroupKey{org: r.orgUID, project: r.projectUID}
-	if key.org == "" {
-		key.org = membershipLabelKey(r.companyName)
+	return membershipGroupKey{
+		org:     membershipIdentityKey(r.orgUID, r.companyName),
+		project: membershipIdentityKey(r.projectUID, r.projectSlug),
 	}
-	if key.project == "" {
-		key.project = membershipLabelKey(r.projectSlug)
+}
+
+// membershipIdentityKey keys one half of a group: the UID when the record
+// carries one, else its normalized label, each in its own namespace.
+func membershipIdentityKey(uid, label string) string {
+	if uid != "" {
+		return "uid:" + uid
 	}
-	return key
+	return "label:" + membershipLabelKey(label)
 }
 
 // membershipLabelKey normalizes a label used in place of a missing UID.

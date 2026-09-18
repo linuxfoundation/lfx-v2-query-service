@@ -560,6 +560,53 @@ func TestFoldMembershipTerms(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "a UID and a label that spell the same keep separate summaries",
+			rows: []map[string]any{
+				{
+					"uid": "m-1", "b2b_org_uid": "acme", "company_name": "Acme Ltd",
+					"project_uid": "proj-1", "project_slug": "example-project",
+					"status": "Active", "tier_name": "Gold",
+					"start_date": "2024-01-01T00:00:00Z", "end_date": "2025-01-01T00:00:00Z",
+				},
+				{
+					"uid": "m-2", "company_name": "acme",
+					"project_uid": "proj-1", "project_slug": "example-project",
+					"status": "Active", "tier_name": "Gold",
+					"start_date": "2024-01-01T00:00:00Z", "end_date": "2025-01-01T00:00:00Z",
+				},
+			},
+			expected: []model.MembershipTermSummary{
+				{
+					B2BOrgUID: "acme", CompanyName: "Acme Ltd",
+					ProjectUID: "proj-1", ProjectSlug: "example-project",
+					TermCount:  1,
+					FirstStart: "2024-01-01T00:00:00Z", LastEnd: "2025-01-01T00:00:00Z",
+					CurrentStatus: "Active", CurrentTierName: "Gold",
+					CurrentStart: "2024-01-01T00:00:00Z", CurrentEnd: "2025-01-01T00:00:00Z",
+					CurrentMembershipUID: "m-1",
+					TierNames:            []string{"Gold"}, Statuses: []string{"Active"},
+					Terms: []model.MembershipTerm{{
+						MembershipUID: "m-1", Status: "Active", TierName: "Gold",
+						StartDate: "2024-01-01T00:00:00Z", EndDate: "2025-01-01T00:00:00Z",
+					}},
+				},
+				{
+					B2BOrgUID: "", CompanyName: "acme",
+					ProjectUID: "proj-1", ProjectSlug: "example-project",
+					TermCount:  1,
+					FirstStart: "2024-01-01T00:00:00Z", LastEnd: "2025-01-01T00:00:00Z",
+					CurrentStatus: "Active", CurrentTierName: "Gold",
+					CurrentStart: "2024-01-01T00:00:00Z", CurrentEnd: "2025-01-01T00:00:00Z",
+					CurrentMembershipUID: "m-2",
+					TierNames:            []string{"Gold"}, Statuses: []string{"Active"},
+					Terms: []model.MembershipTerm{{
+						MembershipUID: "m-2", Status: "Active", TierName: "Gold",
+						StartDate: "2024-01-01T00:00:00Z", EndDate: "2025-01-01T00:00:00Z",
+					}},
+				},
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			summaries := foldMembershipTerms(tc.rows)
