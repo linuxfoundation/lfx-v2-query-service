@@ -250,8 +250,8 @@ summaries cover only the records the caller may see. `complete` is `false`
 when the read stopped at a configured record cap; when the read can continue at
 the next organization it also carries a `page_token`, and passing it back with
 the same scope continues there, so a large project's roster is whole in a few
-calls. A capped read without a token fell inside one organization and cannot be
-resumed.
+calls. A capped read without a token fell inside a single run of records sharing
+one company name, usually one organization, and cannot be resumed.
 See [GET /query/memberships/summary](query-service-contract.md#get-querymembershipssummary)
 for the parameters, the result fields and the fold rules.
 

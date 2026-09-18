@@ -27,8 +27,8 @@ import (
 // stops at the cap folds every organization it has read whole, leaves out the
 // organization it stopped inside, and returns the cursor that resumes there;
 // a later read passing that cursor continues with the next organizations.
-// When the cap falls inside the only organization read, there is no boundary
-// to resume from: the read folds what it has and reports itself incomplete
+// When the cap falls inside a single run of records sharing one company name,
+// usually one organization, there is no boundary to resume from: the read folds what it has and reports itself incomplete
 // without a cursor. A failed access check fails the whole read: a summary is
 // never returned as if whole while part of the caller's visibility is unknown.
 func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria model.MembershipSummaryCriteria) (*model.MembershipSummaryResult, error) {

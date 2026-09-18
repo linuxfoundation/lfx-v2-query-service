@@ -476,7 +476,7 @@ func TestQuerySvcsrvc_QueryMembershipSummary(t *testing.T) {
 				ObjectRef:           constants.MembershipResourceType + ":" + uid,
 				ObjectType:          constants.MembershipResourceType,
 				ObjectID:            uid,
-				AccessCheckObject:   "project:proj-1",
+				AccessCheckObject:   constants.MembershipResourceType + ":" + uid,
 				AccessCheckRelation: "auditor",
 			},
 		}

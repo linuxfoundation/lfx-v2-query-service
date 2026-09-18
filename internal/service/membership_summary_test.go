@@ -22,7 +22,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["2023-01-02T00:00:00Z","m-1"]`),
-				membershipRecord("m-1", "project:proj-1", map[string]any{
+				membershipRecord("m-1", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Expired", "tier_name": "Silver",
@@ -31,7 +31,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 				}),
 			),
 			membershipPage(nil,
-				membershipRecord("m-2", "project:proj-1", map[string]any{
+				membershipRecord("m-2", map[string]any{
 					"uid": "m-2", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -83,13 +83,13 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["2023-01-02T00:00:00Z","m-1"]`),
-				membershipRecord("m-1", "project:proj-1", membership("Active")),
+				membershipRecord("m-1", membership("Active")),
 			),
 			// The record was re-indexed between the two pages, so its keyset
 			// position moved past the cursor and it is served again. The
 			// second copy is what the re-index wrote.
 			membershipPage(nil,
-				membershipRecord("m-1", "project:proj-1", membership("Expired")),
+				membershipRecord("m-1", membership("Expired")),
 			),
 		)
 		service := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
@@ -114,13 +114,13 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["2023-01-02T00:00:00Z","m-1"]`),
-				membershipRecord("m-1", "project:proj-1", map[string]any{
+				membershipRecord("m-1", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 					"start_date": "2023-01-01T00:00:00Z", "created_at": "2023-01-02T00:00:00Z",
 				}),
-				membershipRecord("m-hidden", "project:proj-2", map[string]any{
+				membershipRecord("m-hidden", map[string]any{
 					"uid": "m-hidden", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-2", "project_slug": "other-project",
 					"status": "Active", "tier_name": "Platinum",
@@ -128,7 +128,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 				}),
 			),
 			membershipPage(nil,
-				membershipRecord("m-2", "project:proj-1", map[string]any{
+				membershipRecord("m-2", map[string]any{
 					"uid": "m-2", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -138,7 +138,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		)
 		checker := mock.NewMockAccessControlChecker()
 		checker.DefaultResult = ""
-		checker.DeniedResourceIDs = []string{"project:proj-2"}
+		checker.DeniedResourceIDs = []string{constants.MembershipResourceType + ":m-hidden"}
 		checker.RecordCheckAccessMessages()
 		service := newTestResourceSearch(t, searcher, checker)
 
@@ -155,8 +155,8 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 
 		require.Equal(t, 2, checker.CheckAccessCalls(), "one batched check per page")
 		require.Equal(t, []string{
-			"project:proj-1#auditor@user:test-user\nproject:proj-2#auditor@user:test-user",
-			"project:proj-1#auditor@user:test-user",
+			"project_membership:m-1#auditor@user:test-user\nproject_membership:m-hidden#auditor@user:test-user",
+			"project_membership:m-2#auditor@user:test-user",
 		}, checker.CheckAccessMessages())
 		require.Equal(t, []string{"b2b_org_uid:org-1"}, searcher.QueryResourceCriteria()[0].TagsAll)
 	})
@@ -165,13 +165,13 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["2023-01-02T00:00:00Z","m-2"]`),
-				membershipRecord("m-1", "project:proj-1", map[string]any{
+				membershipRecord("m-1", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Expired", "tier_name": "Silver",
 					"start_date": "2023-01-01T00:00:00Z", "created_at": "2023-01-02T00:00:00Z",
 				}),
-				membershipRecord("m-2", "project:proj-1", map[string]any{
+				membershipRecord("m-2", map[string]any{
 					"uid": "m-2", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -181,7 +181,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 			// The organization continues on a page the capped read never
 			// asks for, so the summary holds it only as far as it was read.
 			membershipPage(nil,
-				membershipRecord("m-3", "project:proj-1", map[string]any{
+				membershipRecord("m-3", map[string]any{
 					"uid": "m-3", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Platinum",
@@ -213,7 +213,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 			// One converted record on a page that carries a cursor: the
 			// searcher dropped the rest, but the page was read in full.
 			membershipPage(cursor(`["a corp","m-1"]`),
-				membershipRecord("m-1", "project:proj-1", map[string]any{
+				membershipRecord("m-1", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -238,19 +238,19 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["b corp","m-3"]`),
-				orderedMembershipRecord("m-1", "project:proj-1", "a corp", map[string]any{
+				orderedMembershipRecord("m-1", "a corp", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-a", "company_name": "A Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Expired", "tier_name": "Silver",
 					"start_date": "2023-01-01T00:00:00Z", "created_at": "2023-01-02T00:00:00Z",
 				}),
-				orderedMembershipRecord("m-2", "project:proj-1", "a corp", map[string]any{
+				orderedMembershipRecord("m-2", "a corp", map[string]any{
 					"uid": "m-2", "b2b_org_uid": "org-a", "company_name": "A Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
-				orderedMembershipRecord("m-3", "project:proj-1", "b corp", map[string]any{
+				orderedMembershipRecord("m-3", "b corp", map[string]any{
 					"uid": "m-3", "b2b_org_uid": "org-b", "company_name": "B Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -281,13 +281,13 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["b corp","m-2"]`),
-				orderedMembershipRecord("m-1", "project:proj-1", "a corp", map[string]any{
+				orderedMembershipRecord("m-1", "a corp", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-a", "company_name": "A Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
-				orderedMembershipRecord("m-2", "project:proj-1", "b corp", map[string]any{
+				orderedMembershipRecord("m-2", "b corp", map[string]any{
 					"uid": "m-2", "b2b_org_uid": "org-b", "company_name": "B Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -298,13 +298,13 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 			// between pages, so it is served again, now inside the last
 			// organization run of the read.
 			membershipPage(cursor(`["c corp","m-3"]`),
-				orderedMembershipRecord("m-1", "project:proj-1", "c corp", map[string]any{
+				orderedMembershipRecord("m-1", "c corp", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-a", "company_name": "C Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
-				orderedMembershipRecord("m-3", "project:proj-1", "c corp", map[string]any{
+				orderedMembershipRecord("m-3", "c corp", map[string]any{
 					"uid": "m-3", "b2b_org_uid": "org-c", "company_name": "C Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -336,19 +336,19 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["b corp","m-3"]`),
-				orderedMembershipRecord("m-1", "project:proj-1", "a corp", map[string]any{
+				orderedMembershipRecord("m-1", "a corp", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-a", "company_name": "A Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
-				orderedMembershipRecord("m-hidden", "project:proj-2", "a corp", map[string]any{
+				orderedMembershipRecord("m-hidden", "a corp", map[string]any{
 					"uid": "m-hidden", "b2b_org_uid": "org-a", "company_name": "A Corp",
 					"project_uid": "proj-2", "project_slug": "other-project",
 					"status": "Active", "tier_name": "Platinum",
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
-				orderedMembershipRecord("m-3", "project:proj-1", "b corp", map[string]any{
+				orderedMembershipRecord("m-3", "b corp", map[string]any{
 					"uid": "m-3", "b2b_org_uid": "org-b", "company_name": "B Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -358,7 +358,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		)
 		checker := mock.NewMockAccessControlChecker()
 		checker.DefaultResult = ""
-		checker.DeniedResourceIDs = []string{"project:proj-2"}
+		checker.DeniedResourceIDs = []string{constants.MembershipResourceType + ":m-hidden"}
 		config := DefaultConfig()
 		config.MaxSummaryRecords = 3
 		service := newTestResourceSearchWithConfig(t, searcher, checker, config)
@@ -379,7 +379,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(nil,
-				orderedMembershipRecord("m-3", "project:proj-1", "b corp", map[string]any{
+				orderedMembershipRecord("m-3", "b corp", map[string]any{
 					"uid": "m-3", "b2b_org_uid": "org-b", "company_name": "B Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -407,7 +407,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(nil,
-				membershipRecord("m-1", "project:proj-1", map[string]any{
+				membershipRecord("m-1", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -435,7 +435,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(nil,
-				membershipRecord("m-1", "project:proj-1", map[string]any{
+				membershipRecord("m-1", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
@@ -528,8 +528,9 @@ func membershipPage(searchAfter *string, resources ...model.Resource) *model.Sea
 }
 
 // membershipRecord builds one indexed membership record with the access-check
-// pair the batched check is built from.
-func membershipRecord(uid, accessObject string, data map[string]any) model.Resource {
+// pair the batched check is built from: the record's own object with the
+// auditor relation, as the member service indexes it.
+func membershipRecord(uid string, data map[string]any) model.Resource {
 	return model.Resource{
 		Type: constants.MembershipResourceType,
 		ID:   uid,
@@ -539,7 +540,7 @@ func membershipRecord(uid, accessObject string, data map[string]any) model.Resou
 			ObjectType:          constants.MembershipResourceType,
 			ObjectID:            uid,
 			Public:              false,
-			AccessCheckObject:   accessObject,
+			AccessCheckObject:   constants.MembershipResourceType + ":" + uid,
 			AccessCheckRelation: "auditor",
 		},
 	}
@@ -548,8 +549,8 @@ func membershipRecord(uid, accessObject string, data map[string]any) model.Resou
 // orderedMembershipRecord builds one indexed membership record as the
 // searcher returns it for the summary read: with the sort values of the
 // organization order, the sortable name first and the record id second.
-func orderedMembershipRecord(uid, accessObject, sortName string, data map[string]any) model.Resource {
-	record := membershipRecord(uid, accessObject, data)
+func orderedMembershipRecord(uid, sortName string, data map[string]any) model.Resource {
+	record := membershipRecord(uid, data)
 	record.SortValues = `["` + sortName + `","` + uid + `"]`
 	return record
 }
