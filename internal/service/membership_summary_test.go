@@ -313,7 +313,9 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 			),
 		)
 		config := DefaultConfig()
-		config.MaxSummaryRecords = 4
+		// Two full pages reach the cap: a page that carries a cursor counts
+		// as the page size whatever it converted.
+		config.MaxSummaryRecords = 2 * constants.MaxPageSize
 		service := newTestResourceSearchWithConfig(t, searcher, mock.NewMockAccessControlChecker(), config)
 
 		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
