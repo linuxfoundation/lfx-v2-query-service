@@ -30,6 +30,7 @@ import (
 //   - READ_TUPLES_TIMEOUT    (default 15s)   timeout of the filter_grants=direct tuple read
 //   - COUNT_ACCESS_BUCKET_PAGE (default 100) access-key buckets fetched and checked per page
 //   - COUNT_MAX_ACCESS_BUCKETS (default 5000) buckets walked before a count reports has_more
+//   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page was fully denied (1..100)
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config := service.DefaultConfig()
 
@@ -37,6 +38,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config.ReadTuplesTimeout = envDuration("READ_TUPLES_TIMEOUT", config.ReadTuplesTimeout)
 	config.AccessBucketPage = envInt("COUNT_ACCESS_BUCKET_PAGE", constants.DefaultAccessBucketPage)
 	config.MaxAccessBuckets = envInt("COUNT_MAX_ACCESS_BUCKETS", constants.DefaultMaxAccessBuckets)
+	config.DeniedPageWalk = envInt("SEARCH_DENIED_PAGE_WALK", constants.DefaultDeniedPageWalk)
 
 	if err := config.Validate(); err != nil {
 		log.Fatalf("invalid resource search configuration: %v", err)
@@ -47,6 +49,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 		"read_tuples_timeout", config.ReadTuplesTimeout,
 		"count_access_bucket_page", config.AccessBucketPage,
 		"count_max_access_buckets", config.MaxAccessBuckets,
+		"search_denied_page_walk", config.DeniedPageWalk,
 	)
 	return config
 }

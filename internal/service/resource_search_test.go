@@ -864,7 +864,7 @@ func TestNewResourceSearch(t *testing.T) {
 	})
 
 	t.Run("explicit config is kept", func(t *testing.T) {
-		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3}
+		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3, DeniedPageWalk: 4}
 		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), config)
 		assertion.NoError(err)
 		assertion.Equal(config, result.(*ResourceSearch).config)

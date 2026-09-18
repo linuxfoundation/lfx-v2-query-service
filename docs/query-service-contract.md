@@ -52,7 +52,7 @@ excluded from results (it does not bypass access filtering).
 | `filter_grants` | string | `direct` filters to resources where the authenticated user has direct FGA tuples. Requires `type` |
 | `sort` | string | `name_asc` (default), `name_desc`, `updated_asc`, `updated_desc`, `best_match` |
 | `page_size` | int | 1–1000, default 50 |
-| `page_token` | string | Opaque pagination token (keyset-based) |
+| `page_token` | string | Opaque pagination token (keyset-based). Minted from the raw OpenSearch page, but a page whose hits were **all** denied by the access check is not returned as `[] + token`: the service walks up to `SEARCH_DENIED_PAGE_WALK` further raw pages until the caller can see a resource or the result set is exhausted, so "exists but not visible to you" and "does not exist" are both `[]` with no token (no existence oracle via exact-tag lookups). Beyond the walk limit an empty page with a token is returned so paging can continue. |
 
 **Response**:
 
