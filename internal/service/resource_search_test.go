@@ -881,6 +881,7 @@ func TestNewResourceSearch(t *testing.T) {
 		{"negative page", Config{AccessBucketPage: -1}, "access bucket page"},
 		{"max below page", Config{AccessBucketPage: 100, MaxAccessBuckets: 50}, "max access buckets"},
 		{"max above limit", Config{MaxAccessBuckets: constants.MaxCountAccessBuckets + 1}, "max access buckets must not exceed 10000"},
+		{"denied page walk above the maximum", Config{DeniedPageWalk: constants.MaxDeniedPageWalk + 1}, "denied page walk"},
 	}
 	for _, tc := range invalid {
 		t.Run("rejects "+tc.name, func(t *testing.T) {

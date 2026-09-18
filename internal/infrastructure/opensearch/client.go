@@ -86,6 +86,13 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 			return nil, errEncodePageToken
 		}
 		result.PageToken = &pageToken
+		cursor, errCursor := json.Marshal(searchAfter)
+		if errCursor != nil {
+			slog.ErrorContext(ctx, "failed to encode search_after cursor", "error", errCursor)
+			return nil, fmt.Errorf("failed to encode search_after cursor: %w", errCursor)
+		}
+		cursorStr := string(cursor)
+		result.SearchAfter = &cursorStr
 		slog.DebugContext(ctx, "pagination token generated",
 			"page_token", *result.PageToken,
 			"total_hits", searchResponse.Hits.Total.Value,

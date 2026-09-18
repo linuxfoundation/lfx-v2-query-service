@@ -151,7 +151,7 @@ Environment variables control implementation selection:
 - `ORG_SEARCH_SOURCE`: "mock" or "clearbit" (default "clearbit"; Clearbit needs `CLEARBIT_*` vars)
 - `AUTH_SOURCE`: "mock" or "jwt" (default "jwt"; mock reads `JWT_AUTH_DISABLED_MOCK_LOCAL_PRINCIPAL`)
 - `PAGE_TOKEN_SECRET`: required 32-character secret for opaque page tokens; `global.PageTokenSecret(ctx)` fatals if unset when a full page generates a token
-- `SEARCH_DENIED_PAGE_WALK` (default 10, range 1..100): extra raw pages `QueryResources` fetches when every hit on a page was denied by the access check, so a denied-only result set returns `[]` with no `page_token` exactly like a miss
+- `SEARCH_DENIED_PAGE_WALK` (default 10, range 1..25): extra raw pages `QueryResources` fetches when a page leaves the caller no visible resource (after `cel_filter` and the access check). Exhausted ⇒ `[]` with no `page_token`, exactly like a miss; limit reached ⇒ `[]` with the token so paging can continue
 - Additional configs for OpenSearch and NATS connections
 
 ### Testing Strategy

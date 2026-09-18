@@ -30,7 +30,7 @@ import (
 //   - READ_TUPLES_TIMEOUT    (default 15s)   timeout of the filter_grants=direct tuple read
 //   - COUNT_ACCESS_BUCKET_PAGE (default 100) access-key buckets fetched and checked per page
 //   - COUNT_MAX_ACCESS_BUCKETS (default 5000) buckets walked before a count reports has_more
-//   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page was fully denied (1..100)
+//   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page has no visible resource (1..25)
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config := service.DefaultConfig()
 

@@ -28,8 +28,10 @@ const (
 	// pages QueryResources fetches when every hit on a page was denied by the
 	// access check, before it gives up and returns the page as-is.
 	DefaultDeniedPageWalk = 10
-	// MaxDeniedPageWalk is the maximum configurable denied-page walk.
-	MaxDeniedPageWalk = 100
+	// MaxDeniedPageWalk is the maximum configurable denied-page walk. Each extra
+	// page is a sequential OpenSearch query plus an access-check batch bounded
+	// by ACCESS_CHECK_TIMEOUT, so the ceiling stays small.
+	MaxDeniedPageWalk = 25
 	// MaxCountAccessPages bounds the configured number of count-walk pages.
 	MaxCountAccessPages = 100
 )

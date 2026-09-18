@@ -52,7 +52,7 @@ excluded from results (it does not bypass access filtering).
 | `filter_grants` | string | `direct` filters to resources where the authenticated user has direct FGA tuples. Requires `type` |
 | `sort` | string | `name_asc` (default), `name_desc`, `updated_asc`, `updated_desc`, `best_match` |
 | `page_size` | int | 1–1000, default 50 |
-| `page_token` | string | Opaque pagination token (keyset-based). Minted from the raw OpenSearch page, but a page whose hits were **all** denied by the access check is not returned as `[] + token`: the service walks up to `SEARCH_DENIED_PAGE_WALK` further raw pages until the caller can see a resource or the result set is exhausted, so "exists but not visible to you" and "does not exist" are both `[]` with no token (no existence oracle via exact-tag lookups). Beyond the walk limit an empty page with a token is returned so paging can continue. |
+| `page_token` | string | Opaque pagination token (keyset-based), minted from the raw OpenSearch page. A raw page that leaves the caller **no visible resource** (after `cel_filter` and the access check) is not returned as `[] + token`: the service walks up to `SEARCH_DENIED_PAGE_WALK` further raw pages until the caller can see a resource or the result set is exhausted, so "exists but not visible to you" and "does not exist" are both `[]` with no token (no existence oracle via exact-tag or `name=` lookups). Past the walk limit an empty page keeps its token so paging can continue. |
 
 **Response**:
 
@@ -186,6 +186,7 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search and count routes) |
 | `READ_TUPLES_TIMEOUT` | `15s` | Timeout of the `filter_grants=direct` tuple read |
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
+| `SEARCH_DENIED_PAGE_WALK` | `10` | Extra raw pages `/query/resources` fetches when a page leaves the caller no visible resource (1–25); see [Page Size](#page-size) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
 
 #### Not supported
@@ -374,6 +375,16 @@ Query-service specifics:
   so a page may shrink to fewer than `page_size` results. Callers should keep
   paginating until `page_token` is absent rather than stopping at the first
   short page.
+- A raw page that shrinks to **zero** visible results is never returned with
+  a token: the service follows the raw `search_after` cursor for up to
+  `SEARCH_DENIED_PAGE_WALK` further pages (default 10) until the caller can
+  see a resource or the result set is exhausted. Exhausted ⇒ `[]` with no
+  token — identical to a query that matches nothing, so `page_token` presence
+  never reveals resources the caller may not read. Limit reached ⇒ `[]` with
+  the token, so a caller with sparse access can continue. Each extra page is
+  one OpenSearch query plus one access-check batch, so a query whose first
+  pages are entirely invisible costs up to `1 + SEARCH_DENIED_PAGE_WALK` round
+  trips.
 - Implementation files: `internal/infrastructure/opensearch/client.go`
   (token generation), `internal/domain/model/search_criteria.go` (`PageSize`
   field), `pkg/constants/query.go` (`DefaultPageSize`, `MaxPageSize`).
@@ -464,9 +475,12 @@ Common operations:
 page is fetched and before access control. A matching resource that falls
 outside the first raw page is still returned once the caller follows
 `page_token` to that page, so callers must keep paginating until `page_token`
-is absent (see [Page Size](#page-size)). The trade-off is that a CEL expression
-which significantly reduces a page can yield short or empty pages, so it is not
-a substitute for narrowing the OpenSearch query itself. Always pair `cel_filter`
+is absent (see [Page Size](#page-size)). A raw page the expression empties
+entirely is walked server-side like a fully denied one (up to
+`SEARCH_DENIED_PAGE_WALK` pages), so the caller sees the next page with a match
+rather than an empty page. The trade-off is that a CEL expression which
+significantly reduces a page can yield short pages and extra round trips, so it
+is not a substitute for narrowing the OpenSearch query itself. Always pair `cel_filter`
 with specific primary search criteria (`type`, `name`, `parent`) to keep the raw
 result set small.
 

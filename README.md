@@ -201,7 +201,7 @@ go run ./cmd
 - `READ_TUPLES_TIMEOUT`: Timeout of the `filter_grants=direct` tuple read (default: "15s")
 - `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
 - `COUNT_MAX_ACCESS_BUCKETS`: Access-key walk cap (page size..10000, default: "5000"); startup validation also requires at most 100 pages per count (`ceil(cap/page) <= 100`). Whole pages are never split, so the final page can overshoot by at most page size minus one (always fewer than 11000 granted keys). An index with a lowered `index.max_terms_count` must accommodate that bound.
-- `SEARCH_DENIED_PAGE_WALK`: Extra raw OpenSearch pages `/query/resources` fetches when every hit on a page was denied by the access check (1–100, default: "10"). A result set the caller may not see therefore returns `[]` with no `page_token`, exactly like a miss — closing the exact-tag existence oracle; past the limit an empty page keeps its token so paging can continue.
+- `SEARCH_DENIED_PAGE_WALK`: Extra raw OpenSearch pages `/query/resources` fetches when a page leaves the caller no visible resource after `cel_filter` and the access check (1–25, default: "10"). A result set the caller may not see therefore returns `[]` with no `page_token`, exactly like a miss — closing the exact-tag existence oracle; past the limit an empty page keeps its token so paging can continue. Worst case `1 + SEARCH_DENIED_PAGE_WALK` sequential OpenSearch + access-check round trips.
 
 The count route reads the index mapping on first use to pick the access-check
 field in every backing index. Failed reads, unsupported shapes, or disagreeing

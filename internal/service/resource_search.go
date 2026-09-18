@@ -185,20 +185,23 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 	// Log the search operation
 	slog.DebugContext(ctx, "validated search criteria, proceeding with search")
 
-	// The page token is derived from the raw OpenSearch page, before the access
-	// check. Returned as-is, a page whose hits were all denied would come back
-	// with no resources but a token, while a query matching nothing comes back
-	// with neither — letting any authenticated caller learn that a resource
-	// they cannot read exists (e.g. probe an organization by its slug tag).
-	// So when a page filters down to nothing, keep walking the raw pages
-	// server-side until the caller can see something or the result set is
-	// exhausted: "denied" and "absent" then look identical (empty, no token).
-	// The walk is bounded; a result set with more than DeniedPageWalk fully
-	// denied pages is returned as an empty page with its token so the caller
-	// can still continue.
+	// The page token is derived from the raw OpenSearch page, before the CEL
+	// filter and the access check. Returned as-is, a page whose hits were all
+	// denied would come back with no resources but a token, while a query
+	// matching nothing comes back with neither — letting any authenticated
+	// caller learn that a resource they cannot read exists (e.g. probe an
+	// organization by its slug tag). So when a page filters down to nothing,
+	// keep walking the raw pages server-side until the caller can see
+	// something or the result set is exhausted: "denied" and "absent" then
+	// look identical (empty, no token). The walk advances the raw search_after
+	// cursor the adapter hands back next to the token (SearchCriteria.SearchAfter
+	// is what the OpenSearch query renders; the opaque token is never decoded
+	// here). It is bounded: a result set with more than DeniedPageWalk pages
+	// without a visible resource is returned as an empty page with its token,
+	// so a caller with sparse access can still continue.
 	searchResult := &model.SearchResult{}
 	pageCriteria := criteria
-	for walked := 0; ; walked++ {
+	for fetched := 1; ; fetched++ {
 		result, err := s.resourceSearcher.QueryResources(ctx, pageCriteria)
 		if err != nil {
 			slog.ErrorContext(ctx, "search operation failed while executing query resources",
@@ -207,7 +210,7 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 			return nil, fmt.Errorf("search operation failed: %w", err)
 		}
 
-		checkedResources, errPage := s.filterAndCheckPage(ctx, principal, criteria, result)
+		checkedResources, errPage := s.filterAndCheckPage(ctx, principal, pageCriteria, result)
 		if errPage != nil {
 			return nil, errPage
 		}
@@ -215,20 +218,30 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		searchResult.Resources = checkedResources
 		searchResult.PageToken = result.PageToken
 
-		if len(checkedResources) > 0 || result.PageToken == nil || walked >= s.config.DeniedPageWalk {
-			if len(checkedResources) == 0 && result.PageToken != nil {
-				slog.WarnContext(ctx, "denied page walk limit reached with no visible resources; returning continuation token",
-					"pages_walked", walked,
-					"limit", s.config.DeniedPageWalk,
-				)
-			}
+		if len(checkedResources) > 0 || result.PageToken == nil {
 			break
 		}
+		if fetched > s.config.DeniedPageWalk {
+			slog.WarnContext(ctx, "denied page walk limit reached with no visible resources; returning continuation token",
+				"pages_fetched", fetched,
+				"limit", s.config.DeniedPageWalk,
+			)
+			break
+		}
+		if errCtx := ctx.Err(); errCtx != nil {
+			return nil, fmt.Errorf("search operation cancelled during denied page walk: %w", errCtx)
+		}
+		if result.NextSearchAfter == nil {
+			// A token without its cursor cannot be followed; surface it rather
+			// than looping on the same page.
+			return nil, fmt.Errorf("search result carries a page token without a search_after cursor")
+		}
 
-		slog.DebugContext(ctx, "page fully denied by access check, fetching next raw page",
-			"pages_walked", walked+1,
+		slog.DebugContext(ctx, "page has no visible resources, fetching next raw page",
+			"pages_fetched", fetched,
 		)
-		pageCriteria.PageToken = result.PageToken
+		pageCriteria.SearchAfter = result.NextSearchAfter
+		pageCriteria.PageToken = nil
 	}
 
 	if principal == constants.AnonymousPrincipal {

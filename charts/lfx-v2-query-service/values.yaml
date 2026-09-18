@@ -78,7 +78,7 @@ app:
     ## At most 100 pages per count: ceil(COUNT_MAX_ACCESS_BUCKETS / COUNT_ACCESS_BUCKET_PAGE) <= 100.
     ## COUNT_MAX_ACCESS_BUCKETS:  # default 5000, page..10000; full pages may overshoot by page-1
     ##   value: "5000"
-    ## SEARCH_DENIED_PAGE_WALK:   # default 10, 1..100 - extra raw pages fetched when a page was fully denied
+    ## SEARCH_DENIED_PAGE_WALK:   # default 10, 1..25 - extra raw pages fetched when a page has no visible resource
     ##   value: "10"
   # extraEnv allows injecting additional environment variables before OTEL configuration.
   # Supports both simple values and Kubernetes field references.

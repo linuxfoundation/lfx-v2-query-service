@@ -65,6 +65,11 @@ type SearchResult struct {
 	Resources []Resource
 	// Opaque token if more results are available
 	PageToken *string
+	// NextSearchAfter is the raw search_after cursor the PageToken encodes
+	// (JSON array of the last hit's sort values). Internal: it lets the service
+	// fetch the following page directly via SearchCriteria.SearchAfter without
+	// decoding the opaque token; never returned to clients.
+	NextSearchAfter *string
 	// Cache control header
 	CacheControl *string
 	// Total number of resources found

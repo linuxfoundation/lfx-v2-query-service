@@ -19,6 +19,7 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	pkgerrors "github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockOpenSearchClient is a mock implementation of OpenSearchClientRetriever
@@ -1625,5 +1626,35 @@ func TestAuthorizedAggregationSkipsWhenNothingIsVisible(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Empty(t, result.Groups)
 		assert.Equal(t, 0, client.aggregationCalls)
+	})
+}
+
+// TestOpenSearchSearcherConvertResponsePropagatesCursor pins the contract the
+// service's denied-page walk relies on: the raw search_after cursor travels
+// with the page token it encodes, and only then.
+func TestOpenSearchSearcherConvertResponsePropagatesCursor(t *testing.T) {
+	searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index"}
+	hit := Hit{ID: "org-1", Source: mustMarshal(map[string]any{"object_type": "b2b_org", "object_id": "org-1", "data": map[string]any{}, "public": true})}
+
+	t.Run("full page carries token and cursor", func(t *testing.T) {
+		token, cursor := "opaque", `["acme",12]`
+		result, err := searcher.convertSearchResponse(context.Background(), &SearchResponse{
+			Hits:        Hits{Total: Total{Value: 1}, Hits: []Hit{hit}},
+			PageToken:   &token,
+			SearchAfter: &cursor,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, result.PageToken)
+		require.NotNil(t, result.NextSearchAfter)
+		assert.Equal(t, cursor, *result.NextSearchAfter)
+	})
+
+	t.Run("short page carries neither", func(t *testing.T) {
+		result, err := searcher.convertSearchResponse(context.Background(), &SearchResponse{
+			Hits: Hits{Total: Total{Value: 1}, Hits: []Hit{hit}},
+		})
+		require.NoError(t, err)
+		assert.Nil(t, result.PageToken)
+		assert.Nil(t, result.NextSearchAfter)
 	})
 }
