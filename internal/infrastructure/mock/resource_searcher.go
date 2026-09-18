@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 )
@@ -17,7 +18,7 @@ import (
 type MockResourceSearcher struct {
 	resources                     []model.Resource
 	queryPages                    []*model.SearchResult
-	queryCalls                    int
+	queryCalls                    atomic.Int64
 	recordQueryCriteria           bool
 	queryCriteria                 []model.SearchCriteria
 	queryError                    error
@@ -150,8 +151,9 @@ func NewMockResourceSearcher() *MockResourceSearcher {
 func (m *MockResourceSearcher) QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error) {
 	slog.DebugContext(ctx, "executing mock search", "criteria", criteria)
 
-	call := m.queryCalls
-	m.queryCalls++
+	// The mock also serves a process wired with SEARCH_SOURCE=mock, where
+	// requests run concurrently, so the counter is atomic.
+	call := int(m.queryCalls.Add(1) - 1)
 	if m.recordQueryCriteria {
 		// Kept for the tests that assert on the criteria of each page; a
 		// mock wired as the process searcher retains nothing.
@@ -683,7 +685,7 @@ func (m *MockResourceSearcher) GetResourceCount() int {
 // QueryResourceCriteria).
 func (m *MockResourceSearcher) SetQueryResourcePages(pages ...*model.SearchResult) {
 	m.queryPages = pages
-	m.queryCalls = 0
+	m.queryCalls.Store(0)
 	m.queryCriteria = nil
 	m.recordQueryCriteria = true
 }
@@ -695,7 +697,7 @@ func (m *MockResourceSearcher) SetQueryResourcesError(err error) {
 
 // QueryResourceCalls returns how many QueryResources pages were requested.
 func (m *MockResourceSearcher) QueryResourceCalls() int {
-	return m.queryCalls
+	return int(m.queryCalls.Load())
 }
 
 // QueryResourceCriteria returns the criteria of each QueryResources call
