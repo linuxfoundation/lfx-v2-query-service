@@ -236,6 +236,11 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 			// than looping on the same page.
 			return nil, fmt.Errorf("search result carries a page token without a search_after cursor")
 		}
+		if pageCriteria.SearchAfter != nil && *pageCriteria.SearchAfter == *result.NextSearchAfter {
+			// The cursor must move, or the walk would refetch the same page up
+			// to the limit and hand back its token — the oracle this loop closes.
+			return nil, fmt.Errorf("search_after cursor did not advance during denied page walk")
+		}
 
 		slog.DebugContext(ctx, "page has no visible resources, fetching next raw page",
 			"pages_fetched", fetched,

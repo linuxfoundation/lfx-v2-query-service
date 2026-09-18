@@ -285,6 +285,16 @@ func TestResourceSearchQueryResources_DeniedPagesDoNotLeakExistence(t *testing.T
 		assert.Equal(t, []string{""}, searcher.cursors, "no further page is fetched once the context is done")
 	})
 
+	t.Run("a cursor that does not advance is an adapter defect, not a refetch loop", func(t *testing.T) {
+		stuck := page("c2", privateOrg("hidden"))
+		svc, searcher, _ := newService(t, map[string]*model.SearchResult{"": stuck, "c2": stuck}, []string{"hidden"}, constants.DefaultDeniedPageWalk)
+
+		result, err := svc.QueryResources(viewer, slugTag)
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.Equal(t, []string{"", "c2"}, searcher.cursors, "stops as soon as the cursor repeats instead of walking to the limit")
+	})
+
 	t.Run("a token without its cursor is an adapter defect, not an infinite loop", func(t *testing.T) {
 		broken := page("c2", privateOrg("hidden"))
 		broken.NextSearchAfter = nil
