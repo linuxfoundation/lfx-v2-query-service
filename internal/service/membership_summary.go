@@ -27,9 +27,10 @@ import (
 // stops at the cap folds every organization it has read whole, leaves out the
 // organization it stopped inside, and returns the cursor that resumes there;
 // a later read passing that cursor continues with the next organizations.
-// When the cap falls inside a single run of records sharing one company name,
-// usually one organization, there is no boundary to resume from: the read folds what it has and reports itself incomplete
-// without a cursor. A failed access check fails the whole read: a summary is
+// When the whole read fell inside a single run of records sharing one company
+// name, usually one organization, there is no boundary to cut at: the read
+// keeps the run as far as it was read and returns the cursor of the last
+// hit, so the run may continue in the next read. A failed access check fails the whole read: a summary is
 // never returned as if whole while part of the caller's visibility is unknown.
 func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria model.MembershipSummaryCriteria) (*model.MembershipSummaryResult, error) {
 
@@ -162,12 +163,19 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 				}
 				rows = kept
 				resume = &boundary
+			} else {
+				// The whole read fell inside one run, so there is no
+				// organization boundary to cut at. Rather than strand the
+				// organizations that sort after it, keep the run as far as
+				// it was read and continue from the last hit: the run may
+				// go on in the next read.
+				resume = page.SearchAfter
 			}
 			slog.WarnContext(ctx, "membership summary stopped at the record cap",
 				"pages", pages,
 				"records_read", recordsRead,
 				"record_cap", s.config.MaxSummaryRecords,
-				"resumable", canResume,
+				"at_run_boundary", canResume,
 			)
 			break
 		}

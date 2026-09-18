@@ -203,7 +203,9 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Len(t, result.Summaries, 1)
 		require.Equal(t, uint64(2), result.Summaries[0].TermCount,
 			"the organization the cap fell inside is held as far as it was read, not dropped")
-		require.Nil(t, result.SearchAfter, "a read that fell inside a single organization has no boundary to resume from")
+		require.NotNil(t, result.SearchAfter)
+		require.Equal(t, `["2023-01-02T00:00:00Z","m-2"]`, *result.SearchAfter,
+			"a read that fell inside a single run continues from its last hit rather than stranding what follows")
 		require.Equal(t, 1, searcher.QueryResourceCalls(), "the read stops at the cap instead of asking for the next page")
 	})
 
@@ -232,6 +234,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, result.Complete)
 		require.Equal(t, 1, searcher.QueryResourceCalls(), "a full page reached the cap whatever the searcher converted")
+		require.Equal(t, cursor(`["a corp","m-1"]`), result.SearchAfter)
 	})
 
 	t.Run("the record cap cuts at the last organization boundary and returns the cursor that resumes there", func(t *testing.T) {

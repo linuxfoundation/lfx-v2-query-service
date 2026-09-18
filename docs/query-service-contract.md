@@ -249,10 +249,8 @@ neither is a `400 Bad Request` naming both ("at least one summary parameter must
 be provided: project_uid or b2b_org_uid"). Given together they restrict the read
 to the memberships of that organization on that project. There are no other
 filters. The read is whole by definition; a read that stops at the record cap
-and can continue at the next organization returns a `page_token`, and passing it
-back with the same `project_uid` and `b2b_org_uid` continues there. A capped
-read without a token fell inside a single run of records sharing one company
-name, usually one organization, and cannot be resumed. A token
+returns a `page_token`, and passing it back with the same `project_uid` and
+`b2b_org_uid` continues where it stopped. A token
 passed with another scope is a `400 Bad Request`.
 
 **Response**:
@@ -303,8 +301,8 @@ passed with another scope is a `400 Bad Request`.
 | --- | --- | --- |
 | `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Empty when nothing matched or nothing was visible |
 | `terms_total` | always | Membership records folded into the summaries |
-| `complete` | always | `true` when every matching record was read; `false` when the read stopped at the record cap, so the summaries cover part of the history: with `page_token` when the read can continue, without one when the cap fell inside a single run of records sharing one company name, usually one organization |
-| `page_token` | when more summaries follow | Opaque token; pass it back with the same scope to continue the read at the next organization. Absent when the read is complete, and when it stopped inside a single run of records sharing one company name |
+| `complete` | always | `true` when every matching record was read; `false` when the read stopped at the record cap, so the summaries cover part of the history and `page_token` continues it |
+| `page_token` | when the read stopped at the record cap | Opaque token; pass it back with the same scope to continue the read where it stopped, at the next organization or inside the one run that filled the read. Absent when the read is complete |
 | `cache_control` | anonymous callers | Response header, as on the other reads (see [Anonymous vs Authenticated Requests](#anonymous-vs-authenticated-requests)) |
 
 Fields of one summary:
@@ -356,8 +354,10 @@ normalizes them.
    share one sortable name, so it is usually one organization, but
    organizations sharing a company name form one run and are cut and resumed
    together. When the whole read fell inside a single run there is no
-   boundary to resume from: the read folds what it has, which may be more
-   than one summary, and reports `complete: false` without a token. An
+   boundary to cut at: rather than strand the organizations that sort after
+   it, the read keeps the run as far as it was read, which may be more than
+   one summary, and returns a token that continues inside it, so that run
+   may go on in the next read and its summaries then continue there. An
    organization whose records carry company names that differ after
    lowercasing sorts as more than one run and can be split across reads into
    more than one summary; a record without a sortable name sorts last. A
