@@ -101,11 +101,11 @@ type MembershipTerm struct {
 	MembershipUID string
 	// Membership status as stored on the record
 	Status string
-	// Membership tier name as stored on the record
+	// Membership tier product name as stored on the record
 	TierName string
-	// Membership tier range as stored on the record; omitted when the record has
+	// Membership tier label as stored on the record; omitted when the record has
 	// none
-	TierRange *string
+	Tier *string
 	// Start date of the membership record; omitted when the record carries none
 	StartDate *string
 	// End date of the membership record; omitted when the record carries none
@@ -132,8 +132,8 @@ type MembershipTermSummary struct {
 	// Status of the current record; omitted when there is no current record or the
 	// current record carries none
 	CurrentStatus *string
-	// Tier name of the current record; omitted when there is no current record or
-	// the current record carries none
+	// Tier product name of the current record; omitted when there is no current
+	// record or the current record carries none
 	CurrentTierName *string
 	// Start date of the current record; omitted when there is no current record or
 	// the current record carries none
@@ -144,7 +144,7 @@ type MembershipTermSummary struct {
 	// UID of the current record; omitted when there is no current record or the
 	// current record carries none
 	CurrentMembershipUID *string
-	// Distinct tier names in first appearance order
+	// Distinct tier product names in first appearance order
 	TierNames []string
 	// Distinct statuses in first appearance order
 	Statuses []string

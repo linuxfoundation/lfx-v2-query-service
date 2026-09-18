@@ -966,7 +966,7 @@ func unmarshalMembershipTermResponseBodyToQuerysvcMembershipTerm(v *MembershipTe
 		MembershipUID: *v.MembershipUID,
 		Status:        *v.Status,
 		TierName:      *v.TierName,
-		TierRange:     v.TierRange,
+		Tier:          v.Tier,
 		StartDate:     v.StartDate,
 		EndDate:       v.EndDate,
 	}

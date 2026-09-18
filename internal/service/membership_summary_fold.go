@@ -19,7 +19,7 @@ const (
 	membershipFieldProjectSlug = "project_slug"
 	membershipFieldStatus      = "status"
 	membershipFieldTierName    = "tier_name"
-	membershipFieldTierRange   = "tier"
+	membershipFieldTier        = "tier"
 	membershipFieldStartDate   = "start_date"
 	membershipFieldEndDate     = "end_date"
 	membershipFieldCreatedAt   = "created_at"
@@ -38,7 +38,7 @@ type membershipRow struct {
 	projectSlug string
 	status      string
 	tierName    string
-	tierRange   string
+	tier        string
 	startDate   string
 	endDate     string
 	createdAt   string
@@ -175,7 +175,7 @@ func newMembershipRow(raw map[string]any) membershipRow {
 		projectSlug: membershipField(raw, membershipFieldProjectSlug),
 		status:      membershipField(raw, membershipFieldStatus),
 		tierName:    membershipField(raw, membershipFieldTierName),
-		tierRange:   membershipField(raw, membershipFieldTierRange),
+		tier:        membershipField(raw, membershipFieldTier),
 		startDate:   membershipField(raw, membershipFieldStartDate),
 		endDate:     membershipField(raw, membershipFieldEndDate),
 		createdAt:   membershipField(raw, membershipFieldCreatedAt),
@@ -238,7 +238,7 @@ func (r membershipRow) term() model.MembershipTerm {
 		MembershipUID: r.uid,
 		Status:        r.status,
 		TierName:      r.tierName,
-		TierRange:     r.tierRange,
+		Tier:          r.tier,
 		StartDate:     r.startDate,
 		EndDate:       r.endDate,
 	}

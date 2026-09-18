@@ -266,8 +266,8 @@ type MembershipTermSummaryResponseBody struct {
 	// Status of the current record; omitted when there is no current record or the
 	// current record carries none
 	CurrentStatus *string `form:"current_status,omitempty" json:"current_status,omitempty" xml:"current_status,omitempty"`
-	// Tier name of the current record; omitted when there is no current record or
-	// the current record carries none
+	// Tier product name of the current record; omitted when there is no current
+	// record or the current record carries none
 	CurrentTierName *string `form:"current_tier_name,omitempty" json:"current_tier_name,omitempty" xml:"current_tier_name,omitempty"`
 	// Start date of the current record; omitted when there is no current record or
 	// the current record carries none
@@ -278,7 +278,7 @@ type MembershipTermSummaryResponseBody struct {
 	// UID of the current record; omitted when there is no current record or the
 	// current record carries none
 	CurrentMembershipUID *string `form:"current_membership_uid,omitempty" json:"current_membership_uid,omitempty" xml:"current_membership_uid,omitempty"`
-	// Distinct tier names in first appearance order
+	// Distinct tier product names in first appearance order
 	TierNames []string `form:"tier_names" json:"tier_names" xml:"tier_names"`
 	// Distinct statuses in first appearance order
 	Statuses []string `form:"statuses" json:"statuses" xml:"statuses"`
@@ -292,11 +292,11 @@ type MembershipTermResponseBody struct {
 	MembershipUID string `form:"membership_uid" json:"membership_uid" xml:"membership_uid"`
 	// Membership status as stored on the record
 	Status string `form:"status" json:"status" xml:"status"`
-	// Membership tier name as stored on the record
+	// Membership tier product name as stored on the record
 	TierName string `form:"tier_name" json:"tier_name" xml:"tier_name"`
-	// Membership tier range as stored on the record; omitted when the record has
+	// Membership tier label as stored on the record; omitted when the record has
 	// none
-	TierRange *string `form:"tier_range,omitempty" json:"tier_range,omitempty" xml:"tier_range,omitempty"`
+	Tier *string `form:"tier,omitempty" json:"tier,omitempty" xml:"tier,omitempty"`
 	// Start date of the membership record; omitted when the record carries none
 	StartDate *string `form:"start_date,omitempty" json:"start_date,omitempty" xml:"start_date,omitempty"`
 	// End date of the membership record; omitted when the record carries none

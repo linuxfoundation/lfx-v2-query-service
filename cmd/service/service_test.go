@@ -556,11 +556,11 @@ func TestQuerySvcsrvc_QueryMembershipSummary(t *testing.T) {
 		assert.Equal(t, "m-1", summary.Terms[0].MembershipUID)
 		assert.Equal(t, "Expired", summary.Terms[0].Status)
 		assert.Equal(t, "Silver", summary.Terms[0].TierName)
-		assert.Nil(t, summary.Terms[0].TierRange, "a record without a tier range omits it")
+		assert.Nil(t, summary.Terms[0].Tier, "a record without a tier label omits it")
 		assert.Equal(t, stringPtr("2023-01-01T00:00:00Z"), summary.Terms[0].StartDate)
 		assert.Equal(t, stringPtr("2024-01-01T00:00:00Z"), summary.Terms[0].EndDate)
 		assert.Equal(t, "m-2", summary.Terms[1].MembershipUID)
-		assert.Equal(t, stringPtr("Gold Member"), summary.Terms[1].TierRange)
+		assert.Equal(t, stringPtr("Gold Member"), summary.Terms[1].Tier)
 	})
 
 	t.Run("a record without dates omits them on the term and on the summary", func(t *testing.T) {

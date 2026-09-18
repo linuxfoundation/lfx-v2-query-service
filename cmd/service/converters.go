@@ -481,7 +481,7 @@ func membershipSummaryToResponse(summary model.MembershipTermSummary) *querysvc.
 			MembershipUID: term.MembershipUID,
 			Status:        term.Status,
 			TierName:      term.TierName,
-			TierRange:     optionalAttribute(term.TierRange),
+			Tier:          optionalAttribute(term.Tier),
 			StartDate:     optionalAttribute(term.StartDate),
 			EndDate:       optionalAttribute(term.EndDate),
 		})

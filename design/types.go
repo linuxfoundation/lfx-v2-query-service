@@ -81,11 +81,11 @@ var MembershipTerm = dsl.Type("MembershipTerm", func() {
 	dsl.Attribute("status", dsl.String, "Membership status as stored on the record", func() {
 		dsl.Example("Active")
 	})
-	dsl.Attribute("tier_name", dsl.String, "Membership tier name as stored on the record", func() {
-		dsl.Example("Gold")
+	dsl.Attribute("tier_name", dsl.String, "Membership tier product name as stored on the record", func() {
+		dsl.Example("Gold Membership")
 	})
-	dsl.Attribute("tier_range", dsl.String, "Membership tier range as stored on the record; omitted when the record has none", func() {
-		dsl.Example("Gold Member")
+	dsl.Attribute("tier", dsl.String, "Membership tier label as stored on the record; omitted when the record has none", func() {
+		dsl.Example("Gold")
 	})
 	dsl.Attribute("start_date", dsl.String, "Start date of the membership record; omitted when the record carries none", func() {
 		dsl.Example("2023-01-01T00:00:00Z")
@@ -125,8 +125,8 @@ var MembershipTermSummary = dsl.Type("MembershipTermSummary", func() {
 	dsl.Attribute("current_status", dsl.String, "Status of the current record; omitted when there is no current record or the current record carries none", func() {
 		dsl.Example("Active")
 	})
-	dsl.Attribute("current_tier_name", dsl.String, "Tier name of the current record; omitted when there is no current record or the current record carries none", func() {
-		dsl.Example("Gold")
+	dsl.Attribute("current_tier_name", dsl.String, "Tier product name of the current record; omitted when there is no current record or the current record carries none", func() {
+		dsl.Example("Gold Membership")
 	})
 	dsl.Attribute("current_start", dsl.String, "Start date of the current record; omitted when there is no current record or the current record carries none", func() {
 		dsl.Example("2024-01-01T00:00:00Z")
@@ -137,8 +137,8 @@ var MembershipTermSummary = dsl.Type("MembershipTermSummary", func() {
 	dsl.Attribute("current_membership_uid", dsl.String, "UID of the current record; omitted when there is no current record or the current record carries none", func() {
 		dsl.Example("m-2")
 	})
-	dsl.Attribute("tier_names", dsl.ArrayOf(dsl.String), "Distinct tier names in first appearance order", func() {
-		dsl.Example([]string{"Silver", "Gold"})
+	dsl.Attribute("tier_names", dsl.ArrayOf(dsl.String), "Distinct tier product names in first appearance order", func() {
+		dsl.Example([]string{"Silver Membership", "Gold Membership"})
 	})
 	dsl.Attribute("statuses", dsl.ArrayOf(dsl.String), "Distinct statuses in first appearance order", func() {
 		dsl.Example([]string{"Expired", "Active"})
@@ -149,14 +149,14 @@ var MembershipTermSummary = dsl.Type("MembershipTermSummary", func() {
 		dsl.Example([]dsl.Val{{
 			"membership_uid": "m-1",
 			"status":         "Expired",
-			"tier_name":      "Silver",
+			"tier_name":      "Silver Membership",
 			"start_date":     "2023-01-01T00:00:00Z",
 			"end_date":       "2024-01-01T00:00:00Z",
 		}, {
 			"membership_uid": "m-2",
 			"status":         "Active",
-			"tier_name":      "Gold",
-			"tier_range":     "Gold Member",
+			"tier_name":      "Gold Membership",
+			"tier":           "Gold",
 			"start_date":     "2024-01-01T00:00:00Z",
 			"end_date":       "2025-01-01T00:00:00Z",
 		}})
@@ -175,23 +175,23 @@ var membershipTermSummaryExample = dsl.Val{
 	"first_start":            "2023-01-01T00:00:00Z",
 	"last_end":               "2025-01-01T00:00:00Z",
 	"current_status":         "Active",
-	"current_tier_name":      "Gold",
+	"current_tier_name":      "Gold Membership",
 	"current_start":          "2024-01-01T00:00:00Z",
 	"current_end":            "2025-01-01T00:00:00Z",
 	"current_membership_uid": "m-2",
-	"tier_names":             []string{"Silver", "Gold"},
+	"tier_names":             []string{"Silver Membership", "Gold Membership"},
 	"statuses":               []string{"Expired", "Active"},
 	"terms": []dsl.Val{{
 		"membership_uid": "m-1",
 		"status":         "Expired",
-		"tier_name":      "Silver",
+		"tier_name":      "Silver Membership",
 		"start_date":     "2023-01-01T00:00:00Z",
 		"end_date":       "2024-01-01T00:00:00Z",
 	}, {
 		"membership_uid": "m-2",
 		"status":         "Active",
-		"tier_name":      "Gold",
-		"tier_range":     "Gold Member",
+		"tier_name":      "Gold Membership",
+		"tier":           "Gold",
 		"start_date":     "2024-01-01T00:00:00Z",
 		"end_date":       "2025-01-01T00:00:00Z",
 	}},

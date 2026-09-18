@@ -25,9 +25,9 @@ type MembershipTerm struct {
 	Status string
 	// TierName is the tier name stored on the record.
 	TierName string
-	// TierRange is the tier range stored on the record; empty when the record
+	// Tier is the tier label stored on the record; empty when the record
 	// carries none.
-	TierRange string
+	Tier string
 	// StartDate is the start date stored on the record; empty when the record
 	// carries none.
 	StartDate string

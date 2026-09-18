@@ -268,25 +268,25 @@ passed with another scope is a `400 Bad Request`.
       "first_start": "2023-01-01T00:00:00Z",
       "last_end": "2025-01-01T00:00:00Z",
       "current_status": "Active",
-      "current_tier_name": "Gold",
+      "current_tier_name": "Gold Membership",
       "current_start": "2024-01-01T00:00:00Z",
       "current_end": "2025-01-01T00:00:00Z",
       "current_membership_uid": "m-2",
-      "tier_names": ["Silver", "Gold"],
+      "tier_names": ["Silver Membership", "Gold Membership"],
       "statuses": ["Expired", "Active"],
       "terms": [
         {
           "membership_uid": "m-1",
           "status": "Expired",
-          "tier_name": "Silver",
+          "tier_name": "Silver Membership",
           "start_date": "2023-01-01T00:00:00Z",
           "end_date": "2024-01-01T00:00:00Z"
         },
         {
           "membership_uid": "m-2",
           "status": "Active",
-          "tier_name": "Gold",
-          "tier_range": "Gold Member",
+          "tier_name": "Gold Membership",
+          "tier": "Gold",
           "start_date": "2024-01-01T00:00:00Z",
           "end_date": "2025-01-01T00:00:00Z"
         }
@@ -315,8 +315,8 @@ Fields of one summary:
 | `term_count` | always | Membership records folded into this summary |
 | `first_start` / `last_end` | when a record carries one | Earliest start date and latest end date across the records |
 | `current_status`, `current_tier_name`, `current_start`, `current_end`, `current_membership_uid` | when the current record carries one | Attributes of the current record (see the fold rules below); each is omitted when there is no current record and when the current record carries no such value |
-| `tier_names` / `statuses` | always | Distinct tier names and statuses in first-appearance order |
-| `terms` | always | The membership records themselves, oldest first: `membership_uid`, `status`, `tier_name`, `tier_range` (omitted when the record has none), `start_date`, `end_date` (each omitted when the record carries none) |
+| `tier_names` / `statuses` | always | Distinct tier product names and statuses in first-appearance order |
+| `terms` | always | The membership records themselves, oldest first: `membership_uid`, `status`, `tier_name`, `tier` (the tier label, omitted when the record has none), `start_date`, `end_date` (each omitted when the record carries none) |
 
 Dates are returned exactly as stored on the record; the route neither parses nor
 normalizes them.

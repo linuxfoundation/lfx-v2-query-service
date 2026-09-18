@@ -66,7 +66,7 @@ func TestFoldMembershipTerms(t *testing.T) {
 							StartDate: "2023-01-01T00:00:00Z", EndDate: "2024-01-01T00:00:00Z",
 						},
 						{
-							MembershipUID: "m-2", Status: "Active", TierName: "Gold", TierRange: "Gold Member",
+							MembershipUID: "m-2", Status: "Active", TierName: "Gold", Tier: "Gold Member",
 							StartDate: "2024-01-01T00:00:00Z", EndDate: "2025-01-01T00:00:00Z",
 						},
 					},
@@ -83,7 +83,7 @@ func TestFoldMembershipTerms(t *testing.T) {
 					Statuses:             []string{"Active"},
 					Terms: []model.MembershipTerm{
 						{
-							MembershipUID: "m-3", Status: "Active", TierName: "Platinum", TierRange: "Platinum Member",
+							MembershipUID: "m-3", Status: "Active", TierName: "Platinum", Tier: "Platinum Member",
 							StartDate: "2024-06-01T00:00:00Z", EndDate: "2025-06-01T00:00:00Z",
 						},
 					},

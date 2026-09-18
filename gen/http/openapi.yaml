@@ -585,7 +585,7 @@ definitions:
                       current_membership_uid: m-2
                       current_start: "2024-01-01T00:00:00Z"
                       current_status: Active
-                      current_tier_name: Gold
+                      current_tier_name: Gold Membership
                       first_start: "2023-01-01T00:00:00Z"
                       last_end: "2025-01-01T00:00:00Z"
                       project_slug: example-project
@@ -599,16 +599,16 @@ definitions:
                           membership_uid: m-1
                           start_date: "2023-01-01T00:00:00Z"
                           status: Expired
-                          tier_name: Silver
+                          tier_name: Silver Membership
                         - end_date: "2025-01-01T00:00:00Z"
                           membership_uid: m-2
                           start_date: "2024-01-01T00:00:00Z"
                           status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
+                          tier: Gold
+                          tier_name: Gold Membership
                       tier_names:
-                        - Silver
-                        - Gold
+                        - Silver Membership
+                        - Gold Membership
             terms_total:
                 type: integer
                 description: Number of membership records folded into the summaries
@@ -623,7 +623,7 @@ definitions:
                   current_membership_uid: m-2
                   current_start: "2024-01-01T00:00:00Z"
                   current_status: Active
-                  current_tier_name: Gold
+                  current_tier_name: Gold Membership
                   first_start: "2023-01-01T00:00:00Z"
                   last_end: "2025-01-01T00:00:00Z"
                   project_slug: example-project
@@ -637,16 +637,16 @@ definitions:
                       membership_uid: m-1
                       start_date: "2023-01-01T00:00:00Z"
                       status: Expired
-                      tier_name: Silver
+                      tier_name: Silver Membership
                     - end_date: "2025-01-01T00:00:00Z"
                       membership_uid: m-2
                       start_date: "2024-01-01T00:00:00Z"
                       status: Active
-                      tier_name: Gold
-                      tier_range: Gold Member
+                      tier: Gold
+                      tier_name: Gold Membership
                   tier_names:
-                    - Silver
-                    - Gold
+                    - Silver Membership
+                    - Gold Membership
             terms_total: 2
         required:
             - summaries
@@ -672,22 +672,22 @@ definitions:
                 type: string
                 description: Membership status as stored on the record
                 example: Active
+            tier:
+                type: string
+                description: Membership tier label as stored on the record; omitted when the record has none
+                example: Gold
             tier_name:
                 type: string
-                description: Membership tier name as stored on the record
-                example: Gold
-            tier_range:
-                type: string
-                description: Membership tier range as stored on the record; omitted when the record has none
-                example: Gold Member
+                description: Membership tier product name as stored on the record
+                example: Gold Membership
         description: One membership record of an organization on a project.
         example:
             end_date: "2024-01-01T00:00:00Z"
             membership_uid: m-1
             start_date: "2023-01-01T00:00:00Z"
             status: Active
-            tier_name: Gold
-            tier_range: Gold Member
+            tier: Gold
+            tier_name: Gold Membership
         required:
             - membership_uid
             - status
@@ -722,8 +722,8 @@ definitions:
                 example: Active
             current_tier_name:
                 type: string
-                description: Tier name of the current record; omitted when there is no current record or the current record carries none
-                example: Gold
+                description: Tier product name of the current record; omitted when there is no current record or the current record carries none
+                example: Gold Membership
             first_start:
                 type: string
                 description: Earliest start date across the records; omitted when no record has one
@@ -764,22 +764,22 @@ definitions:
                       membership_uid: m-1
                       start_date: "2023-01-01T00:00:00Z"
                       status: Expired
-                      tier_name: Silver
+                      tier_name: Silver Membership
                     - end_date: "2025-01-01T00:00:00Z"
                       membership_uid: m-2
                       start_date: "2024-01-01T00:00:00Z"
                       status: Active
-                      tier_name: Gold
-                      tier_range: Gold Member
+                      tier: Gold
+                      tier_name: Gold Membership
             tier_names:
                 type: array
                 items:
                     type: string
                     example: Harum in animi aspernatur id.
-                description: Distinct tier names in first appearance order
+                description: Distinct tier product names in first appearance order
                 example:
-                    - Silver
-                    - Gold
+                    - Silver Membership
+                    - Gold Membership
         description: Membership history of one organization on one project, folded from the membership records.
         example:
             b2b_org_uid: org-1
@@ -788,7 +788,7 @@ definitions:
             current_membership_uid: m-2
             current_start: "2024-01-01T00:00:00Z"
             current_status: Active
-            current_tier_name: Gold
+            current_tier_name: Gold Membership
             first_start: "2023-01-01T00:00:00Z"
             last_end: "2025-01-01T00:00:00Z"
             project_slug: example-project
@@ -802,16 +802,16 @@ definitions:
                   membership_uid: m-1
                   start_date: "2023-01-01T00:00:00Z"
                   status: Expired
-                  tier_name: Silver
+                  tier_name: Silver Membership
                 - end_date: "2025-01-01T00:00:00Z"
                   membership_uid: m-2
                   start_date: "2024-01-01T00:00:00Z"
                   status: Active
-                  tier_name: Gold
-                  tier_range: Gold Member
+                  tier: Gold
+                  tier_name: Gold Membership
             tier_names:
-                - Silver
-                - Gold
+                - Silver Membership
+                - Gold Membership
         required:
             - b2b_org_uid
             - company_name
