@@ -360,7 +360,11 @@ normalizes them.
    than one summary, and reports `complete: false` without a token. An
    organization whose records carry company names that differ after
    lowercasing sorts as more than one run and can be split across reads into
-   more than one summary; a record without a sortable name sorts last.
+   more than one summary; a record without a sortable name sorts last. A
+   continued read is not a snapshot: like the pages of the plain search, each
+   call queries the live index, so a record re-indexed under another company
+   name between two calls can appear in both or in neither. A caller that
+   needs an exact roster across such a change re-reads it.
 4. **Fold** — the visible records are grouped and reduced (below). `terms_total`
    counts the records that were folded, not the records that were read.
 
