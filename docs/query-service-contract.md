@@ -183,10 +183,11 @@ Environment variables (defaults live in code; no values file needs to set them):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search and count routes) |
+| `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search, count and summary routes) |
 | `READ_TUPLES_TIMEOUT` | `15s` | Timeout of the `filter_grants=direct` tuple read |
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
+| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before it folds what it has and reports `complete: false` (1..50000, validated at startup); the cap is checked after a whole page, so it can be overshot by up to one page |
 
 #### Not supported
 
@@ -224,6 +225,166 @@ subfield, or is absent, authenticated counts now return `503` with the warning
 original fallback-plus-warning rule: guessing an unmapped subfield must never
 turn private resources into a successful public-only count. Plain `keyword`
 (the mockdata fallback mapping) remains supported.
+
+### GET /query/memberships/summary
+
+Summarizes the membership records (`project_membership`) of an organization, a
+project, or both into one summary per organization and project.
+
+The summary is a fold, not an aggregation: status, tier name and the membership
+dates live in `data`, which is a `flat_object` and therefore never aggregatable
+(see [Mapping the count route depends on](#mapping-the-count-route-depends-on)).
+The route reads the matching records page by page and folds them in process, so
+callers do not have to drain every page and fold the history themselves.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `v` | string (required) | API version, must be `1` |
+| `project_uid` | string | Summarize the memberships on this project |
+| `b2b_org_uid` | string | Summarize the memberships of this organization |
+| `page_token` | string | Continue an earlier read of the same scope from the organization it stopped before (see the record cap below) |
+
+At least one of `project_uid` and `b2b_org_uid` must be provided; a request with
+neither is a `400 Bad Request` naming both ("at least one summary parameter must
+be provided: project_uid or b2b_org_uid"). Given together they restrict the read
+to the memberships of that organization on that project. There are no other
+filters. The read is whole by definition; a read that stops at the record cap
+and can continue at the next organization returns a `page_token`, and passing it
+back with the same `project_uid` and `b2b_org_uid` continues there. A capped
+read without a token fell inside one organization and cannot be resumed. A token
+passed with another scope is a `400 Bad Request`.
+
+**Response**:
+
+```json
+{
+  "summaries": [
+    {
+      "b2b_org_uid": "org-1",
+      "company_name": "Example Corp",
+      "project_uid": "proj-1",
+      "project_slug": "example-project",
+      "term_count": 2,
+      "first_start": "2023-01-01T00:00:00Z",
+      "last_end": "2025-01-01T00:00:00Z",
+      "current_status": "Active",
+      "current_tier_name": "Gold",
+      "current_start": "2024-01-01T00:00:00Z",
+      "current_end": "2025-01-01T00:00:00Z",
+      "current_membership_uid": "m-2",
+      "tier_names": ["Silver", "Gold"],
+      "statuses": ["Expired", "Active"],
+      "terms": [
+        {
+          "membership_uid": "m-1",
+          "status": "Expired",
+          "tier_name": "Silver",
+          "start_date": "2023-01-01T00:00:00Z",
+          "end_date": "2024-01-01T00:00:00Z"
+        },
+        {
+          "membership_uid": "m-2",
+          "status": "Active",
+          "tier_name": "Gold",
+          "tier_range": "Gold Member",
+          "start_date": "2024-01-01T00:00:00Z",
+          "end_date": "2025-01-01T00:00:00Z"
+        }
+      ]
+    }
+  ],
+  "terms_total": 2,
+  "complete": true
+}
+```
+
+| Field | Present | Meaning |
+| --- | --- | --- |
+| `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Empty when nothing matched or nothing was visible |
+| `terms_total` | always | Membership records folded into the summaries |
+| `complete` | always | `true` when every matching record was read; `false` when the read stopped at the record cap, so the summaries cover part of the history: with `page_token` when the read can continue, without one when the cap fell inside a single organization |
+| `page_token` | when more summaries follow | Opaque token; pass it back with the same scope to continue the read at the next organization. Absent when the read is complete, and when it stopped inside a single organization |
+| `cache_control` | anonymous callers | Response header, as on the other reads (see [Anonymous vs Authenticated Requests](#anonymous-vs-authenticated-requests)) |
+
+Fields of one summary:
+
+| Field | Present | Meaning |
+| --- | --- | --- |
+| `b2b_org_uid` / `project_uid` | always | Identifiers of the pair; empty when the records carry none |
+| `company_name` / `project_slug` | always | Labels as stored on the current record |
+| `term_count` | always | Membership records folded into this summary |
+| `first_start` / `last_end` | when a record carries one | Earliest start date and latest end date across the records |
+| `current_status`, `current_tier_name`, `current_start`, `current_end`, `current_membership_uid` | when the current record carries one | Attributes of the current record (see the fold rules below); each is omitted when there is no current record and when the current record carries no such value |
+| `tier_names` / `statuses` | always | Distinct tier names and statuses in first-appearance order |
+| `terms` | always | The membership records themselves, oldest first: `membership_uid`, `status`, `tier_name`, `tier_range` (omitted when the record has none), `start_date`, `end_date` (each omitted when the record carries none) |
+
+Dates are returned exactly as stored on the record; the route neither parses nor
+normalizes them.
+
+#### How a summary is computed
+
+1. **Read** — the scope becomes a search for `type=project_membership` carrying
+   the `project_uid:` and `b2b_org_uid:` tags requested (the index tags rather
+   than `data` filters: the same keyword terms the `project_membership`
+   catalog recipes use, and the cheapest scope for the read), in whole pages,
+   in organization order: the records are sorted on the record's sortable
+   name, which the member service indexes as the company name lowercased (see
+   the member-service indexer contract), with the record id as tiebreaker, so
+   the records of one organization are read together.
+   The route continues from the keyset cursor of the previous page until a
+   page carries none. A record served on more than one
+   page, because it was re-indexed while the read was between pages, is folded
+   once, as the copy read last: that is the one the re-index wrote.
+2. **Visibility** — identical to the plain search: each page is access-checked
+   in one batched fga-sync request, built and matched exactly as
+   [Access Control Flow](#access-control-flow) describes, and only the records
+   the caller may see reach the fold. A failed access check is a `503`, never a
+   partial summary: a summary is never returned as if whole while part of the
+   caller's visibility is unknown.
+3. **Record cap** — the read stops at a configured record cap
+   (`SUMMARY_MAX_RECORDS`, validated at startup like the count route's bucket
+   cap) and reports `complete: false`. The cap is checked after a whole page,
+   so pages are never split and the cap can be overshot by up to one page.
+   Because the records arrive in organization order, the read then folds every
+   organization it has read whole, leaves out the organization it stopped
+   inside (its records may continue on the next page), and returns a
+   `page_token` holding the cursor at that organization; the next read with
+   the same scope and that token starts with it. The boundary is found over
+   every record read, visible or not, so a caller who cannot see the last
+   organization still resumes at the right place. When the whole read fell
+   inside one organization there is no boundary to resume from: the read
+   folds what it has and reports `complete: false` without a token. An
+   organization whose records carry company names that differ after
+   lowercasing sorts as more than one run and can be split across reads into
+   more than one summary; a record without a sortable name sorts last.
+4. **Fold** — the visible records are grouped and reduced (below). `terms_total`
+   counts the records that were folded, not the records that were read.
+
+#### Fold rules
+
+- **Grouping.** A record folds under its organization UID, or under its company
+  name when it carries no organization UID, and under its project UID, or under
+  its project slug when it carries no project UID. Labels are trimmed and
+  case-folded so one organization or project keeps one summary. A record with
+  neither identifier nor label on a side folds under the empty value: no record
+  is dropped for want of an identifier. This matters because a membership on a
+  project that is not onboarded in LFX v2 carries a slug but no project UID.
+- **Order within a group.** Records are ordered oldest first by start date, then
+  creation date, then record UID, all compared as the strings they are stored
+  as.
+- **Dates.** `first_start` is the earliest start date a record carries,
+  `last_end` the latest end date; records without one are skipped rather than
+  treated as empty.
+- **Current record.** The latest-starting record whose status is active, or the
+  latest-starting record when none is active. It supplies the `current_*` fields
+  and the `company_name` and `project_slug` labels of the summary.
+- **Tier names and statuses.** Distinct values in first-appearance order, empty
+  values skipped.
+
+For an anonymous caller the read runs with the `public: true` filter, as every
+read does. Membership records are indexed private, so an anonymous caller
+receives an empty `summaries` list with `complete: true` and the anonymous
+`Cache-Control` header set.
 
 ## Anonymous vs Authenticated Requests
 

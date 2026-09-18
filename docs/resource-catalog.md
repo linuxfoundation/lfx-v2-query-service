@@ -226,6 +226,35 @@ GET /query/resources?v=1&type=project_membership&tags=project_uid:<project_uid>&
 GET /query/resources?v=1&type=project_membership&tags=b2b_org_uid:<b2b_org_uid>
 ```
 
+### Summarize a membership history per organization and project
+
+```bash
+# every organization on one project
+GET /query/memberships/summary?v=1&project_uid=<project_uid>
+# every project of one organization
+GET /query/memberships/summary?v=1&b2b_org_uid=<b2b_org_uid>
+# one organization on one project
+GET /query/memberships/summary?v=1&project_uid=<project_uid>&b2b_org_uid=<b2b_org_uid>
+```
+
+One summary per organization and project, folded from the membership records:
+how many records, the earliest start and the latest end, the current record's
+status, tier and dates, the tier names and statuses seen, and the records
+themselves oldest first. At least one of `project_uid` and `b2b_org_uid` is
+required.
+
+Use this instead of paging `type=project_membership` and folding the history in
+the client: `status`, `tier_name` and the dates are `data` fields, which cannot
+be aggregated, so the fold has to happen over the records themselves. The
+summaries cover only the records the caller may see. `complete` is `false`
+when the read stopped at a configured record cap; when the read can continue at
+the next organization it also carries a `page_token`, and passing it back with
+the same scope continues there, so a large project's roster is whole in a few
+calls. A capped read without a token fell inside one organization and cannot be
+resumed.
+See [GET /query/memberships/summary](query-service-contract.md#get-querymembershipssummary)
+for the parameters, the result fields and the fold rules.
+
 ### Find key contacts for a membership
 
 ```bash
