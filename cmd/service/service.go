@@ -97,6 +97,33 @@ func (s *querySvcsrvc) QueryResourcesCount(ctx context.Context, p *querysvc.Quer
 	return s.domainCountResultToResponse(result), nil
 }
 
+// QueryMembershipSummary summarizes the membership records of an organization,
+// a project, or both, into one summary per organization and project.
+func (s *querySvcsrvc) QueryMembershipSummary(ctx context.Context, p *querysvc.QueryMembershipSummaryPayload) (*querysvc.MembershipSummaryResult, error) {
+
+	slog.DebugContext(ctx, "querySvc.query-membership-summary")
+
+	// Convert payload to domain criteria
+	criteria, errCriteria := s.payloadToMembershipSummaryCriteria(ctx, p)
+	if errCriteria != nil {
+		slog.ErrorContext(ctx, "failed to convert payload to membership summary criteria", "error", errCriteria)
+		return nil, wrapError(ctx, errCriteria)
+	}
+
+	// Execute the summary read using the service layer
+	result, errSummary := s.resourceService.QueryMembershipSummary(ctx, criteria)
+	if errSummary != nil {
+		return nil, wrapError(ctx, errSummary)
+	}
+
+	// Convert domain result to response
+	response, errResponse := s.domainMembershipSummaryToResponse(ctx, result, criteria)
+	if errResponse != nil {
+		return nil, wrapError(ctx, errResponse)
+	}
+	return response, nil
+}
+
 // Locate a single organization by name or domain.
 func (s *querySvcsrvc) QueryOrgs(ctx context.Context, p *querysvc.QueryOrgsPayload) (res *querysvc.Organization, err error) {
 

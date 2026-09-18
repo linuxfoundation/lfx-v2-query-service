@@ -15,6 +15,10 @@ type Resource struct {
 	TransactionBodyStub
 	// NeedCheck indicates if access control check is needed
 	NeedCheck bool
+	// SortValues holds the hit's sort values as a JSON array, the keyset
+	// cursor that continues right after this hit; empty when the search
+	// carried no sort.
+	SortValues string
 }
 
 // TransactionBodyStub is used to decode the response's "source".

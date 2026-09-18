@@ -464,6 +464,212 @@ func TestQuerySvcsrvc_QueryResourcesCount(t *testing.T) {
 	}
 }
 
+func TestQuerySvcsrvc_QueryMembershipSummary(t *testing.T) {
+	// membershipRecord builds one indexed membership record with the
+	// access-check pair the batched check is built from.
+	membershipRecord := func(uid string, data map[string]any) model.Resource {
+		return model.Resource{
+			Type: constants.MembershipResourceType,
+			ID:   uid,
+			Data: data,
+			TransactionBodyStub: model.TransactionBodyStub{
+				ObjectRef:           constants.MembershipResourceType + ":" + uid,
+				ObjectType:          constants.MembershipResourceType,
+				ObjectID:            uid,
+				AccessCheckObject:   constants.MembershipResourceType + ":" + uid,
+				AccessCheckRelation: "auditor",
+			},
+		}
+	}
+	// membershipPage builds one page of membership records; a page carrying a
+	// cursor has a next page.
+	membershipPage := func(searchAfter *string, resources ...model.Resource) *model.SearchResult {
+		return &model.SearchResult{
+			Resources:   resources,
+			SearchAfter: searchAfter,
+			Total:       len(resources),
+		}
+	}
+	twoTermPages := func() []*model.SearchResult {
+		return []*model.SearchResult{
+			membershipPage(stringPtr(`["2023-01-02T00:00:00Z","m-1"]`),
+				membershipRecord("m-1", map[string]any{
+					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+					"project_uid": "proj-1", "project_slug": "example-project",
+					"status": "Expired", "tier_name": "Silver",
+					"start_date": "2023-01-01T00:00:00Z", "end_date": "2024-01-01T00:00:00Z",
+					"created_at": "2023-01-02T00:00:00Z",
+				}),
+			),
+			membershipPage(nil,
+				membershipRecord("m-2", map[string]any{
+					"uid": "m-2", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+					"project_uid": "proj-1", "project_slug": "example-project",
+					"status": "Active", "tier_name": "Gold", "tier": "Gold Member",
+					"start_date": "2024-01-01T00:00:00Z", "end_date": "2025-01-01T00:00:00Z",
+					"created_at": "2024-01-02T00:00:00Z",
+				}),
+			),
+		}
+	}
+	newSvc := func(t *testing.T, searcher *mock.MockResourceSearcher, checker *mock.MockAccessControlChecker) *querySvcsrvc {
+		t.Helper()
+		return newTestQuerySvc(t, searcher, checker, mock.NewMockOrganizationSearcher(), mock.NewMockAuthService())
+	}
+
+	t.Run("the folded summary is mapped attribute by attribute", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(twoTermPages()...)
+		svc := newSvc(t, searcher, mock.NewMockAccessControlChecker())
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "test-user")
+		result, err := svc.QueryMembershipSummary(ctx, &querysvc.QueryMembershipSummaryPayload{
+			Version:    "1",
+			ProjectUID: stringPtr("proj-1"),
+			B2bOrgUID:  stringPtr("org-1"),
+		})
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, uint64(2), result.TermsTotal)
+		assert.True(t, result.Complete)
+		assert.Nil(t, result.CacheControl, "an authenticated read carries no cache control header")
+		assert.Len(t, result.Summaries, 1)
+
+		summary := result.Summaries[0]
+		assert.Equal(t, "org-1", summary.B2bOrgUID)
+		assert.Equal(t, "Example Corp", summary.CompanyName)
+		assert.Equal(t, "proj-1", summary.ProjectUID)
+		assert.Equal(t, "example-project", summary.ProjectSlug)
+		assert.Equal(t, uint64(2), summary.TermCount)
+		assert.Equal(t, stringPtr("2023-01-01T00:00:00Z"), summary.FirstStart)
+		assert.Equal(t, stringPtr("2025-01-01T00:00:00Z"), summary.LastEnd)
+		assert.Equal(t, stringPtr("Active"), summary.CurrentStatus)
+		assert.Equal(t, stringPtr("Gold"), summary.CurrentTierName)
+		assert.Equal(t, stringPtr("2024-01-01T00:00:00Z"), summary.CurrentStart)
+		assert.Equal(t, stringPtr("2025-01-01T00:00:00Z"), summary.CurrentEnd)
+		assert.Equal(t, stringPtr("m-2"), summary.CurrentMembershipUID)
+		assert.Equal(t, []string{"Silver", "Gold"}, summary.TierNames)
+		assert.Equal(t, []string{"Expired", "Active"}, summary.Statuses)
+
+		assert.Len(t, summary.Terms, 2)
+		assert.Equal(t, "m-1", summary.Terms[0].MembershipUID)
+		assert.Equal(t, "Expired", summary.Terms[0].Status)
+		assert.Equal(t, "Silver", summary.Terms[0].TierName)
+		assert.Nil(t, summary.Terms[0].Tier, "a record without a tier label omits it")
+		assert.Equal(t, stringPtr("2023-01-01T00:00:00Z"), summary.Terms[0].StartDate)
+		assert.Equal(t, stringPtr("2024-01-01T00:00:00Z"), summary.Terms[0].EndDate)
+		assert.Equal(t, "m-2", summary.Terms[1].MembershipUID)
+		assert.Equal(t, stringPtr("Gold Member"), summary.Terms[1].Tier)
+	})
+
+	t.Run("a record without dates omits them on the term and on the summary", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(membershipPage(nil,
+			membershipRecord("m-open", map[string]any{
+				"uid": "m-open", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+				"project_uid": "proj-1", "project_slug": "example-project",
+				"status": "Active", "tier_name": "Gold",
+			}),
+		))
+		svc := newSvc(t, searcher, mock.NewMockAccessControlChecker())
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "test-user")
+		result, err := svc.QueryMembershipSummary(ctx, &querysvc.QueryMembershipSummaryPayload{
+			Version:   "1",
+			B2bOrgUID: stringPtr("org-1"),
+		})
+		assert.NoError(t, err)
+		assert.Len(t, result.Summaries, 1)
+		summary := result.Summaries[0]
+
+		assert.Nil(t, summary.FirstStart, "no record carries a start date")
+		assert.Nil(t, summary.LastEnd, "no record carries an end date")
+		assert.Equal(t, stringPtr("m-open"), summary.CurrentMembershipUID)
+		assert.Nil(t, summary.CurrentStart, "the current record carries no start date")
+		assert.Nil(t, summary.CurrentEnd, "the current record carries no end date")
+		assert.Len(t, summary.Terms, 1)
+		assert.Nil(t, summary.Terms[0].StartDate, "a record without a start date omits it")
+		assert.Nil(t, summary.Terms[0].EndDate, "a record without an end date omits it")
+	})
+
+	t.Run("an anonymous read carries the cache control header", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(membershipPage(nil))
+		svc := newSvc(t, searcher, mock.NewMockAccessControlChecker())
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, constants.AnonymousPrincipal)
+		result, err := svc.QueryMembershipSummary(ctx, &querysvc.QueryMembershipSummaryPayload{
+			Version:   "1",
+			B2bOrgUID: stringPtr("org-1"),
+		})
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, stringPtr(constants.AnonymousCacheControlHeader), result.CacheControl)
+		assert.Empty(t, result.Summaries)
+		assert.Equal(t, uint64(0), result.TermsTotal)
+		assert.True(t, result.Complete)
+	})
+
+	t.Run("a read stopped at the record cap is reported incomplete", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		pages := twoTermPages()
+		pages[0].SearchAfter = stringPtr(`["2023-01-02T00:00:00Z","m-1"]`)
+		searcher.SetQueryResourcePages(pages...)
+		config := service.DefaultConfig()
+		config.MaxSummaryRecords = 1
+		svcImpl, err := NewQuerySvc(searcher, mock.NewMockAccessControlChecker(), mock.NewMockResourceFilter(),
+			mock.NewMockOrganizationSearcher(), mock.NewMockAuthService(), config)
+		assert.NoError(t, err)
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "test-user")
+		result, err := svcImpl.QueryMembershipSummary(ctx, &querysvc.QueryMembershipSummaryPayload{
+			Version:   "1",
+			B2bOrgUID: stringPtr("org-1"),
+		})
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.False(t, result.Complete)
+		assert.Equal(t, uint64(1), result.TermsTotal)
+		assert.Len(t, result.Summaries, 1)
+	})
+
+	t.Run("a read naming neither parameter is a bad request", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		svc := newSvc(t, searcher, mock.NewMockAccessControlChecker())
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "test-user")
+		result, err := svc.QueryMembershipSummary(ctx, &querysvc.QueryMembershipSummaryPayload{Version: "1"})
+
+		assert.Nil(t, result)
+		badRequest, ok := err.(*querysvc.BadRequestError)
+		if assert.True(t, ok, "expected a BadRequestError") {
+			assert.Contains(t, badRequest.Message, "project_uid")
+			assert.Contains(t, badRequest.Message, "b2b_org_uid")
+		}
+		assert.Equal(t, 0, searcher.QueryResourceCalls(), "an unscoped read never reaches the index")
+	})
+
+	t.Run("a failed access check is a service unavailable", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(twoTermPages()...)
+		checker := mock.NewMockAccessControlChecker()
+		checker.SetCheckAccessError(fmt.Errorf("nats: no responders"))
+		svc := newSvc(t, searcher, checker)
+
+		ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "test-user")
+		result, err := svc.QueryMembershipSummary(ctx, &querysvc.QueryMembershipSummaryPayload{
+			Version:   "1",
+			B2bOrgUID: stringPtr("org-1"),
+		})
+
+		assert.Nil(t, result, "a partial summary is never returned")
+		assert.IsType(t, &querysvc.ServiceUnavailableError{}, err)
+	})
+}
+
 func TestQuerySvcsrvc_QueryOrgs(t *testing.T) {
 	tests := []struct {
 		name              string

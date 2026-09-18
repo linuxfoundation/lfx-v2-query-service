@@ -75,6 +75,16 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 			ID:     hit.ID,
 			Source: hit.Source,
 		}
+		if len(hit.Sort) > 0 {
+			// Each hit keeps its own cursor, so a service-side read can
+			// resume from any hit, not only from the last of a page.
+			sortValues, errSortValues := json.Marshal(hit.Sort)
+			if errSortValues != nil {
+				slog.ErrorContext(ctx, "failed to encode hit sort values", "error", errSortValues)
+				return nil, errSortValues
+			}
+			result.Hits.Hits[i].Sort = sortValues
+		}
 	}
 
 	// if the number of hits returned equals the page size, there may be more results.
@@ -86,6 +96,18 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 			return nil, errEncodePageToken
 		}
 		result.PageToken = &pageToken
+		if len(searchAfter) > 0 {
+			// The same cursor in the clear, for callers that stay inside the
+			// service and continue the keyset themselves. Callers outside the
+			// service still receive the token only.
+			encodedSearchAfter, errEncodeSearchAfter := json.Marshal(searchAfter)
+			if errEncodeSearchAfter != nil {
+				slog.ErrorContext(ctx, "failed to encode search after cursor", "error", errEncodeSearchAfter)
+				return nil, errEncodeSearchAfter
+			}
+			cursor := string(encodedSearchAfter)
+			result.SearchAfter = &cursor
+		}
 		slog.DebugContext(ctx, "pagination token generated",
 			"page_token", *result.PageToken,
 			"total_hits", searchResponse.Hits.Total.Value,

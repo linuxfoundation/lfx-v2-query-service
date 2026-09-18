@@ -253,6 +253,52 @@ var _ = dsl.Service("query-svc", func() {
 		})
 	})
 
+	dsl.Method("query-membership-summary", func() {
+		dsl.Description("Summarize the membership records of an organization, a project, or both, into one summary per organization and project.")
+
+		dsl.Security(JWTAuth)
+
+		dsl.Payload(func() {
+			dsl.Token("bearer_token", dsl.String, func() {
+				dsl.Description("JWT token issued by Heimdall")
+				dsl.Example("eyJhbGci...")
+			})
+			dsl.Attribute("version", dsl.String, "Version of the API", func() {
+				dsl.Enum("1")
+				dsl.Example("1")
+			})
+			dsl.Attribute("project_uid", dsl.String, "Project UID to summarize; at least one of project_uid and b2b_org_uid is required, both restrict the read to the memberships of that organization on that project", func() {
+				dsl.Example("proj-1")
+				dsl.MinLength(1)
+			})
+			dsl.Attribute("b2b_org_uid", dsl.String, "Organization UID to summarize; at least one of project_uid and b2b_org_uid is required, both restrict the read to the memberships of that organization on that project", func() {
+				dsl.Example("org-1")
+				dsl.MinLength(1)
+			})
+			dsl.Attribute("page_token", dsl.String, "Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read at the organization it stopped before", func() {
+				dsl.Example("****")
+			})
+			dsl.Required("bearer_token", "version")
+		})
+
+		dsl.Result(MembershipSummaryResult)
+
+		dsl.HTTP(func() {
+			dsl.GET("/query/memberships/summary")
+			dsl.Param("version:v")
+			dsl.Param("project_uid")
+			dsl.Param("b2b_org_uid")
+			dsl.Param("page_token")
+			dsl.Header("bearer_token:Authorization")
+			dsl.Response(dsl.StatusOK, func() {
+				dsl.Header("cache_control:Cache-Control")
+			})
+			dsl.Response("BadRequest", dsl.StatusBadRequest)
+			dsl.Response("InternalServerError", dsl.StatusInternalServerError)
+			dsl.Response("ServiceUnavailable", dsl.StatusServiceUnavailable)
+		})
+	})
+
 	dsl.Method("query-orgs", func() {
 		dsl.Description("Locate a single organization by name or domain.")
 
