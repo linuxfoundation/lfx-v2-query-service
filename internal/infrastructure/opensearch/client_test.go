@@ -137,3 +137,56 @@ func TestHTTPClientGetMapping(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestHTTPClientSearchCursor(t *testing.T) {
+	t.Setenv("PAGE_TOKEN_SECRET", "12345678901234567890123456789012") // 32 chars
+	fullPage := `{"took":1,"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":3},"hits":[` +
+		`{"_id":"a-1","_source":{"object_type":"project_membership","object_id":"m-1","data":{"uid":"m-1"}},"sort":["a corp","a-1"]},` +
+		`{"_id":"b-1","_source":{"object_type":"project_membership","object_id":"m-2","data":{"uid":"m-2"}},"sort":["b corp","b-1"]}]}}`
+
+	tests := []struct {
+		name         string
+		body         string
+		pageSize     int
+		expectedSort []string
+		expectCursor *string
+	}{
+		{
+			name:         "a full sorted page keeps every hit's cursor and continues from the last",
+			body:         fullPage,
+			pageSize:     2,
+			expectedSort: []string{`["a corp","a-1"]`, `["b corp","b-1"]`},
+			expectCursor: func() *string { s := `["b corp","b-1"]`; return &s }(),
+		},
+		{
+			name:         "a short page keeps every hit's cursor and carries no continuation",
+			body:         fullPage,
+			pageSize:     3,
+			expectedSort: []string{`["a corp","a-1"]`, `["b corp","b-1"]`},
+			expectCursor: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			})
+			response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), tc.pageSize)
+			assert.NoError(t, err)
+			assert.Len(t, response.Hits.Hits, len(tc.expectedSort))
+			for i, hit := range response.Hits.Hits {
+				assert.JSONEq(t, tc.expectedSort[i], string(hit.Sort), "hit %d keeps its own sort values", i)
+			}
+			if tc.expectCursor == nil {
+				assert.Nil(t, response.SearchAfter)
+				assert.Nil(t, response.PageToken)
+				return
+			}
+			assert.NotNil(t, response.SearchAfter)
+			assert.JSONEq(t, *tc.expectCursor, *response.SearchAfter)
+			assert.NotNil(t, response.PageToken, "a full page also carries the opaque token for callers")
+		})
+	}
+}
