@@ -568,7 +568,7 @@ definitions:
             complete:
                 type: boolean
                 description: True when every matching membership record was read; false when the read stopped at the record cap, with page_token when it can continue at the next organization
-                example: true
+                example: false
             page_token:
                 type: string
                 description: Opaque token present when more summaries follow; pass it back with the same project_uid and b2b_org_uid to continue the read at the next organization
@@ -598,18 +598,11 @@ definitions:
                         - end_date: "2024-01-01T00:00:00Z"
                           membership_uid: m-1
                           start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
+                          status: Expired
+                          tier_name: Silver
+                        - end_date: "2025-01-01T00:00:00Z"
+                          membership_uid: m-2
+                          start_date: "2024-01-01T00:00:00Z"
                           status: Active
                           tier_name: Gold
                           tier_range: Gold Member
@@ -635,18 +628,11 @@ definitions:
                         - end_date: "2024-01-01T00:00:00Z"
                           membership_uid: m-1
                           start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
+                          status: Expired
+                          tier_name: Silver
+                        - end_date: "2025-01-01T00:00:00Z"
+                          membership_uid: m-2
+                          start_date: "2024-01-01T00:00:00Z"
                           status: Active
                           tier_name: Gold
                           tier_range: Gold Member
@@ -672,18 +658,11 @@ definitions:
                         - end_date: "2024-01-01T00:00:00Z"
                           membership_uid: m-1
                           start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
+                          status: Expired
+                          tier_name: Silver
+                        - end_date: "2025-01-01T00:00:00Z"
+                          membership_uid: m-2
+                          start_date: "2024-01-01T00:00:00Z"
                           status: Active
                           tier_name: Gold
                           tier_range: Gold Member
@@ -709,18 +688,11 @@ definitions:
                         - end_date: "2024-01-01T00:00:00Z"
                           membership_uid: m-1
                           start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
+                          status: Expired
+                          tier_name: Silver
+                        - end_date: "2025-01-01T00:00:00Z"
+                          membership_uid: m-2
+                          start_date: "2024-01-01T00:00:00Z"
                           status: Active
                           tier_name: Gold
                           tier_range: Gold Member
@@ -862,7 +834,7 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Ex itaque.
+                    example: Itaque repellendus sint commodi nemo labore.
                 description: Distinct statuses in first appearance order
                 example:
                     - Expired
@@ -881,18 +853,11 @@ definitions:
                     - end_date: "2024-01-01T00:00:00Z"
                       membership_uid: m-1
                       start_date: "2023-01-01T00:00:00Z"
-                      status: Active
-                      tier_name: Gold
-                      tier_range: Gold Member
-                    - end_date: "2024-01-01T00:00:00Z"
-                      membership_uid: m-1
-                      start_date: "2023-01-01T00:00:00Z"
-                      status: Active
-                      tier_name: Gold
-                      tier_range: Gold Member
-                    - end_date: "2024-01-01T00:00:00Z"
-                      membership_uid: m-1
-                      start_date: "2023-01-01T00:00:00Z"
+                      status: Expired
+                      tier_name: Silver
+                    - end_date: "2025-01-01T00:00:00Z"
+                      membership_uid: m-2
+                      start_date: "2024-01-01T00:00:00Z"
                       status: Active
                       tier_name: Gold
                       tier_range: Gold Member
@@ -900,7 +865,7 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: In animi aspernatur.
+                    example: Harum in animi aspernatur id.
                 description: Distinct tier names in first appearance order
                 example:
                     - Silver
@@ -926,12 +891,11 @@ definitions:
                 - end_date: "2024-01-01T00:00:00Z"
                   membership_uid: m-1
                   start_date: "2023-01-01T00:00:00Z"
-                  status: Active
-                  tier_name: Gold
-                  tier_range: Gold Member
-                - end_date: "2024-01-01T00:00:00Z"
-                  membership_uid: m-1
-                  start_date: "2023-01-01T00:00:00Z"
+                  status: Expired
+                  tier_name: Silver
+                - end_date: "2025-01-01T00:00:00Z"
+                  membership_uid: m-2
+                  start_date: "2024-01-01T00:00:00Z"
                   status: Active
                   tier_name: Gold
                   tier_range: Gold Member
@@ -1045,11 +1009,11 @@ definitions:
             groups_complete:
                 type: boolean
                 description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
-                example: false
+                example: true
             has_more:
                 type: boolean
                 description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
-                example: true
+                example: false
             metric_complete:
                 type: boolean
                 description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
@@ -1126,6 +1090,12 @@ definitions:
                     description: a committee
                   id: "123"
                   type: committee
+                - data:
+                    id: "123"
+                    name: My committee
+                    description: a committee
+                  id: "123"
+                  type: committee
         required:
             - resources
     QuerySvcSuggestOrgsResponseBody:
@@ -1144,14 +1114,14 @@ definitions:
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
         example:
             suggestions:
-                - domain: linuxfoundation.org
-                  logo: https://example.com/logo.png
-                  name: Linux Foundation
-                - domain: linuxfoundation.org
-                  logo: https://example.com/logo.png
-                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation

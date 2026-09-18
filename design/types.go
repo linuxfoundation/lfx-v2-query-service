@@ -143,7 +143,24 @@ var MembershipTermSummary = dsl.Type("MembershipTermSummary", func() {
 	dsl.Attribute("statuses", dsl.ArrayOf(dsl.String), "Distinct statuses in first appearance order", func() {
 		dsl.Example([]string{"Expired", "Active"})
 	})
-	dsl.Attribute("terms", dsl.ArrayOf(MembershipTerm), "Membership records of this organization on this project, oldest first")
+	dsl.Attribute("terms", dsl.ArrayOf(MembershipTerm), "Membership records of this organization on this project, oldest first", func() {
+		// Declared so the schema example agrees with the term_count example
+		// above; Goa would otherwise synthesize an array of its own length.
+		dsl.Example([]dsl.Val{{
+			"membership_uid": "m-1",
+			"status":         "Expired",
+			"tier_name":      "Silver",
+			"start_date":     "2023-01-01T00:00:00Z",
+			"end_date":       "2024-01-01T00:00:00Z",
+		}, {
+			"membership_uid": "m-2",
+			"status":         "Active",
+			"tier_name":      "Gold",
+			"tier_range":     "Gold Member",
+			"start_date":     "2024-01-01T00:00:00Z",
+			"end_date":       "2025-01-01T00:00:00Z",
+		}})
+	})
 	dsl.Required("b2b_org_uid", "company_name", "project_uid", "project_slug", "term_count", "tier_names", "statuses", "terms")
 })
 

@@ -267,9 +267,6 @@ paths:
                                     - domain: linuxfoundation.org
                                       logo: https://example.com/logo.png
                                       name: Linux Foundation
-                                    - domain: linuxfoundation.org
-                                      logo: https://example.com/logo.png
-                                      name: Linux Foundation
                 "400":
                     description: 'BadRequest: Bad request'
                     content:
@@ -353,7 +350,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Consequatur ut est eum necessitatibus labore minima.
+                        example: Ut est eum necessitatibus labore minima.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -882,7 +879,7 @@ components:
                 complete:
                     type: boolean
                     description: True when every matching membership record was read; false when the read stopped at the record cap, with page_token when it can continue at the next organization
-                    example: false
+                    example: true
                 page_token:
                     type: string
                     description: Opaque token present when more summaries follow; pass it back with the same project_uid and b2b_org_uid to continue the read at the next organization
@@ -912,24 +909,11 @@ components:
                             - end_date: "2024-01-01T00:00:00Z"
                               membership_uid: m-1
                               start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
+                              status: Expired
+                              tier_name: Silver
+                            - end_date: "2025-01-01T00:00:00Z"
+                              membership_uid: m-2
+                              start_date: "2024-01-01T00:00:00Z"
                               status: Active
                               tier_name: Gold
                               tier_range: Gold Member
@@ -955,24 +939,11 @@ components:
                             - end_date: "2024-01-01T00:00:00Z"
                               membership_uid: m-1
                               start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
+                              status: Expired
+                              tier_name: Silver
+                            - end_date: "2025-01-01T00:00:00Z"
+                              membership_uid: m-2
+                              start_date: "2024-01-01T00:00:00Z"
                               status: Active
                               tier_name: Gold
                               tier_range: Gold Member
@@ -998,24 +969,11 @@ components:
                             - end_date: "2024-01-01T00:00:00Z"
                               membership_uid: m-1
                               start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
+                              status: Expired
+                              tier_name: Silver
+                            - end_date: "2025-01-01T00:00:00Z"
+                              membership_uid: m-2
+                              start_date: "2024-01-01T00:00:00Z"
                               status: Active
                               tier_name: Gold
                               tier_range: Gold Member
@@ -1072,7 +1030,7 @@ components:
                 complete:
                     type: boolean
                     description: True when every matching membership record was read; false when the read stopped at the record cap, with page_token when it can continue at the next organization
-                    example: false
+                    example: true
                 page_token:
                     type: string
                     description: Opaque token present when more summaries follow; pass it back with the same project_uid and b2b_org_uid to continue the read at the next organization
@@ -1102,18 +1060,11 @@ components:
                             - end_date: "2024-01-01T00:00:00Z"
                               membership_uid: m-1
                               start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
-                              status: Active
-                              tier_name: Gold
-                              tier_range: Gold Member
-                            - end_date: "2024-01-01T00:00:00Z"
-                              membership_uid: m-1
-                              start_date: "2023-01-01T00:00:00Z"
+                              status: Expired
+                              tier_name: Silver
+                            - end_date: "2025-01-01T00:00:00Z"
+                              membership_uid: m-2
+                              start_date: "2024-01-01T00:00:00Z"
                               status: Active
                               tier_name: Gold
                               tier_range: Gold Member
@@ -1139,18 +1090,71 @@ components:
                             - end_date: "2024-01-01T00:00:00Z"
                               membership_uid: m-1
                               start_date: "2023-01-01T00:00:00Z"
+                              status: Expired
+                              tier_name: Silver
+                            - end_date: "2025-01-01T00:00:00Z"
+                              membership_uid: m-2
+                              start_date: "2024-01-01T00:00:00Z"
                               status: Active
                               tier_name: Gold
                               tier_range: Gold Member
+                          tier_names:
+                            - Silver
+                            - Gold
+                        - b2b_org_uid: org-1
+                          company_name: Example Corp
+                          current_end: "2025-01-01T00:00:00Z"
+                          current_membership_uid: m-2
+                          current_start: "2024-01-01T00:00:00Z"
+                          current_status: Active
+                          current_tier_name: Gold
+                          first_start: "2023-01-01T00:00:00Z"
+                          last_end: "2025-01-01T00:00:00Z"
+                          project_slug: example-project
+                          project_uid: proj-1
+                          statuses:
+                            - Expired
+                            - Active
+                          term_count: 2
+                          terms:
                             - end_date: "2024-01-01T00:00:00Z"
                               membership_uid: m-1
                               start_date: "2023-01-01T00:00:00Z"
+                              status: Expired
+                              tier_name: Silver
+                            - end_date: "2025-01-01T00:00:00Z"
+                              membership_uid: m-2
+                              start_date: "2024-01-01T00:00:00Z"
                               status: Active
                               tier_name: Gold
                               tier_range: Gold Member
+                          tier_names:
+                            - Silver
+                            - Gold
+                        - b2b_org_uid: org-1
+                          company_name: Example Corp
+                          current_end: "2025-01-01T00:00:00Z"
+                          current_membership_uid: m-2
+                          current_start: "2024-01-01T00:00:00Z"
+                          current_status: Active
+                          current_tier_name: Gold
+                          first_start: "2023-01-01T00:00:00Z"
+                          last_end: "2025-01-01T00:00:00Z"
+                          project_slug: example-project
+                          project_uid: proj-1
+                          statuses:
+                            - Expired
+                            - Active
+                          term_count: 2
+                          terms:
                             - end_date: "2024-01-01T00:00:00Z"
                               membership_uid: m-1
                               start_date: "2023-01-01T00:00:00Z"
+                              status: Expired
+                              tier_name: Silver
+                            - end_date: "2025-01-01T00:00:00Z"
+                              membership_uid: m-2
+                              start_date: "2024-01-01T00:00:00Z"
                               status: Active
                               tier_name: Gold
                               tier_range: Gold Member
@@ -1290,7 +1294,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Doloribus voluptatem ipsa optio.
+                        example: Voluptatem nobis corporis aperiam.
                     description: Distinct statuses in first appearance order
                     example:
                         - Expired
@@ -1309,18 +1313,11 @@ components:
                         - end_date: "2024-01-01T00:00:00Z"
                           membership_uid: m-1
                           start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Active
-                          tier_name: Gold
-                          tier_range: Gold Member
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
+                          status: Expired
+                          tier_name: Silver
+                        - end_date: "2025-01-01T00:00:00Z"
+                          membership_uid: m-2
+                          start_date: "2024-01-01T00:00:00Z"
                           status: Active
                           tier_name: Gold
                           tier_range: Gold Member
@@ -1328,7 +1325,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Ipsam et ullam.
+                        example: Sequi doloribus voluptatem ipsa.
                     description: Distinct tier names in first appearance order
                     example:
                         - Silver
@@ -1354,12 +1351,11 @@ components:
                     - end_date: "2024-01-01T00:00:00Z"
                       membership_uid: m-1
                       start_date: "2023-01-01T00:00:00Z"
-                      status: Active
-                      tier_name: Gold
-                      tier_range: Gold Member
-                    - end_date: "2024-01-01T00:00:00Z"
-                      membership_uid: m-1
-                      start_date: "2023-01-01T00:00:00Z"
+                      status: Expired
+                      tier_name: Silver
+                    - end_date: "2025-01-01T00:00:00Z"
+                      membership_uid: m-2
+                      start_date: "2024-01-01T00:00:00Z"
                       status: Active
                       tier_name: Gold
                       tier_range: Gold Member
@@ -1469,11 +1465,11 @@ components:
                 groups_complete:
                     type: boolean
                     description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
-                    example: true
+                    example: false
                 has_more:
                     type: boolean
                     description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
-                    example: false
+                    example: true
                 metric_complete:
                     type: boolean
                     description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
@@ -1504,12 +1500,6 @@ components:
                         $ref: '#/components/schemas/Resource'
                     description: Resources found
                     example:
-                        - data:
-                            id: "123"
-                            name: My committee
-                            description: a committee
-                          id: "123"
-                          type: committee
                         - data:
                             id: "123"
                             name: My committee
@@ -1634,6 +1624,9 @@ components:
                           name: Linux Foundation
             example:
                 suggestions:
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
