@@ -15,23 +15,25 @@ import (
 
 // Client is the "query-svc" service client.
 type Client struct {
-	QueryResourcesEndpoint      goa.Endpoint
-	QueryResourcesCountEndpoint goa.Endpoint
-	QueryOrgsEndpoint           goa.Endpoint
-	SuggestOrgsEndpoint         goa.Endpoint
-	ReadyzEndpoint              goa.Endpoint
-	LivezEndpoint               goa.Endpoint
+	QueryResourcesEndpoint         goa.Endpoint
+	QueryResourcesCountEndpoint    goa.Endpoint
+	QueryMembershipSummaryEndpoint goa.Endpoint
+	QueryOrgsEndpoint              goa.Endpoint
+	SuggestOrgsEndpoint            goa.Endpoint
+	ReadyzEndpoint                 goa.Endpoint
+	LivezEndpoint                  goa.Endpoint
 }
 
 // NewClient initializes a "query-svc" service client given the endpoints.
-func NewClient(queryResources, queryResourcesCount, queryOrgs, suggestOrgs, readyz, livez goa.Endpoint) *Client {
+func NewClient(queryResources, queryResourcesCount, queryMembershipSummary, queryOrgs, suggestOrgs, readyz, livez goa.Endpoint) *Client {
 	return &Client{
-		QueryResourcesEndpoint:      queryResources,
-		QueryResourcesCountEndpoint: queryResourcesCount,
-		QueryOrgsEndpoint:           queryOrgs,
-		SuggestOrgsEndpoint:         suggestOrgs,
-		ReadyzEndpoint:              readyz,
-		LivezEndpoint:               livez,
+		QueryResourcesEndpoint:         queryResources,
+		QueryResourcesCountEndpoint:    queryResourcesCount,
+		QueryMembershipSummaryEndpoint: queryMembershipSummary,
+		QueryOrgsEndpoint:              queryOrgs,
+		SuggestOrgsEndpoint:            suggestOrgs,
+		ReadyzEndpoint:                 readyz,
+		LivezEndpoint:                  livez,
 	}
 }
 
@@ -67,6 +69,23 @@ func (c *Client) QueryResourcesCount(ctx context.Context, p *QueryResourcesCount
 		return
 	}
 	return ires.(*QueryResourcesCountResult), nil
+}
+
+// QueryMembershipSummary calls the "query-membership-summary" endpoint of the
+// "query-svc" service.
+// QueryMembershipSummary may return the following errors:
+//   - "BadRequest" (type *BadRequestError): Bad request
+//   - "NotFound" (type *NotFoundError): Not found
+//   - "InternalServerError" (type *InternalServerError): Internal server error
+//   - "ServiceUnavailable" (type *ServiceUnavailableError): Service unavailable
+//   - error: internal error
+func (c *Client) QueryMembershipSummary(ctx context.Context, p *QueryMembershipSummaryPayload) (res *MembershipSummaryResult, err error) {
+	var ires any
+	ires, err = c.QueryMembershipSummaryEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*MembershipSummaryResult), nil
 }
 
 // QueryOrgs calls the "query-orgs" endpoint of the "query-svc" service.

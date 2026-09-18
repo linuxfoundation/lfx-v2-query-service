@@ -97,6 +97,15 @@ func (s *querySvcsrvc) QueryResourcesCount(ctx context.Context, p *querysvc.Quer
 	return s.domainCountResultToResponse(result), nil
 }
 
+// QueryMembershipSummary summarizes the membership records of an organization,
+// a project, or both, into one summary per organization and project.
+func (s *querySvcsrvc) QueryMembershipSummary(ctx context.Context, _ *querysvc.QueryMembershipSummaryPayload) (*querysvc.MembershipSummaryResult, error) {
+
+	slog.DebugContext(ctx, "querySvc.query-membership-summary")
+
+	return nil, wrapError(ctx, errors.NewUnexpected("not implemented"))
+}
+
 // Locate a single organization by name or domain.
 func (s *querySvcsrvc) QueryOrgs(ctx context.Context, p *querysvc.QueryOrgsPayload) (res *querysvc.Organization, err error) {
 

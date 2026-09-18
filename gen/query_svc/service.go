@@ -21,6 +21,9 @@ type Service interface {
 	QueryResources(context.Context, *QueryResourcesPayload) (res *QueryResourcesResult, err error)
 	// Count matching resources by query.
 	QueryResourcesCount(context.Context, *QueryResourcesCountPayload) (res *QueryResourcesCountResult, err error)
+	// Summarize the membership records of an organization, a project, or both,
+	// into one summary per organization and project.
+	QueryMembershipSummary(context.Context, *QueryMembershipSummaryPayload) (res *MembershipSummaryResult, err error)
 	// Locate a single organization by name or domain.
 	QueryOrgs(context.Context, *QueryOrgsPayload) (res *Organization, err error)
 	// Get organization suggestions for typeahead search based on a query.
@@ -51,7 +54,7 @@ const ServiceName = "query-svc"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [6]string{"query-resources", "query-resources-count", "query-orgs", "suggest-orgs", "readyz", "livez"}
+var MethodNames = [7]string{"query-resources", "query-resources-count", "query-membership-summary", "query-orgs", "suggest-orgs", "readyz", "livez"}
 
 type BadRequestError struct {
 	// Error message
@@ -69,6 +72,84 @@ type CountGroup struct {
 type InternalServerError struct {
 	// Error message
 	Message string
+}
+
+// MembershipSummaryResult is the result type of the query-svc service
+// query-membership-summary method.
+type MembershipSummaryResult struct {
+	// Summaries ordered by organization name, project slug, organization UID and
+	// project UID; a read that stops at the record cap and can continue holds only
+	// the organizations it read whole, while a read that stopped inside a single
+	// organization holds that organization as far as it was read
+	Summaries []*MembershipTermSummary
+	// Number of membership records folded into the summaries
+	TermsTotal uint64
+	// True when every matching membership record was read; false when the read
+	// stopped at the record cap, with page_token when it can continue at the next
+	// organization
+	Complete bool
+	// Opaque token present when more summaries follow; pass it back with the same
+	// project_uid and b2b_org_uid to continue the read at the next organization
+	PageToken *string
+	// Cache control header
+	CacheControl *string
+}
+
+// One membership record of an organization on a project.
+type MembershipTerm struct {
+	// Membership record UID
+	MembershipUID string
+	// Membership status as stored on the record
+	Status string
+	// Membership tier name as stored on the record
+	TierName string
+	// Membership tier range as stored on the record; omitted when the record has
+	// none
+	TierRange *string
+	// Start date of the membership record; omitted when the record carries none
+	StartDate *string
+	// End date of the membership record; omitted when the record carries none
+	EndDate *string
+}
+
+// Membership history of one organization on one project, folded from the
+// membership records.
+type MembershipTermSummary struct {
+	// Organization UID; empty when the records carry no organization UID
+	B2bOrgUID string
+	// Organization name as stored on the current record
+	CompanyName string
+	// Project UID; empty when the records carry no project UID
+	ProjectUID string
+	// Project slug as stored on the current record
+	ProjectSlug string
+	// Number of membership records folded into this summary
+	TermCount uint64
+	// Earliest start date across the records; omitted when no record has one
+	FirstStart *string
+	// Latest end date across the records; omitted when no record has one
+	LastEnd *string
+	// Status of the current record; omitted when there is no current record or the
+	// current record carries none
+	CurrentStatus *string
+	// Tier name of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentTierName *string
+	// Start date of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentStart *string
+	// End date of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentEnd *string
+	// UID of the current record; omitted when there is no current record or the
+	// current record carries none
+	CurrentMembershipUID *string
+	// Distinct tier names in first appearance order
+	TierNames []string
+	// Distinct statuses in first appearance order
+	Statuses []string
+	// Membership records of this organization on this project, oldest first
+	Terms []*MembershipTerm
 }
 
 type NotFoundError struct {
@@ -98,6 +179,26 @@ type OrganizationSuggestion struct {
 	Domain string
 	// Organization logo URL
 	Logo *string
+}
+
+// QueryMembershipSummaryPayload is the payload type of the query-svc service
+// query-membership-summary method.
+type QueryMembershipSummaryPayload struct {
+	// JWT token issued by Heimdall
+	BearerToken string
+	// Version of the API
+	Version string
+	// Project UID to summarize; at least one of project_uid and b2b_org_uid is
+	// required, both restrict the read to the memberships of that organization on
+	// that project
+	ProjectUID *string
+	// Organization UID to summarize; at least one of project_uid and b2b_org_uid
+	// is required, both restrict the read to the memberships of that organization
+	// on that project
+	B2bOrgUID *string
+	// Opaque token from a previous summary response with the same project_uid and
+	// b2b_org_uid; continues that read at the organization it stopped before
+	PageToken *string
 }
 
 // QueryOrgsPayload is the payload type of the query-svc service query-orgs

@@ -22,7 +22,7 @@ import (
 //
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
-	return `query-svc (query-resources|query-resources-count|query-orgs|suggest-orgs|readyz|livez)
+	return `query-svc (query-resources|query-resources-count|query-membership-summary|query-orgs|suggest-orgs|readyz|livez)
 `
 }
 
@@ -97,6 +97,13 @@ func ParseEndpoint(
 		querySvcQueryResourcesCountMetricFlag      = querySvcQueryResourcesCountFlags.String("metric", "", "")
 		querySvcQueryResourcesCountBearerTokenFlag = querySvcQueryResourcesCountFlags.String("bearer-token", "REQUIRED", "")
 
+		querySvcQueryMembershipSummaryFlags           = flag.NewFlagSet("query-membership-summary", flag.ExitOnError)
+		querySvcQueryMembershipSummaryVersionFlag     = querySvcQueryMembershipSummaryFlags.String("version", "REQUIRED", "")
+		querySvcQueryMembershipSummaryProjectUIDFlag  = querySvcQueryMembershipSummaryFlags.String("project-uid", "", "")
+		querySvcQueryMembershipSummaryB2bOrgUIDFlag   = querySvcQueryMembershipSummaryFlags.String("b2b-org-uid", "", "")
+		querySvcQueryMembershipSummaryPageTokenFlag   = querySvcQueryMembershipSummaryFlags.String("page-token", "", "")
+		querySvcQueryMembershipSummaryBearerTokenFlag = querySvcQueryMembershipSummaryFlags.String("bearer-token", "REQUIRED", "")
+
 		querySvcQueryOrgsFlags           = flag.NewFlagSet("query-orgs", flag.ExitOnError)
 		querySvcQueryOrgsVersionFlag     = querySvcQueryOrgsFlags.String("version", "REQUIRED", "")
 		querySvcQueryOrgsNameFlag        = querySvcQueryOrgsFlags.String("name", "", "")
@@ -115,6 +122,7 @@ func ParseEndpoint(
 	querySvcFlags.Usage = querySvcUsage
 	querySvcQueryResourcesFlags.Usage = querySvcQueryResourcesUsage
 	querySvcQueryResourcesCountFlags.Usage = querySvcQueryResourcesCountUsage
+	querySvcQueryMembershipSummaryFlags.Usage = querySvcQueryMembershipSummaryUsage
 	querySvcQueryOrgsFlags.Usage = querySvcQueryOrgsUsage
 	querySvcSuggestOrgsFlags.Usage = querySvcSuggestOrgsUsage
 	querySvcReadyzFlags.Usage = querySvcReadyzUsage
@@ -160,6 +168,9 @@ func ParseEndpoint(
 			case "query-resources-count":
 				epf = querySvcQueryResourcesCountFlags
 
+			case "query-membership-summary":
+				epf = querySvcQueryMembershipSummaryFlags
+
 			case "query-orgs":
 				epf = querySvcQueryOrgsFlags
 
@@ -203,6 +214,9 @@ func ParseEndpoint(
 			case "query-resources-count":
 				endpoint = c.QueryResourcesCount()
 				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountFiltersAllFlag, *querySvcQueryResourcesCountFiltersOrFlag, *querySvcQueryResourcesCountGroupByFlag, *querySvcQueryResourcesCountGroupBySizeFlag, *querySvcQueryResourcesCountMetricFlag, *querySvcQueryResourcesCountBearerTokenFlag)
+			case "query-membership-summary":
+				endpoint = c.QueryMembershipSummary()
+				data, err = querysvcc.BuildQueryMembershipSummaryPayload(*querySvcQueryMembershipSummaryVersionFlag, *querySvcQueryMembershipSummaryProjectUIDFlag, *querySvcQueryMembershipSummaryB2bOrgUIDFlag, *querySvcQueryMembershipSummaryPageTokenFlag, *querySvcQueryMembershipSummaryBearerTokenFlag)
 			case "query-orgs":
 				endpoint = c.QueryOrgs()
 				data, err = querysvcc.BuildQueryOrgsPayload(*querySvcQueryOrgsVersionFlag, *querySvcQueryOrgsNameFlag, *querySvcQueryOrgsDomainFlag, *querySvcQueryOrgsBearerTokenFlag)
@@ -233,6 +247,7 @@ Usage:
 COMMAND:
     query-resources: Locate resources by their type or parent, or use typeahead search to query resources by a display name or similar alias.
     query-resources-count: Count matching resources by query.
+    query-membership-summary: Summarize the membership records of an organization, a project, or both, into one summary per organization and project.
     query-orgs: Locate a single organization by name or domain.
     suggest-orgs: Get organization suggestions for typeahead search based on a query.
     readyz: Check if the service is able to take inbound requests.
@@ -323,6 +338,21 @@ Example:
       "mailing_list_id:abc",
       "mailing_list_id:xyz"
    ]' --group-by "project_uid" --group-by-size 100 --metric "" --bearer-token "eyJhbGci..."
+`, os.Args[0])
+}
+
+func querySvcQueryMembershipSummaryUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-membership-summary -version STRING -project-uid STRING -b2b-org-uid STRING -page-token STRING -bearer-token STRING
+
+Summarize the membership records of an organization, a project, or both, into one summary per organization and project.
+    -version STRING: 
+    -project-uid STRING: 
+    -b2b-org-uid STRING: 
+    -page-token STRING: 
+    -bearer-token STRING: 
+
+Example:
+    %[1]s query-svc query-membership-summary --version "1" --project-uid "proj-1" --b2b-org-uid "org-1" --page-token "****" --bearer-token "eyJhbGci..."
 `, os.Args[0])
 }
 

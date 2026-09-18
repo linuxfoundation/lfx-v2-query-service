@@ -45,6 +45,25 @@ type QueryResourcesCountResponseBody struct {
 	MetricComplete *bool `form:"metric_complete,omitempty" json:"metric_complete,omitempty" xml:"metric_complete,omitempty"`
 }
 
+// QueryMembershipSummaryResponseBody is the type of the "query-svc" service
+// "query-membership-summary" endpoint HTTP response body.
+type QueryMembershipSummaryResponseBody struct {
+	// Summaries ordered by organization name, project slug, organization UID and
+	// project UID; a read that stops at the record cap and can continue holds only
+	// the organizations it read whole, while a read that stopped inside a single
+	// organization holds that organization as far as it was read
+	Summaries []*MembershipTermSummaryResponseBody `form:"summaries,omitempty" json:"summaries,omitempty" xml:"summaries,omitempty"`
+	// Number of membership records folded into the summaries
+	TermsTotal *uint64 `form:"terms_total,omitempty" json:"terms_total,omitempty" xml:"terms_total,omitempty"`
+	// True when every matching membership record was read; false when the read
+	// stopped at the record cap, with page_token when it can continue at the next
+	// organization
+	Complete *bool `form:"complete,omitempty" json:"complete,omitempty" xml:"complete,omitempty"`
+	// Opaque token present when more summaries follow; pass it back with the same
+	// project_uid and b2b_org_uid to continue the read at the next organization
+	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
+}
+
 // QueryOrgsResponseBody is the type of the "query-svc" service "query-orgs"
 // endpoint HTTP response body.
 type QueryOrgsResponseBody struct {
@@ -110,6 +129,30 @@ type QueryResourcesCountInternalServerErrorResponseBody struct {
 // "query-svc" service "query-resources-count" endpoint HTTP response body for
 // the "ServiceUnavailable" error.
 type QueryResourcesCountServiceUnavailableResponseBody struct {
+	// Error message
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryMembershipSummaryBadRequestResponseBody is the type of the "query-svc"
+// service "query-membership-summary" endpoint HTTP response body for the
+// "BadRequest" error.
+type QueryMembershipSummaryBadRequestResponseBody struct {
+	// Error message
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryMembershipSummaryInternalServerErrorResponseBody is the type of the
+// "query-svc" service "query-membership-summary" endpoint HTTP response body
+// for the "InternalServerError" error.
+type QueryMembershipSummaryInternalServerErrorResponseBody struct {
+	// Error message
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryMembershipSummaryServiceUnavailableResponseBody is the type of the
+// "query-svc" service "query-membership-summary" endpoint HTTP response body
+// for the "ServiceUnavailable" error.
+type QueryMembershipSummaryServiceUnavailableResponseBody struct {
 	// Error message
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -201,6 +244,63 @@ type CountGroupResponseBody struct {
 	Key *string `form:"key,omitempty" json:"key,omitempty" xml:"key,omitempty"`
 	// Number of authorized resources in the group
 	Count *uint64 `form:"count,omitempty" json:"count,omitempty" xml:"count,omitempty"`
+}
+
+// MembershipTermSummaryResponseBody is used to define fields on response body
+// types.
+type MembershipTermSummaryResponseBody struct {
+	// Organization UID; empty when the records carry no organization UID
+	B2bOrgUID *string `form:"b2b_org_uid,omitempty" json:"b2b_org_uid,omitempty" xml:"b2b_org_uid,omitempty"`
+	// Organization name as stored on the current record
+	CompanyName *string `form:"company_name,omitempty" json:"company_name,omitempty" xml:"company_name,omitempty"`
+	// Project UID; empty when the records carry no project UID
+	ProjectUID *string `form:"project_uid,omitempty" json:"project_uid,omitempty" xml:"project_uid,omitempty"`
+	// Project slug as stored on the current record
+	ProjectSlug *string `form:"project_slug,omitempty" json:"project_slug,omitempty" xml:"project_slug,omitempty"`
+	// Number of membership records folded into this summary
+	TermCount *uint64 `form:"term_count,omitempty" json:"term_count,omitempty" xml:"term_count,omitempty"`
+	// Earliest start date across the records; omitted when no record has one
+	FirstStart *string `form:"first_start,omitempty" json:"first_start,omitempty" xml:"first_start,omitempty"`
+	// Latest end date across the records; omitted when no record has one
+	LastEnd *string `form:"last_end,omitempty" json:"last_end,omitempty" xml:"last_end,omitempty"`
+	// Status of the current record; omitted when there is no current record or the
+	// current record carries none
+	CurrentStatus *string `form:"current_status,omitempty" json:"current_status,omitempty" xml:"current_status,omitempty"`
+	// Tier name of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentTierName *string `form:"current_tier_name,omitempty" json:"current_tier_name,omitempty" xml:"current_tier_name,omitempty"`
+	// Start date of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentStart *string `form:"current_start,omitempty" json:"current_start,omitempty" xml:"current_start,omitempty"`
+	// End date of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentEnd *string `form:"current_end,omitempty" json:"current_end,omitempty" xml:"current_end,omitempty"`
+	// UID of the current record; omitted when there is no current record or the
+	// current record carries none
+	CurrentMembershipUID *string `form:"current_membership_uid,omitempty" json:"current_membership_uid,omitempty" xml:"current_membership_uid,omitempty"`
+	// Distinct tier names in first appearance order
+	TierNames []string `form:"tier_names,omitempty" json:"tier_names,omitempty" xml:"tier_names,omitempty"`
+	// Distinct statuses in first appearance order
+	Statuses []string `form:"statuses,omitempty" json:"statuses,omitempty" xml:"statuses,omitempty"`
+	// Membership records of this organization on this project, oldest first
+	Terms []*MembershipTermResponseBody `form:"terms,omitempty" json:"terms,omitempty" xml:"terms,omitempty"`
+}
+
+// MembershipTermResponseBody is used to define fields on response body types.
+type MembershipTermResponseBody struct {
+	// Membership record UID
+	MembershipUID *string `form:"membership_uid,omitempty" json:"membership_uid,omitempty" xml:"membership_uid,omitempty"`
+	// Membership status as stored on the record
+	Status *string `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
+	// Membership tier name as stored on the record
+	TierName *string `form:"tier_name,omitempty" json:"tier_name,omitempty" xml:"tier_name,omitempty"`
+	// Membership tier range as stored on the record; omitted when the record has
+	// none
+	TierRange *string `form:"tier_range,omitempty" json:"tier_range,omitempty" xml:"tier_range,omitempty"`
+	// Start date of the membership record; omitted when the record carries none
+	StartDate *string `form:"start_date,omitempty" json:"start_date,omitempty" xml:"start_date,omitempty"`
+	// End date of the membership record; omitted when the record carries none
+	EndDate *string `form:"end_date,omitempty" json:"end_date,omitempty" xml:"end_date,omitempty"`
 }
 
 // OrganizationSuggestionResponseBody is used to define fields on response body
@@ -304,6 +404,53 @@ func NewQueryResourcesCountInternalServerError(body *QueryResourcesCountInternal
 // NewQueryResourcesCountServiceUnavailable builds a query-svc service
 // query-resources-count endpoint ServiceUnavailable error.
 func NewQueryResourcesCountServiceUnavailable(body *QueryResourcesCountServiceUnavailableResponseBody) *querysvc.ServiceUnavailableError {
+	v := &querysvc.ServiceUnavailableError{
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewQueryMembershipSummaryMembershipSummaryResultOK builds a "query-svc"
+// service "query-membership-summary" endpoint result from a HTTP "OK" response.
+func NewQueryMembershipSummaryMembershipSummaryResultOK(body *QueryMembershipSummaryResponseBody, cacheControl *string) *querysvc.MembershipSummaryResult {
+	v := &querysvc.MembershipSummaryResult{
+		TermsTotal: *body.TermsTotal,
+		Complete:   *body.Complete,
+		PageToken:  body.PageToken,
+	}
+	v.Summaries = make([]*querysvc.MembershipTermSummary, len(body.Summaries))
+	for i, val := range body.Summaries {
+		v.Summaries[i] = unmarshalMembershipTermSummaryResponseBodyToQuerysvcMembershipTermSummary(val)
+	}
+	v.CacheControl = cacheControl
+
+	return v
+}
+
+// NewQueryMembershipSummaryBadRequest builds a query-svc service
+// query-membership-summary endpoint BadRequest error.
+func NewQueryMembershipSummaryBadRequest(body *QueryMembershipSummaryBadRequestResponseBody) *querysvc.BadRequestError {
+	v := &querysvc.BadRequestError{
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewQueryMembershipSummaryInternalServerError builds a query-svc service
+// query-membership-summary endpoint InternalServerError error.
+func NewQueryMembershipSummaryInternalServerError(body *QueryMembershipSummaryInternalServerErrorResponseBody) *querysvc.InternalServerError {
+	v := &querysvc.InternalServerError{
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewQueryMembershipSummaryServiceUnavailable builds a query-svc service
+// query-membership-summary endpoint ServiceUnavailable error.
+func NewQueryMembershipSummaryServiceUnavailable(body *QueryMembershipSummaryServiceUnavailableResponseBody) *querysvc.ServiceUnavailableError {
 	v := &querysvc.ServiceUnavailableError{
 		Message: *body.Message,
 	}
@@ -449,6 +596,28 @@ func ValidateQueryResourcesCountResponseBody(body *QueryResourcesCountResponseBo
 	return
 }
 
+// ValidateQueryMembershipSummaryResponseBody runs the validations defined on
+// Query-Membership-SummaryResponseBody
+func ValidateQueryMembershipSummaryResponseBody(body *QueryMembershipSummaryResponseBody) (err error) {
+	if body.Summaries == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("summaries", "body"))
+	}
+	if body.TermsTotal == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("terms_total", "body"))
+	}
+	if body.Complete == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("complete", "body"))
+	}
+	for _, e := range body.Summaries {
+		if e != nil {
+			if err2 := ValidateMembershipTermSummaryResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+	}
+	return
+}
+
 // ValidateSuggestOrgsResponseBody runs the validations defined on
 // Suggest-OrgsResponseBody
 func ValidateSuggestOrgsResponseBody(body *SuggestOrgsResponseBody) (err error) {
@@ -514,6 +683,35 @@ func ValidateQueryResourcesCountInternalServerErrorResponseBody(body *QueryResou
 // ValidateQueryResourcesCountServiceUnavailableResponseBody runs the
 // validations defined on query-resources-count_ServiceUnavailable_response_body
 func ValidateQueryResourcesCountServiceUnavailableResponseBody(body *QueryResourcesCountServiceUnavailableResponseBody) (err error) {
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryMembershipSummaryBadRequestResponseBody runs the validations
+// defined on query-membership-summary_BadRequest_response_body
+func ValidateQueryMembershipSummaryBadRequestResponseBody(body *QueryMembershipSummaryBadRequestResponseBody) (err error) {
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryMembershipSummaryInternalServerErrorResponseBody runs the
+// validations defined on
+// query-membership-summary_InternalServerError_response_body
+func ValidateQueryMembershipSummaryInternalServerErrorResponseBody(body *QueryMembershipSummaryInternalServerErrorResponseBody) (err error) {
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryMembershipSummaryServiceUnavailableResponseBody runs the
+// validations defined on
+// query-membership-summary_ServiceUnavailable_response_body
+func ValidateQueryMembershipSummaryServiceUnavailableResponseBody(body *QueryMembershipSummaryServiceUnavailableResponseBody) (err error) {
 	if body.Message == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
 	}
@@ -615,6 +813,58 @@ func ValidateCountGroupResponseBody(body *CountGroupResponseBody) (err error) {
 	}
 	if body.Count == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("count", "body"))
+	}
+	return
+}
+
+// ValidateMembershipTermSummaryResponseBody runs the validations defined on
+// MembershipTermSummaryResponseBody
+func ValidateMembershipTermSummaryResponseBody(body *MembershipTermSummaryResponseBody) (err error) {
+	if body.B2bOrgUID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("b2b_org_uid", "body"))
+	}
+	if body.CompanyName == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("company_name", "body"))
+	}
+	if body.ProjectUID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("project_uid", "body"))
+	}
+	if body.ProjectSlug == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("project_slug", "body"))
+	}
+	if body.TermCount == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("term_count", "body"))
+	}
+	if body.TierNames == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("tier_names", "body"))
+	}
+	if body.Statuses == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("statuses", "body"))
+	}
+	if body.Terms == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("terms", "body"))
+	}
+	for _, e := range body.Terms {
+		if e != nil {
+			if err2 := ValidateMembershipTermResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+	}
+	return
+}
+
+// ValidateMembershipTermResponseBody runs the validations defined on
+// MembershipTermResponseBody
+func ValidateMembershipTermResponseBody(body *MembershipTermResponseBody) (err error) {
+	if body.MembershipUID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("membership_uid", "body"))
+	}
+	if body.Status == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
+	}
+	if body.TierName == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("tier_name", "body"))
 	}
 	return
 }

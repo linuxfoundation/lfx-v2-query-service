@@ -71,6 +71,135 @@ var CountGroup = dsl.Type("CountGroup", func() {
 	dsl.Required("key", "count")
 })
 
+// MembershipTerm is one membership record of an organization on a project.
+var MembershipTerm = dsl.Type("MembershipTerm", func() {
+	dsl.Description("One membership record of an organization on a project.")
+
+	dsl.Attribute("membership_uid", dsl.String, "Membership record UID", func() {
+		dsl.Example("m-1")
+	})
+	dsl.Attribute("status", dsl.String, "Membership status as stored on the record", func() {
+		dsl.Example("Active")
+	})
+	dsl.Attribute("tier_name", dsl.String, "Membership tier name as stored on the record", func() {
+		dsl.Example("Gold")
+	})
+	dsl.Attribute("tier_range", dsl.String, "Membership tier range as stored on the record; omitted when the record has none", func() {
+		dsl.Example("Gold Member")
+	})
+	dsl.Attribute("start_date", dsl.String, "Start date of the membership record; omitted when the record carries none", func() {
+		dsl.Example("2023-01-01T00:00:00Z")
+	})
+	dsl.Attribute("end_date", dsl.String, "End date of the membership record; omitted when the record carries none", func() {
+		dsl.Example("2024-01-01T00:00:00Z")
+	})
+	dsl.Required("membership_uid", "status", "tier_name")
+})
+
+// MembershipTermSummary is the folded membership history of one organization
+// on one project.
+var MembershipTermSummary = dsl.Type("MembershipTermSummary", func() {
+	dsl.Description("Membership history of one organization on one project, folded from the membership records.")
+
+	dsl.Attribute("b2b_org_uid", dsl.String, "Organization UID; empty when the records carry no organization UID", func() {
+		dsl.Example("org-1")
+	})
+	dsl.Attribute("company_name", dsl.String, "Organization name as stored on the current record", func() {
+		dsl.Example("Example Corp")
+	})
+	dsl.Attribute("project_uid", dsl.String, "Project UID; empty when the records carry no project UID", func() {
+		dsl.Example("proj-1")
+	})
+	dsl.Attribute("project_slug", dsl.String, "Project slug as stored on the current record", func() {
+		dsl.Example("example-project")
+	})
+	dsl.Attribute("term_count", dsl.UInt64, "Number of membership records folded into this summary", func() {
+		dsl.Example(2)
+	})
+	dsl.Attribute("first_start", dsl.String, "Earliest start date across the records; omitted when no record has one", func() {
+		dsl.Example("2023-01-01T00:00:00Z")
+	})
+	dsl.Attribute("last_end", dsl.String, "Latest end date across the records; omitted when no record has one", func() {
+		dsl.Example("2025-01-01T00:00:00Z")
+	})
+	dsl.Attribute("current_status", dsl.String, "Status of the current record; omitted when there is no current record or the current record carries none", func() {
+		dsl.Example("Active")
+	})
+	dsl.Attribute("current_tier_name", dsl.String, "Tier name of the current record; omitted when there is no current record or the current record carries none", func() {
+		dsl.Example("Gold")
+	})
+	dsl.Attribute("current_start", dsl.String, "Start date of the current record; omitted when there is no current record or the current record carries none", func() {
+		dsl.Example("2024-01-01T00:00:00Z")
+	})
+	dsl.Attribute("current_end", dsl.String, "End date of the current record; omitted when there is no current record or the current record carries none", func() {
+		dsl.Example("2025-01-01T00:00:00Z")
+	})
+	dsl.Attribute("current_membership_uid", dsl.String, "UID of the current record; omitted when there is no current record or the current record carries none", func() {
+		dsl.Example("m-2")
+	})
+	dsl.Attribute("tier_names", dsl.ArrayOf(dsl.String), "Distinct tier names in first appearance order", func() {
+		dsl.Example([]string{"Silver", "Gold"})
+	})
+	dsl.Attribute("statuses", dsl.ArrayOf(dsl.String), "Distinct statuses in first appearance order", func() {
+		dsl.Example([]string{"Expired", "Active"})
+	})
+	dsl.Attribute("terms", dsl.ArrayOf(MembershipTerm), "Membership records of this organization on this project, oldest first")
+	dsl.Required("b2b_org_uid", "company_name", "project_uid", "project_slug", "term_count", "tier_names", "statuses", "terms")
+})
+
+// MembershipSummaryResult is the result of a membership term summary read.
+var MembershipSummaryResult = dsl.Type("MembershipSummaryResult", func() {
+	dsl.Description("Membership term summaries, one per organization and project.")
+
+	dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that stopped inside a single organization holds that organization as far as it was read")
+	// Goa renders UInt64 as int64 in OpenAPI; keep scalar samples in range.
+	dsl.Attribute("terms_total", dsl.UInt64, "Number of membership records folded into the summaries", func() {
+		dsl.Example(2)
+	})
+	dsl.Attribute("complete", dsl.Boolean, "True when every matching membership record was read; false when the read stopped at the record cap, with page_token when it can continue at the next organization")
+	dsl.Attribute("page_token", dsl.String, "Opaque token present when more summaries follow; pass it back with the same project_uid and b2b_org_uid to continue the read at the next organization", func() {
+		dsl.Example("****")
+	})
+	dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
+		dsl.Example("public, max-age=300")
+	})
+	dsl.Required("summaries", "terms_total", "complete")
+	dsl.Example("summary", dsl.Val{
+		"summaries": []dsl.Val{{
+			"b2b_org_uid":            "org-1",
+			"company_name":           "Example Corp",
+			"project_uid":            "proj-1",
+			"project_slug":           "example-project",
+			"term_count":             2,
+			"first_start":            "2023-01-01T00:00:00Z",
+			"last_end":               "2025-01-01T00:00:00Z",
+			"current_status":         "Active",
+			"current_tier_name":      "Gold",
+			"current_start":          "2024-01-01T00:00:00Z",
+			"current_end":            "2025-01-01T00:00:00Z",
+			"current_membership_uid": "m-2",
+			"tier_names":             []string{"Silver", "Gold"},
+			"statuses":               []string{"Expired", "Active"},
+			"terms": []dsl.Val{{
+				"membership_uid": "m-1",
+				"status":         "Expired",
+				"tier_name":      "Silver",
+				"start_date":     "2023-01-01T00:00:00Z",
+				"end_date":       "2024-01-01T00:00:00Z",
+			}, {
+				"membership_uid": "m-2",
+				"status":         "Active",
+				"tier_name":      "Gold",
+				"tier_range":     "Gold Member",
+				"start_date":     "2024-01-01T00:00:00Z",
+				"end_date":       "2025-01-01T00:00:00Z",
+			}},
+		}},
+		"terms_total": 2,
+		"complete":    true,
+	})
+})
+
 // BadRequestError is the DSL type for a bad request error.
 var BadRequestError = dsl.Type("BadRequestError", func() {
 	dsl.Attribute("message", dsl.String, "Error message", func() {

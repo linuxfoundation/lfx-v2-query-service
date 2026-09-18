@@ -425,6 +425,136 @@ func EncodeQueryResourcesCountError(encoder func(context.Context, http.ResponseW
 	}
 }
 
+// EncodeQueryMembershipSummaryResponse returns an encoder for responses
+// returned by the query-svc query-membership-summary endpoint.
+func EncodeQueryMembershipSummaryResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*querysvc.MembershipSummaryResult)
+		enc := encoder(ctx, w)
+		body := NewQueryMembershipSummaryResponseBody(res)
+		if res.CacheControl != nil {
+			w.Header().Set("Cache-Control", *res.CacheControl)
+		}
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeQueryMembershipSummaryRequest returns a decoder for requests sent to
+// the query-svc query-membership-summary endpoint.
+func DecodeQueryMembershipSummaryRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+	return func(r *http.Request) (any, error) {
+		var (
+			version     string
+			projectUID  *string
+			b2bOrgUID   *string
+			pageToken   *string
+			bearerToken string
+			err         error
+		)
+		qp := r.URL.Query()
+		version = qp.Get("v")
+		if version == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("version", "query string"))
+		}
+		if !(version == "1") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("version", version, []any{"1"}))
+		}
+		projectUIDRaw := qp.Get("project_uid")
+		if projectUIDRaw != "" {
+			projectUID = &projectUIDRaw
+		}
+		if projectUID != nil {
+			if utf8.RuneCountInString(*projectUID) < 1 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("project_uid", *projectUID, utf8.RuneCountInString(*projectUID), 1, true))
+			}
+		}
+		b2bOrgUIDRaw := qp.Get("b2b_org_uid")
+		if b2bOrgUIDRaw != "" {
+			b2bOrgUID = &b2bOrgUIDRaw
+		}
+		if b2bOrgUID != nil {
+			if utf8.RuneCountInString(*b2bOrgUID) < 1 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("b2b_org_uid", *b2bOrgUID, utf8.RuneCountInString(*b2bOrgUID), 1, true))
+			}
+		}
+		pageTokenRaw := qp.Get("page_token")
+		if pageTokenRaw != "" {
+			pageToken = &pageTokenRaw
+		}
+		bearerToken = r.Header.Get("Authorization")
+		if bearerToken == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
+		}
+		if err != nil {
+			return nil, err
+		}
+		payload := NewQueryMembershipSummaryPayload(version, projectUID, b2bOrgUID, pageToken, bearerToken)
+		if strings.Contains(payload.BearerToken, " ") {
+			// Remove authorization scheme prefix (e.g. "Bearer")
+			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
+			payload.BearerToken = cred
+		}
+
+		return payload, nil
+	}
+}
+
+// EncodeQueryMembershipSummaryError returns an encoder for errors returned by
+// the query-membership-summary query-svc endpoint.
+func EncodeQueryMembershipSummaryError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *querysvc.BadRequestError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryMembershipSummaryBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "InternalServerError":
+			var res *querysvc.InternalServerError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryMembershipSummaryInternalServerErrorResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "ServiceUnavailable":
+			var res *querysvc.ServiceUnavailableError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryMembershipSummaryServiceUnavailableResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
 // EncodeQueryOrgsResponse returns an encoder for responses returned by the
 // query-svc query-orgs endpoint.
 func EncodeQueryOrgsResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
@@ -744,6 +874,68 @@ func marshalQuerysvcCountGroupToCountGroupResponseBody(v *querysvc.CountGroup) *
 	res := &CountGroupResponseBody{
 		Key:   v.Key,
 		Count: v.Count,
+	}
+
+	return res
+}
+
+// marshalQuerysvcMembershipTermSummaryToMembershipTermSummaryResponseBody
+// builds a value of type *MembershipTermSummaryResponseBody from a value of
+// type *querysvc.MembershipTermSummary.
+func marshalQuerysvcMembershipTermSummaryToMembershipTermSummaryResponseBody(v *querysvc.MembershipTermSummary) *MembershipTermSummaryResponseBody {
+	res := &MembershipTermSummaryResponseBody{
+		B2bOrgUID:            v.B2bOrgUID,
+		CompanyName:          v.CompanyName,
+		ProjectUID:           v.ProjectUID,
+		ProjectSlug:          v.ProjectSlug,
+		TermCount:            v.TermCount,
+		FirstStart:           v.FirstStart,
+		LastEnd:              v.LastEnd,
+		CurrentStatus:        v.CurrentStatus,
+		CurrentTierName:      v.CurrentTierName,
+		CurrentStart:         v.CurrentStart,
+		CurrentEnd:           v.CurrentEnd,
+		CurrentMembershipUID: v.CurrentMembershipUID,
+	}
+	if v.TierNames != nil {
+		res.TierNames = make([]string, len(v.TierNames))
+		for i, val := range v.TierNames {
+			res.TierNames[i] = val
+		}
+	} else {
+		res.TierNames = []string{}
+	}
+	if v.Statuses != nil {
+		res.Statuses = make([]string, len(v.Statuses))
+		for i, val := range v.Statuses {
+			res.Statuses[i] = val
+		}
+	} else {
+		res.Statuses = []string{}
+	}
+	if v.Terms != nil {
+		res.Terms = make([]*MembershipTermResponseBody, len(v.Terms))
+		for i, val := range v.Terms {
+			res.Terms[i] = marshalQuerysvcMembershipTermToMembershipTermResponseBody(val)
+		}
+	} else {
+		res.Terms = []*MembershipTermResponseBody{}
+	}
+
+	return res
+}
+
+// marshalQuerysvcMembershipTermToMembershipTermResponseBody builds a value of
+// type *MembershipTermResponseBody from a value of type
+// *querysvc.MembershipTerm.
+func marshalQuerysvcMembershipTermToMembershipTermResponseBody(v *querysvc.MembershipTerm) *MembershipTermResponseBody {
+	res := &MembershipTermResponseBody{
+		MembershipUID: v.MembershipUID,
+		Status:        v.Status,
+		TierName:      v.TierName,
+		TierRange:     v.TierRange,
+		StartDate:     v.StartDate,
+		EndDate:       v.EndDate,
 	}
 
 	return res
