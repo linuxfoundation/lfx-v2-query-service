@@ -45,9 +45,11 @@ type Config struct {
 	// walks before it stops and reports has_more (AccessBucketPage..10000).
 	MaxAccessBuckets int
 	// DeniedPageWalk is the number of additional raw pages QueryResources
-	// fetches when a page's hits were all denied by the access check, so a
-	// caller never receives "no resources but a page_token" for a result set
-	// they cannot see (1..constants.MaxDeniedPageWalk).
+	// fetches when a page leaves the caller no visible resource (after
+	// cel_filter and the access check). Within the walk, "exists but not
+	// visible" and "does not exist" are identical ([] with no token); past
+	// the limit the empty page keeps its token so paging can continue
+	// (1..constants.MaxDeniedPageWalk).
 	DeniedPageWalk int
 }
 
@@ -192,13 +194,14 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 	// caller learn that a resource they cannot read exists (e.g. probe an
 	// organization by its slug tag). So when a page filters down to nothing,
 	// keep walking the raw pages server-side until the caller can see
-	// something or the result set is exhausted: "denied" and "absent" then
-	// look identical (empty, no token). The walk advances the raw search_after
-	// cursor the adapter hands back next to the token (SearchCriteria.SearchAfter
-	// is what the OpenSearch query renders; the opaque token is never decoded
-	// here). It is bounded: a result set with more than DeniedPageWalk pages
-	// without a visible resource is returned as an empty page with its token,
-	// so a caller with sparse access can still continue.
+	// something or the result set is exhausted: within the walk, "denied" and
+	// "absent" are identical (empty, no token). The walk advances the raw
+	// search_after cursor the adapter hands back next to the token
+	// (SearchCriteria.SearchAfter is what the OpenSearch query renders; the
+	// opaque token is never decoded here). It is bounded: when the walk ends
+	// with no visible resource and raw pages remain, the empty page keeps its
+	// token so paging can continue — the token then only reveals that further
+	// raw matches exist.
 	searchResult := &model.SearchResult{}
 	pageCriteria := criteria
 	for fetched := 1; ; fetched++ {

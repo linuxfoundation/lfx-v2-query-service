@@ -99,9 +99,10 @@ func (idContainsFilter) Filter(_ context.Context, resources []model.Resource, ex
 }
 
 // TestResourceSearchQueryResources_DeniedPagesDoNotLeakExistence pins the
-// contract that an authenticated caller cannot tell "matches exist but you may
-// not see them" from "nothing matches": both come back as an empty page with
-// no page_token. Before the denied-page walk, the former returned a token
+// contract that, when the walk exhausts, an authenticated caller cannot tell
+// "matches exist but you may not see them" from "nothing matches": both come
+// back as an empty page with no page_token. Before the denied-page walk,
+// the former returned a token
 // (minted from the raw hits before the access check) and the latter did not —
 // an existence oracle for any exact-tag lookup such as an organization slug.
 func TestResourceSearchQueryResources_DeniedPagesDoNotLeakExistence(t *testing.T) {

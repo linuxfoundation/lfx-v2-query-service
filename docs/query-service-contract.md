@@ -52,7 +52,7 @@ excluded from results (it does not bypass access filtering).
 | `filter_grants` | string | `direct` filters to resources where the authenticated user has direct FGA tuples. Requires `type` |
 | `sort` | string | `name_asc` (default), `name_desc`, `updated_asc`, `updated_desc`, `best_match` |
 | `page_size` | int | 1–1000, default 50 |
-| `page_token` | string | Opaque pagination token (keyset-based), minted from the raw OpenSearch page. A raw page that leaves the caller **no visible resource** (after `cel_filter` and the access check) is not returned as `[] + token`: the service walks up to `SEARCH_DENIED_PAGE_WALK` further raw pages until the caller can see a resource or the result set is exhausted, so "exists but not visible to you" and "does not exist" are both `[]` with no token (no existence oracle via exact-tag or `name=` lookups). Past the walk limit an empty page keeps its token so paging can continue. |
+| `page_token` | string | Opaque pagination token (keyset-based), minted from the raw OpenSearch page. A raw page that leaves the caller **no visible resource** (after `cel_filter` and the access check) is not returned as `[] + token`: the service walks up to `SEARCH_DENIED_PAGE_WALK` further raw pages until the caller can see a resource or the result set is exhausted, so within the walk "exists but not visible to you" and "does not exist" are both `[]` with no token (no existence oracle for result sets exhaustible within the walk, e.g. unique exact-tag lookups). Past the walk limit an empty page keeps its token so paging can continue — the token then reveals only that further raw matches exist. |
 
 **Response**:
 
@@ -375,13 +375,14 @@ Query-service specifics:
   so a page may shrink to fewer than `page_size` results. Callers should keep
   paginating until `page_token` is absent rather than stopping at the first
   short page.
-- A raw page that shrinks to **zero** visible results is never returned with
-  a token: the service follows the raw `search_after` cursor for up to
+- A raw page that shrinks to **zero** visible results is walked rather than
+  returned with a token: the service follows the raw `search_after` cursor for up to
   `SEARCH_DENIED_PAGE_WALK` further pages (default 10) until the caller can
   see a resource or the result set is exhausted. Exhausted ⇒ `[]` with no
-  token — identical to a query that matches nothing, so `page_token` presence
-  never reveals resources the caller may not read. Limit reached ⇒ `[]` with
-  the token, so a caller with sparse access can continue. Each extra page is
+  token — identical to a query that matches nothing, so within the walk `page_token`
+  presence reveals nothing about resources the caller may not read. Limit reached ⇒
+  `[]` with the token, so a caller with sparse access can continue; the token then
+  reveals only that further raw pages exist. Each extra page is
   one OpenSearch query plus one access-check batch, so a query whose first
   pages are entirely invisible costs up to `1 + SEARCH_DENIED_PAGE_WALK` round
   trips.

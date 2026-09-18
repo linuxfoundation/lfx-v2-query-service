@@ -25,8 +25,9 @@ const (
 	// Whole-page overshoot remains below OpenSearch's default max_terms_count.
 	MaxCountAccessBuckets = 10000
 	// DefaultDeniedPageWalk is the default number of additional raw OpenSearch
-	// pages QueryResources fetches when every hit on a page was denied by the
-	// access check, before it gives up and returns the page as-is.
+	// pages QueryResources fetches when a page leaves the caller no visible
+	// resource (after cel_filter and the access check), before it gives up and
+	// returns the page as-is.
 	DefaultDeniedPageWalk = 10
 	// MaxDeniedPageWalk is the maximum configurable denied-page walk. Each extra
 	// page is a sequential OpenSearch query plus an access-check batch bounded
