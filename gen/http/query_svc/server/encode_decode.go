@@ -429,7 +429,7 @@ func EncodeQueryResourcesCountError(encoder func(context.Context, http.ResponseW
 // returned by the query-svc query-membership-summary endpoint.
 func EncodeQueryMembershipSummaryResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
 	return func(ctx context.Context, w http.ResponseWriter, v any) error {
-		res, _ := v.(*querysvc.MembershipSummaryResult)
+		res, _ := v.(*querysvc.QueryMembershipSummaryResult)
 		enc := encoder(ctx, w)
 		body := NewQueryMembershipSummaryResponseBody(res)
 		if res.CacheControl != nil {

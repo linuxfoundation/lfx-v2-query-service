@@ -42,7 +42,7 @@ paths:
                   minLength: 1
                 - name: page_token
                   in: query
-                  description: Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read at the organization it stopped before
+                  description: 'Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read where it stopped: at the next organization, or inside the one run that filled the read'
                   required: false
                   type: string
                 - name: Authorization
@@ -54,7 +54,7 @@ paths:
                 "200":
                     description: OK response.
                     schema:
-                        $ref: '#/definitions/MembershipSummaryResult'
+                        $ref: '#/definitions/QuerySvcQueryMembershipSummaryResponseBody'
                         required:
                             - summaries
                             - terms_total
@@ -561,97 +561,6 @@ definitions:
             message: An internal server error occurred.
         required:
             - message
-    MembershipSummaryResult:
-        title: MembershipSummaryResult
-        type: object
-        properties:
-            complete:
-                type: boolean
-                description: True when every matching membership record was read; false when the read stopped at the record cap and returned a page_token to continue
-                example: true
-            page_token:
-                type: string
-                description: 'Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue the read where it stopped: at the next organization, or inside the one run that filled the read'
-                example: '****'
-            summaries:
-                type: array
-                items:
-                    $ref: '#/definitions/MembershipTermSummary'
-                description: Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that fell whole inside a single run of records sharing one company name, usually one organization, holds that run as far as it was read and continues inside it
-                example:
-                    - b2b_org_uid: org-1
-                      company_name: Example Corp
-                      current_end: "2025-01-01T00:00:00Z"
-                      current_membership_uid: m-2
-                      current_start: "2024-01-01T00:00:00Z"
-                      current_status: Active
-                      current_tier_name: Gold Membership
-                      first_start: "2023-01-01T00:00:00Z"
-                      last_end: "2025-01-01T00:00:00Z"
-                      project_slug: example-project
-                      project_uid: proj-1
-                      statuses:
-                        - Expired
-                        - Active
-                      term_count: 2
-                      terms:
-                        - end_date: "2024-01-01T00:00:00Z"
-                          membership_uid: m-1
-                          start_date: "2023-01-01T00:00:00Z"
-                          status: Expired
-                          tier_name: Silver Membership
-                        - end_date: "2025-01-01T00:00:00Z"
-                          membership_uid: m-2
-                          start_date: "2024-01-01T00:00:00Z"
-                          status: Active
-                          tier: Gold
-                          tier_name: Gold Membership
-                      tier_names:
-                        - Silver Membership
-                        - Gold Membership
-            terms_total:
-                type: integer
-                description: Number of membership records folded into the summaries
-                example: 2
-                format: int64
-        example:
-            complete: true
-            summaries:
-                - b2b_org_uid: org-1
-                  company_name: Example Corp
-                  current_end: "2025-01-01T00:00:00Z"
-                  current_membership_uid: m-2
-                  current_start: "2024-01-01T00:00:00Z"
-                  current_status: Active
-                  current_tier_name: Gold Membership
-                  first_start: "2023-01-01T00:00:00Z"
-                  last_end: "2025-01-01T00:00:00Z"
-                  project_slug: example-project
-                  project_uid: proj-1
-                  statuses:
-                    - Expired
-                    - Active
-                  term_count: 2
-                  terms:
-                    - end_date: "2024-01-01T00:00:00Z"
-                      membership_uid: m-1
-                      start_date: "2023-01-01T00:00:00Z"
-                      status: Expired
-                      tier_name: Silver Membership
-                    - end_date: "2025-01-01T00:00:00Z"
-                      membership_uid: m-2
-                      start_date: "2024-01-01T00:00:00Z"
-                      status: Active
-                      tier: Gold
-                      tier_name: Gold Membership
-                  tier_names:
-                    - Silver Membership
-                    - Gold Membership
-            terms_total: 2
-        required:
-            - summaries
-            - terms_total
-            - complete
     MembershipTerm:
         title: MembershipTerm
         type: object
@@ -888,6 +797,98 @@ definitions:
         required:
             - name
             - domain
+    QuerySvcQueryMembershipSummaryResponseBody:
+        title: QuerySvcQueryMembershipSummaryResponseBody
+        type: object
+        properties:
+            complete:
+                type: boolean
+                description: True when every matching membership record was read; false when the read stopped at the record cap and returned a page_token to continue
+                example: true
+            page_token:
+                type: string
+                description: 'Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue the read where it stopped: at the next organization, or inside the one run that filled the read'
+                example: '****'
+            summaries:
+                type: array
+                items:
+                    $ref: '#/definitions/MembershipTermSummary'
+                description: Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that fell whole inside a single run of records sharing one company name, usually one organization, holds that run as far as it was read and continues inside it
+                example:
+                    - b2b_org_uid: org-1
+                      company_name: Example Corp
+                      current_end: "2025-01-01T00:00:00Z"
+                      current_membership_uid: m-2
+                      current_start: "2024-01-01T00:00:00Z"
+                      current_status: Active
+                      current_tier_name: Gold Membership
+                      first_start: "2023-01-01T00:00:00Z"
+                      last_end: "2025-01-01T00:00:00Z"
+                      project_slug: example-project
+                      project_uid: proj-1
+                      statuses:
+                        - Expired
+                        - Active
+                      term_count: 2
+                      terms:
+                        - end_date: "2024-01-01T00:00:00Z"
+                          membership_uid: m-1
+                          start_date: "2023-01-01T00:00:00Z"
+                          status: Expired
+                          tier_name: Silver Membership
+                        - end_date: "2025-01-01T00:00:00Z"
+                          membership_uid: m-2
+                          start_date: "2024-01-01T00:00:00Z"
+                          status: Active
+                          tier: Gold
+                          tier_name: Gold Membership
+                      tier_names:
+                        - Silver Membership
+                        - Gold Membership
+            terms_total:
+                type: integer
+                description: Number of membership records folded into the summaries
+                example: 2
+                format: int64
+        description: Membership term summaries, one per organization and project.
+        example:
+            complete: true
+            summaries:
+                - b2b_org_uid: org-1
+                  company_name: Example Corp
+                  current_end: "2025-01-01T00:00:00Z"
+                  current_membership_uid: m-2
+                  current_start: "2024-01-01T00:00:00Z"
+                  current_status: Active
+                  current_tier_name: Gold Membership
+                  first_start: "2023-01-01T00:00:00Z"
+                  last_end: "2025-01-01T00:00:00Z"
+                  project_slug: example-project
+                  project_uid: proj-1
+                  statuses:
+                    - Expired
+                    - Active
+                  term_count: 2
+                  terms:
+                    - end_date: "2024-01-01T00:00:00Z"
+                      membership_uid: m-1
+                      start_date: "2023-01-01T00:00:00Z"
+                      status: Expired
+                      tier_name: Silver Membership
+                    - end_date: "2025-01-01T00:00:00Z"
+                      membership_uid: m-2
+                      start_date: "2024-01-01T00:00:00Z"
+                      status: Active
+                      tier: Gold
+                      tier_name: Gold Membership
+                  tier_names:
+                    - Silver Membership
+                    - Gold Membership
+            terms_total: 2
+        required:
+            - summaries
+            - terms_total
+            - complete
     QuerySvcQueryResourcesCountResponseBody:
         title: QuerySvcQueryResourcesCountResponseBody
         type: object

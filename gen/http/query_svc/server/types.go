@@ -354,7 +354,7 @@ func NewQueryResourcesCountResponseBody(res *querysvc.QueryResourcesCountResult)
 
 // NewQueryMembershipSummaryResponseBody builds the HTTP response body from the
 // result of the "query-membership-summary" endpoint of the "query-svc" service.
-func NewQueryMembershipSummaryResponseBody(res *querysvc.MembershipSummaryResult) *QueryMembershipSummaryResponseBody {
+func NewQueryMembershipSummaryResponseBody(res *querysvc.QueryMembershipSummaryResult) *QueryMembershipSummaryResponseBody {
 	body := &QueryMembershipSummaryResponseBody{
 		TermsTotal: res.TermsTotal,
 		Complete:   res.Complete,

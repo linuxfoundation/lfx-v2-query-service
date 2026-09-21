@@ -99,7 +99,7 @@ func (s *querySvcsrvc) QueryResourcesCount(ctx context.Context, p *querysvc.Quer
 
 // QueryMembershipSummary summarizes the membership records of an organization,
 // a project, or both, into one summary per organization and project.
-func (s *querySvcsrvc) QueryMembershipSummary(ctx context.Context, p *querysvc.QueryMembershipSummaryPayload) (*querysvc.MembershipSummaryResult, error) {
+func (s *querySvcsrvc) QueryMembershipSummary(ctx context.Context, p *querysvc.QueryMembershipSummaryPayload) (*querysvc.QueryMembershipSummaryResult, error) {
 
 	slog.DebugContext(ctx, "querySvc.query-membership-summary")
 

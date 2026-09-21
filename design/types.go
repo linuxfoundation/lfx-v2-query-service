@@ -197,34 +197,6 @@ var membershipTermSummaryExample = dsl.Val{
 	}},
 }
 
-// MembershipSummaryResult is the result of a membership term summary read.
-var MembershipSummaryResult = dsl.Type("MembershipSummaryResult", func() {
-	dsl.Description("Membership term summaries, one per organization and project.")
-
-	dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that fell whole inside a single run of records sharing one company name, usually one organization, holds that run as far as it was read and continues inside it", func() {
-		// Declared so the schema example agrees with the terms_total example
-		// below; Goa would otherwise synthesize an array of its own length.
-		dsl.Example([]dsl.Val{membershipTermSummaryExample})
-	})
-	// Goa renders UInt64 as int64 in OpenAPI; keep scalar samples in range.
-	dsl.Attribute("terms_total", dsl.UInt64, "Number of membership records folded into the summaries", func() {
-		dsl.Example(2)
-	})
-	dsl.Attribute("complete", dsl.Boolean, "True when every matching membership record was read; false when the read stopped at the record cap and returned a page_token to continue")
-	dsl.Attribute("page_token", dsl.String, "Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue the read where it stopped: at the next organization, or inside the one run that filled the read", func() {
-		dsl.Example("****")
-	})
-	dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
-		dsl.Example("public, max-age=300")
-	})
-	dsl.Required("summaries", "terms_total", "complete")
-	dsl.Example("summary", dsl.Val{
-		"summaries":   []dsl.Val{membershipTermSummaryExample},
-		"terms_total": 2,
-		"complete":    true,
-	})
-})
-
 // BadRequestError is the DSL type for a bad request error.
 var BadRequestError = dsl.Type("BadRequestError", func() {
 	dsl.Attribute("message", dsl.String, "Error message", func() {

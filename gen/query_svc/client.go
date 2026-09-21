@@ -79,13 +79,13 @@ func (c *Client) QueryResourcesCount(ctx context.Context, p *QueryResourcesCount
 //   - "InternalServerError" (type *InternalServerError): Internal server error
 //   - "ServiceUnavailable" (type *ServiceUnavailableError): Service unavailable
 //   - error: internal error
-func (c *Client) QueryMembershipSummary(ctx context.Context, p *QueryMembershipSummaryPayload) (res *MembershipSummaryResult, err error) {
+func (c *Client) QueryMembershipSummary(ctx context.Context, p *QueryMembershipSummaryPayload) (res *QueryMembershipSummaryResult, err error) {
 	var ires any
 	ires, err = c.QueryMembershipSummaryEndpoint(ctx, p)
 	if err != nil {
 		return
 	}
-	return ires.(*MembershipSummaryResult), nil
+	return ires.(*QueryMembershipSummaryResult), nil
 }
 
 // QueryOrgs calls the "query-orgs" endpoint of the "query-svc" service.

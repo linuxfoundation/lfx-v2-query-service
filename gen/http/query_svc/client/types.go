@@ -412,10 +412,10 @@ func NewQueryResourcesCountServiceUnavailable(body *QueryResourcesCountServiceUn
 	return v
 }
 
-// NewQueryMembershipSummaryMembershipSummaryResultOK builds a "query-svc"
-// service "query-membership-summary" endpoint result from a HTTP "OK" response.
-func NewQueryMembershipSummaryMembershipSummaryResultOK(body *QueryMembershipSummaryResponseBody, cacheControl *string) *querysvc.MembershipSummaryResult {
-	v := &querysvc.MembershipSummaryResult{
+// NewQueryMembershipSummaryResultOK builds a "query-svc" service
+// "query-membership-summary" endpoint result from a HTTP "OK" response.
+func NewQueryMembershipSummaryResultOK(body *QueryMembershipSummaryResponseBody, cacheControl *string) *querysvc.QueryMembershipSummaryResult {
+	v := &querysvc.QueryMembershipSummaryResult{
 		TermsTotal: *body.TermsTotal,
 		Complete:   *body.Complete,
 		PageToken:  body.PageToken,

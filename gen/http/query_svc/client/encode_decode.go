@@ -462,7 +462,7 @@ func DecodeQueryMembershipSummaryResponse(decoder func(*http.Response) goahttp.D
 			if cacheControlRaw != "" {
 				cacheControl = &cacheControlRaw
 			}
-			res := NewQueryMembershipSummaryMembershipSummaryResultOK(&body, cacheControl)
+			res := NewQueryMembershipSummaryResultOK(&body, cacheControl)
 			return res, nil
 		case http.StatusBadRequest:
 			var (

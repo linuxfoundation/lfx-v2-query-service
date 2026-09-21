@@ -426,8 +426,8 @@ func (s *querySvcsrvc) payloadToMembershipSummaryCriteria(ctx context.Context, p
 // attributes of the current record and the date range are present only when a
 // record carries them. A cursor at the next organization becomes an opaque
 // page token bound to the read's scope.
-func (s *querySvcsrvc) domainMembershipSummaryToResponse(ctx context.Context, result *model.MembershipSummaryResult, criteria model.MembershipSummaryCriteria) (*querysvc.MembershipSummaryResult, error) {
-	response := &querysvc.MembershipSummaryResult{
+func (s *querySvcsrvc) domainMembershipSummaryToResponse(ctx context.Context, result *model.MembershipSummaryResult, criteria model.MembershipSummaryCriteria) (*querysvc.QueryMembershipSummaryResult, error) {
+	response := &querysvc.QueryMembershipSummaryResult{
 		Summaries:    make([]*querysvc.MembershipTermSummary, 0, len(result.Summaries)),
 		TermsTotal:   result.TermsTotal,
 		Complete:     result.Complete,

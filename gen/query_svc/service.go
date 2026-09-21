@@ -23,7 +23,7 @@ type Service interface {
 	QueryResourcesCount(context.Context, *QueryResourcesCountPayload) (res *QueryResourcesCountResult, err error)
 	// Summarize the membership records of an organization, a project, or both,
 	// into one summary per organization and project.
-	QueryMembershipSummary(context.Context, *QueryMembershipSummaryPayload) (res *MembershipSummaryResult, err error)
+	QueryMembershipSummary(context.Context, *QueryMembershipSummaryPayload) (res *QueryMembershipSummaryResult, err error)
 	// Locate a single organization by name or domain.
 	QueryOrgs(context.Context, *QueryOrgsPayload) (res *Organization, err error)
 	// Get organization suggestions for typeahead search based on a query.
@@ -72,28 +72,6 @@ type CountGroup struct {
 type InternalServerError struct {
 	// Error message
 	Message string
-}
-
-// MembershipSummaryResult is the result type of the query-svc service
-// query-membership-summary method.
-type MembershipSummaryResult struct {
-	// Summaries ordered by organization name, project slug, organization UID and
-	// project UID; a read that stops at the record cap and can continue holds only
-	// the organizations it read whole, while a read that fell whole inside a
-	// single run of records sharing one company name, usually one organization,
-	// holds that run as far as it was read and continues inside it
-	Summaries []*MembershipTermSummary
-	// Number of membership records folded into the summaries
-	TermsTotal uint64
-	// True when every matching membership record was read; false when the read
-	// stopped at the record cap and returned a page_token to continue
-	Complete bool
-	// Opaque token present when the read stopped at the record cap; pass it back
-	// with the same project_uid and b2b_org_uid to continue the read where it
-	// stopped: at the next organization, or inside the one run that filled the read
-	PageToken *string
-	// Cache control header
-	CacheControl *string
 }
 
 // One membership record of an organization on a project.
@@ -198,8 +176,30 @@ type QueryMembershipSummaryPayload struct {
 	// on that project
 	B2bOrgUID *string
 	// Opaque token from a previous summary response with the same project_uid and
-	// b2b_org_uid; continues that read at the organization it stopped before
+	// b2b_org_uid; continues that read where it stopped: at the next organization,
+	// or inside the one run that filled the read
 	PageToken *string
+}
+
+// Membership term summaries, one per organization and project.
+type QueryMembershipSummaryResult struct {
+	// Summaries ordered by organization name, project slug, organization UID and
+	// project UID; a read that stops at the record cap and can continue holds only
+	// the organizations it read whole, while a read that fell whole inside a
+	// single run of records sharing one company name, usually one organization,
+	// holds that run as far as it was read and continues inside it
+	Summaries []*MembershipTermSummary
+	// Number of membership records folded into the summaries
+	TermsTotal uint64
+	// True when every matching membership record was read; false when the read
+	// stopped at the record cap and returned a page_token to continue
+	Complete bool
+	// Opaque token present when the read stopped at the record cap; pass it back
+	// with the same project_uid and b2b_org_uid to continue the read where it
+	// stopped: at the next organization, or inside the one run that filled the read
+	PageToken *string
+	// Cache control header
+	CacheControl *string
 }
 
 // QueryOrgsPayload is the payload type of the query-svc service query-orgs
