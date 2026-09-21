@@ -24,6 +24,16 @@ type httpClient struct {
 	client  *opensearchapi.Client
 }
 
+// Search runs one page of a query and returns its hits with their cursors.
+//
+// Partial results are refused, as on AggregationSearch: a page missing a
+// shard's hits would be a shorter page, and a short page is what ends a
+// paged read. The plain search would mint a cursor past the hits it never
+// saw, and the membership summary would report a read complete that was
+// not, so a response with a failed shard or a timeout is an error, never a
+// smaller page. allow_partial_search_results=false makes OpenSearch fail
+// the request instead of returning a partial 200; the _shards/timed_out
+// check covers engines that ignore the parameter.
 func (c *httpClient) Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error) {
 
 	slog.DebugContext(ctx, "executing opensearch search",
@@ -31,11 +41,13 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 		"query", string(query),
 	)
 
+	allowPartial := false
 	searchRequest := opensearchapi.SearchReq{
 		Indices: []string{index},
 		Body:    bytes.NewReader(query),
 		Params: opensearchapi.SearchParams{
-			Source: true,
+			AllowPartialSearchResults: &allowPartial,
+			Source:                    true,
 			SourceIncludes: []string{
 				"object_ref",
 				"object_type",
@@ -60,6 +72,10 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 	// Check for errors in the response
 	if searchResponse.Errors {
 		return nil, fmt.Errorf("opensearch search returned errors")
+	}
+	if searchResponse.Timeout || searchResponse.Shards.Failed > 0 {
+		return nil, errors.NewServiceUnavailable("opensearch returned a partial search result",
+			fmt.Errorf("timed_out=%t shards_failed=%d", searchResponse.Timeout, searchResponse.Shards.Failed))
 	}
 
 	result := &SearchResponse{

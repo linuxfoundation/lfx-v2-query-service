@@ -332,7 +332,10 @@ normalizes them.
    the member-service indexer contract), with the record id as tiebreaker, so
    the records of one organization are read together.
    The route continues from the keyset cursor of the previous page until a
-   page carries none. A record served on more than one
+   page carries none. An OpenSearch response with a failed shard or a
+   timeout is a `503` (`allow_partial_search_results=false` is sent), never
+   a shorter page: a short page is what ends the read, and a read is never
+   reported complete over hits it did not see. A record served on more than one
    page, because it was re-indexed while the read was between pages, is folded
    once, as the copy read last: that is the one the re-index wrote.
 2. **Visibility** — identical to the plain search: each page is access-checked
@@ -566,6 +569,11 @@ Query-service specifics:
 - Implementation files: `internal/infrastructure/opensearch/client.go`
   (token generation), `internal/domain/model/search_criteria.go` (`PageSize`
   field), `pkg/constants/query.go` (`DefaultPageSize`, `MaxPageSize`).
+
+An OpenSearch response with a failed shard or a timeout is a `503`
+(`allow_partial_search_results=false` is sent), never a shorter page: a short
+page ends paging, and a cursor is never minted past hits the search did not
+see.
 
 ## Date Range Filtering
 

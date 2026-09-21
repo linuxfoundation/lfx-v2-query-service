@@ -192,6 +192,43 @@ func TestHTTPClientSearchCursor(t *testing.T) {
 	}
 }
 
+func TestHTTPClientSearchRefusesPartialResults(t *testing.T) {
+	t.Run("asks OpenSearch to fail rather than answer partially", func(t *testing.T) {
+		var gotQuery string
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			gotQuery = r.URL.RawQuery
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"took":1,"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":0},"hits":[]}}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		require.NoError(t, err)
+		assert.Empty(t, response.Hits.Hits)
+		assert.Contains(t, gotQuery, "allow_partial_search_results=false")
+	})
+
+	t.Run("a failed shard is service unavailable, not a shorter page", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"took":1,"timed_out":false,"_shards":{"total":2,"successful":1,"failed":1,"failures":[{"shard":1,"reason":{"type":"circuit_breaking_exception"}}]},"hits":{"total":{"value":1},"hits":[{"_id":"a","_source":{"object_id":"a"},"sort":["alpha","a"]}]}}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("a timed out search is service unavailable", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"took":1,"timed_out":true,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":0},"hits":[]}}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+}
+
 // TestHTTPClientSearchMintsCursorWithToken verifies that a full page yields both
 // the opaque page token and the raw search_after cursor it encodes (the JSON
 // sort values of the last hit), and that a short page yields neither.
