@@ -172,8 +172,8 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			// denied pages before it exposes a continuation, so a scope the
 			// caller cannot see and a scope that does not exist stay
 			// indistinguishable to the same extent. The worst case for such
-			// a read is therefore the larger of the cap and one page plus
-			// the walk.
+			// a read is therefore the larger of the cap rounded up to whole
+			// pages and the walk plus one page.
 			boundary, canResume := runs.boundary()
 			if canResume {
 				// Leave out the organization the read stopped inside: its

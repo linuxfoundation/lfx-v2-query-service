@@ -188,7 +188,7 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
 | `SEARCH_DENIED_PAGE_WALK` | `10` | Extra raw pages `/query/resources` fetches when a page leaves the caller no visible resource (1–25); see [Page Size](#page-size) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
-| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before it folds what it has and reports `complete: false` (1..50000, validated at startup); the cap is checked after a whole page, so it can be overshot by up to one page, and while the caller has seen nothing it yields to the denied-page walk, so the worst case for such a read is the larger of the cap and one page plus `SEARCH_DENIED_PAGE_WALK` pages |
+| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before it folds what it has and reports `complete: false` (1..50000, validated at startup); the cap is checked after a whole page, so it can be overshot by up to one page, and while the caller has seen nothing it yields to the denied-page walk, so the worst case for such a read is the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and `SEARCH_DENIED_PAGE_WALK` plus one full pages |
 
 #### Not supported
 
@@ -351,7 +351,8 @@ normalizes them.
    so pages are never split and the cap can be overshot by up to one page;
    while the caller has seen nothing the cap yields to the denied-page walk
    described above, so the worst case for such a read is the larger of the
-   cap and one page plus `SEARCH_DENIED_PAGE_WALK` pages.
+   cap rounded up to whole pages and `SEARCH_DENIED_PAGE_WALK` plus one full
+   pages.
    Because the records arrive in organization order, the read then folds every
    organization it has read whole, leaves out the organization it stopped
    inside (its records may continue on the next page), and returns a
