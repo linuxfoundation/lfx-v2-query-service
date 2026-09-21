@@ -231,8 +231,6 @@ func (c *httpClient) IsReady(ctx context.Context) error {
 	return nil
 }
 
-// hasTooManyClauses checks whether a StructError was caused by too_many_nested_clauses.
-// OpenSearch surfaces this inside a search_phase_execution_exception root_cause.
 // requestFailure classifies a failed OpenSearch request. A clause-limit
 // rejection is the caller's to fix. A request OpenSearch could not answer
 // whole is service unavailable: with allow_partial_search_results=false a
@@ -256,6 +254,8 @@ func requestFailure(ctx context.Context, operation string, err error) error {
 	return errors.NewServiceUnavailable(operation, err)
 }
 
+// hasTooManyClauses checks whether a StructError was caused by too_many_nested_clauses.
+// OpenSearch surfaces this inside a search_phase_execution_exception root_cause.
 func hasTooManyClauses(e *opensearch.StructError) bool {
 	for _, rc := range e.Err.RootCause {
 		if rc.Type == "too_many_nested_clauses" {

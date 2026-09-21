@@ -243,15 +243,16 @@ callers do not have to drain every page and fold the history themselves.
 | `v` | string (required) | API version, must be `1` |
 | `project_uid` | string | Summarize the memberships on this project |
 | `b2b_org_uid` | string | Summarize the memberships of this organization |
-| `page_token` | string | Continue an earlier read of the same scope from the organization it stopped before (see the record cap below) |
+| `page_token` | string | Continue an earlier read of the same scope where it stopped: at the next organization, or inside the one run that filled the read (see the record cap below) |
 
 At least one of `project_uid` and `b2b_org_uid` must be provided; a request with
 neither is a `400 Bad Request` naming both ("at least one summary parameter must
 be provided: project_uid or b2b_org_uid"). Given together they restrict the read
 to the memberships of that organization on that project. There are no other
-filters. The read is whole by definition; a read that stops at the record cap
-returns a `page_token`, and passing it back with the same `project_uid` and
-`b2b_org_uid` continues where it stopped. A token
+filters. A read that stops at the record cap returns a `page_token`, and
+passing it back with the same `project_uid` and `b2b_org_uid` continues where
+it stopped: at the next organization, or inside the one run that filled the
+read. A token
 passed with another scope is a `400 Bad Request`.
 
 **Response**:
