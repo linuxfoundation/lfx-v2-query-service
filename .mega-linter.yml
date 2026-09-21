@@ -14,13 +14,16 @@ DISABLE_LINTERS:
   # Repository-wide link checking returns mostly false positives (like internal
   # service URLs in templates).
   - SPELL_LYCHEE
-  - SPELL_CSPELL
   # yamllint is sufficient for us.
   - YAML_PRETTIER
   # Go version compatibility issue with MegaLinter Docker container
   ## stderr: go: go.mod requires go >= 1.24.2 (running go 1.23.8; GOTOOLCHAIN=local)
   - GO_GOLANGCI_LINT
 DISABLE_ERRORS_LINTERS:
+  # There's no easy local feedback loop for spelling issues before
+  # pushing, so keep them non-blocking to avoid unnecessary PR cycles
+  # for words that just need adding to the dictionary.
+  - SPELL_CSPELL
   # This may be informative but doesn't need to break the build.
   - COPYPASTE_JSCPD
   # TBD! Need to work through these.
@@ -42,8 +45,9 @@ SPELL_VALE_PRE_COMMANDS:
   - command: vale sync
     cwd: "workspace"
 API_SPECTRAL_FILTER_REGEX_EXCLUDE: "gen/"
-# Ignore YAML files with templating macros; these typically fail linting and/or
-# schema checking.
-FILTER_REGEX_EXCLUDE: '(templates/.*\.yml|templates/.*\.yaml|gen/.*)'
+# Ignore YAML files with templating macros (these typically fail linting
+# and/or schema checking), and MegaLinter's own report output (which
+# betterleaks otherwise self-scans for secrets in prior runs' logs).
+FILTER_REGEX_EXCLUDE: '(templates/.*\.yml|templates/.*\.yaml|gen/.*|megalinter-reports/.*)'
 KUBERNETES_DIRECTORY: charts/lfx-v2-query-service/templates
 KUBERNETES_HELM_ARGUMENTS: charts/lfx-v2-query-service

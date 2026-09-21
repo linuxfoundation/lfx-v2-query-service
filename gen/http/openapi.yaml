@@ -40,11 +40,6 @@ paths:
                   required: false
                   type: string
                   pattern: ^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}$
-                - name: Authorization
-                  in: header
-                  description: Token
-                  required: true
-                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -99,11 +94,6 @@ paths:
                   required: true
                   type: string
                   minLength: 1
-                - name: Authorization
-                  in: header
-                  description: Token
-                  required: true
-                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -258,11 +248,6 @@ paths:
                   default: 50
                   maximum: 1000
                   minimum: 1
-                - name: Authorization
-                  in: header
-                  description: Token
-                  required: true
-                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -403,11 +388,6 @@ paths:
                   required: false
                   type: string
                   maxLength: 80
-                - name: Authorization
-                  in: header
-                  description: JWT token issued by Heimdall
-                  required: true
-                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -526,6 +506,7 @@ definitions:
                 type: string
                 description: Business sector classification
                 example: Technology
+        description: An organization is a universal representation of an LFX API organization.
         example:
             domain: linuxfoundation.org
             employees: 100-499
@@ -582,8 +563,6 @@ definitions:
                       key: a1b2c3d4
                     - count: 30
                       key: a1b2c3d4
-                    - count: 30
-                      key: a1b2c3d4
             groups_complete:
                 type: boolean
                 description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
@@ -591,11 +570,11 @@ definitions:
             has_more:
                 type: boolean
                 description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
-                example: false
+                example: true
             metric_complete:
                 type: boolean
                 description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
-                example: false
+                example: true
             metric_value:
                 type: integer
                 description: Value of the requested metric
@@ -694,9 +673,6 @@ definitions:
                       name: Linux Foundation
         example:
             suggestions:
-                - domain: linuxfoundation.org
-                  logo: https://example.com/logo.png
-                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation

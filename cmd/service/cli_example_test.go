@@ -24,9 +24,14 @@ func TestGeneratedCountCLIExampleUsesOneMode(t *testing.T) {
 	usage := strings.SplitN(string(source)[start:], "\nfunc ", 2)[0]
 	parts := strings.SplitN(usage, "Example:", 2)
 	require.Len(t, parts, 2)
+	// Newer Goa versions emit the example as an interpreted string literal
+	// (with `\"` and `\n` escapes) instead of a raw backtick string; unescape
+	// both so the regex below sees the same runtime text either way.
+	example := strings.ReplaceAll(parts[1], `\"`, `"`)
+	example = strings.ReplaceAll(example, `\n`, "\n")
 	flags := map[string]string{}
 	pattern := regexp.MustCompile(`--([a-z-]+) ("(?:\\.|[^"\\])*"|'[^']*'|[^\s]+)`)
-	for _, match := range pattern.FindAllStringSubmatch(parts[1], -1) {
+	for _, match := range pattern.FindAllStringSubmatch(example, -1) {
 		value := match[2]
 		if strings.HasPrefix(value, `"`) {
 			value, err = strconv.Unquote(value)

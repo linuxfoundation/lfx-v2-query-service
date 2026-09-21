@@ -152,11 +152,12 @@ func (c *httpClient) GetMapping(ctx context.Context, index string) (IndexMapping
 	if err != nil {
 		return nil, fmt.Errorf("opensearch get mapping failed: %w", err)
 	}
-	if len(mappingResponse.Indices) == 0 {
+	indices := mappingResponse.GetIndices()
+	if len(indices) == 0 {
 		return nil, fmt.Errorf("opensearch get mapping returned no index for %q", index)
 	}
-	mappings := make(IndexMappings, len(mappingResponse.Indices))
-	for name, entry := range mappingResponse.Indices {
+	mappings := make(IndexMappings, len(indices))
+	for name, entry := range indices {
 		var mapping IndexMapping
 		if err := json.Unmarshal(entry.Mappings, &mapping); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal index mapping: %w", err)
