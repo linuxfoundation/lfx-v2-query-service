@@ -696,6 +696,101 @@ func orderedMembershipRecord(uid, sortName string, data map[string]any) model.Re
 	return record
 }
 
+// TestResourceSearchMembershipSummaryCapResume composes a capped read with
+// the read its own cursor produces: the two halves together are exactly the
+// uncapped read of the same fixture, nothing lost and nothing folded twice.
+// The searcher serves pages keyed by the incoming cursor, as the adapter
+// does, so a boundary cursor one hit off would show as a gap or a repeat.
+func TestResourceSearchMembershipSummaryCapResume(t *testing.T) {
+	record := func(uid, sortName, orgUID, company, tier string) model.Resource {
+		return orderedMembershipRecord(uid, sortName, map[string]any{
+			"uid": uid, "b2b_org_uid": orgUID, "company_name": company,
+			"project_uid": "proj-1", "project_slug": "example-project",
+			"status": "Active", "tier_name": tier,
+			"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
+		})
+	}
+	// Three organizations over three pages; the second page opens a new
+	// organization, so a read capped inside it has a boundary to cut at.
+	// A page that carries a cursor counts as a full page against the cap,
+	// so the caps are set in whole pages.
+	pages := map[string]*model.SearchResult{
+		"": page(`["a corp","m-2"]`,
+			record("m-1", "a corp", "org-a", "A Corp", "Gold"),
+			record("m-2", "a corp", "org-a", "A Corp", "Silver"),
+		),
+		`["a corp","m-2"]`: page(`["b corp","m-4"]`,
+			record("m-3", "b corp", "org-b", "B Corp", "Gold"),
+			record("m-4", "b corp", "org-b", "B Corp", "Platinum"),
+		),
+		`["b corp","m-4"]`: page("",
+			record("m-5", "c corp", "org-c", "C Corp", "Gold"),
+		),
+	}
+	newService := func(t *testing.T, cap int) (*ResourceSearch, *pagedSearcher) {
+		t.Helper()
+		searcher := &pagedSearcher{MockResourceSearcher: mock.NewMockResourceSearcher(), pages: pages, errAt: map[string]error{}}
+		config := DefaultConfig()
+		config.MaxSummaryRecords = cap
+		svc, err := NewResourceSearch(searcher, mock.NewMockAccessControlChecker(), mock.NewMockResourceFilter(), config)
+		require.NoError(t, err)
+		return svc.(*ResourceSearch), searcher
+	}
+	terms := func(result *model.MembershipSummaryResult) map[string]uint64 {
+		out := map[string]uint64{}
+		for _, summary := range result.Summaries {
+			require.NotContains(t, out, summary.B2BOrgUID, "an organization is folded once per read")
+			out[summary.B2BOrgUID] = summary.TermCount
+		}
+		return out
+	}
+
+	whole, _ := newService(t, 3*constants.MaxPageSize+1)
+	uncapped, err := whole.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{ProjectUID: "proj-1"})
+	require.NoError(t, err)
+	require.True(t, uncapped.Complete)
+	require.Equal(t, map[string]uint64{"org-a": 2, "org-b": 2, "org-c": 1}, terms(uncapped))
+
+	capped, searcher := newService(t, 2*constants.MaxPageSize)
+	first, err := capped.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{ProjectUID: "proj-1"})
+	require.NoError(t, err)
+	require.False(t, first.Complete)
+	require.NotNil(t, first.SearchAfter)
+	require.Equal(t, map[string]uint64{"org-a": 2}, terms(first), "the organization the cap fell inside is left for the resumed read")
+
+	second, err := capped.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+		ProjectUID:  "proj-1",
+		SearchAfter: first.SearchAfter,
+	})
+	require.NoError(t, err)
+	require.True(t, second.Complete)
+	require.Nil(t, second.SearchAfter)
+	require.Equal(t, []string{"", *first.SearchAfter, *first.SearchAfter, `["b corp","m-4"]`}, searcher.cursors,
+		"the capped read stopped inside the page its cursor names, and the resumed read asks for that page again")
+
+	union := terms(first)
+	for org, count := range terms(second) {
+		require.NotContains(t, union, org, "an organization is folded in one half only")
+		union[org] = count
+	}
+	require.Equal(t, terms(uncapped), union, "the capped read and its resume are exactly the uncapped read")
+	require.Equal(t, uncapped.TermsTotal, first.TermsTotal+second.TermsTotal)
+}
+
+// TestResourceSearchMembershipSummarySearcherFailure pins that a searcher
+// failure ends the read as an error rather than as a shorter summary.
+func TestResourceSearchMembershipSummarySearcherFailure(t *testing.T) {
+	searcher := mock.NewMockResourceSearcher()
+	searcher.SetQueryResourcesError(stderrors.New("opensearch unavailable"))
+	service := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+
+	result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{ProjectUID: "proj-1"})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "opensearch unavailable")
+	require.Nil(t, result)
+}
+
 // TestMembershipRunTrackerKeepsAnEarlierBoundary pins that a run change
 // after a hit the searcher did not order does not discard a boundary the
 // tracker already found.
