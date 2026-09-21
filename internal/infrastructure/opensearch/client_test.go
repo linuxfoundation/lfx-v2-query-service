@@ -63,6 +63,17 @@ func TestHTTPClientAggregationSearch(t *testing.T) {
 		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
 	})
 
+	t.Run("an aggregation OpenSearch refused to answer whole is service unavailable", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[],"type":"search_phase_execution_exception","reason":"Partial shards failure","phase":"query","grouped":true},"status":503}`))
+		})
+		_, err := client.AggregationSearch(context.Background(), "resources", []byte(`{"size":0}`))
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+	})
+
 	t.Run("too many clauses is a validation error", func(t *testing.T) {
 		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -222,6 +233,40 @@ func TestHTTPClientSearchRefusesPartialResults(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"took":1,"timed_out":true,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":0},"hits":[]}}`))
 		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("a search OpenSearch refused to answer whole is service unavailable", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[],"type":"search_phase_execution_exception","reason":"Partial shards failure","phase":"query","grouped":true},"status":503}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("a request OpenSearch rejected is the service's own fault, not an outage", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[{"type":"parsing_exception","reason":"unknown key"}],"type":"parsing_exception","reason":"unknown key"},"status":400}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"nope":{}}}`), 10)
+		require.Error(t, err)
+		var unavailable errors.ServiceUnavailable
+		assert.False(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("an unreachable OpenSearch is service unavailable", func(t *testing.T) {
+		client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {})
+		server.Close()
 		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
 		var unavailable errors.ServiceUnavailable
 		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
