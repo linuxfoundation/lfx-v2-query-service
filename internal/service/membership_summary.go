@@ -154,10 +154,12 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		if recordsRead >= s.config.MaxSummaryRecords && (anyVisible || pages > s.config.DeniedPageWalk) {
 			// The cap is checked after a whole page, so pages are never
 			// split and the cap may be overshot by up to one page. While the
-			// caller has seen nothing, the read keeps walking as far as the
-			// plain search walks denied pages before it exposes a
-			// continuation, so a scope the caller cannot see and a scope
-			// that does not exist stay indistinguishable to the same extent.
+			// caller has seen nothing, the cap yields to the denied-page
+			// walk: the read keeps going as far as the plain search walks
+			// denied pages before it exposes a continuation, so a scope the
+			// caller cannot see and a scope that does not exist stay
+			// indistinguishable to the same extent. The worst case for such
+			// a read is therefore one page plus the walk, not the cap.
 			boundary, canResume := runs.boundary()
 			if canResume {
 				// Leave out the organization the read stopped inside: its
