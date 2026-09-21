@@ -151,6 +151,19 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			complete = true
 			break
 		}
+		if searchCriteria.SearchAfter != nil && *searchCriteria.SearchAfter == *page.NextSearchAfter {
+			// The cursor must move, as on the plain search: a cursor that
+			// comes back unchanged is an adapter defect, and following it
+			// would re-read the same page up to the cap and then hand the
+			// caller a page token that never advances.
+			slog.ErrorContext(ctx, "search_after cursor did not advance while reading membership records",
+				"page", pages,
+			)
+			return nil, fmt.Errorf("search_after cursor did not advance while reading membership records")
+		}
+		if errCtx := ctx.Err(); errCtx != nil {
+			return nil, fmt.Errorf("membership summary read cancelled: %w", errCtx)
+		}
 		if recordsRead >= s.config.MaxSummaryRecords && (anyVisible || pages > s.config.DeniedPageWalk) {
 			// The cap is checked after a whole page, so pages are never
 			// split and the cap may be overshot by up to one page. While the

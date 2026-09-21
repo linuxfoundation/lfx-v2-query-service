@@ -549,6 +549,54 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Nil(t, result, "a partial summary is never returned")
 	})
 
+	t.Run("a cursor that does not advance is an adapter defect, not a token that never moves", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		stuck := membershipPage(cursor(`["example corp","m-1"]`),
+			orderedMembershipRecord("m-1", "example corp", map[string]any{
+				"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+				"project_uid": "proj-1", "project_slug": "example-project",
+				"status": "Active", "tier_name": "Gold",
+				"start_date": "2023-01-01T00:00:00Z", "created_at": "2023-01-02T00:00:00Z",
+			}),
+		)
+		searcher.SetQueryResourcePages(stuck, stuck, stuck)
+		service := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+
+		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+			B2BOrgUID: "org-1",
+		})
+
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Equal(t, 2, searcher.QueryResourceCalls(), "stops as soon as the cursor repeats instead of reading to the cap")
+	})
+
+	t.Run("a cancelled read stops between pages", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(
+			membershipPage(cursor(`["example corp","m-1"]`),
+				orderedMembershipRecord("m-1", "example corp", map[string]any{
+					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+					"project_uid": "proj-1", "project_slug": "example-project",
+					"status": "Active", "tier_name": "Gold",
+					"start_date": "2023-01-01T00:00:00Z", "created_at": "2023-01-02T00:00:00Z",
+				}),
+			),
+			membershipPage(nil),
+		)
+		service := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+		cancelled, cancel := context.WithCancel(membershipContext("test-user"))
+		cancel()
+
+		result, err := service.QueryMembershipSummary(cancelled, model.MembershipSummaryCriteria{
+			B2BOrgUID: "org-1",
+		})
+
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Equal(t, 1, searcher.QueryResourceCalls(), "no further page is fetched once the context is done")
+	})
+
 	t.Run("a read without a scope is a validation error", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		service := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
