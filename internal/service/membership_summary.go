@@ -74,6 +74,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		complete    bool
 		resume      *string
 		runs        membershipRunTracker
+		anyVisible  bool
 	)
 
 	for {
@@ -113,15 +114,21 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		for _, hit := range page.Resources {
 			runs.observe(hit.SortValues)
 		}
+		anyVisible = anyVisible || len(visible) > 0
 		for _, resource := range visible {
-			data, isMap := resource.Data.(map[string]any)
-			if !isMap {
-				// A record without a data object carries nothing to fold.
-				continue
-			}
 			identity := resource.ObjectRef
 			if identity == "" {
 				identity = resource.Type + ":" + resource.ID
+			}
+			data, isMap := resource.Data.(map[string]any)
+			if !isMap {
+				// A record without a data object carries nothing to fold. If
+				// an earlier copy of it was folded, the copy read last still
+				// wins: the earlier row is withdrawn.
+				if row, alreadyFolded := folded[identity]; alreadyFolded {
+					rows[row] = nil
+				}
+				continue
 			}
 			if row, alreadyFolded := folded[identity]; alreadyFolded {
 				// A record re-indexed while the read is between pages can be
@@ -144,9 +151,13 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			complete = true
 			break
 		}
-		if recordsRead >= s.config.MaxSummaryRecords {
+		if recordsRead >= s.config.MaxSummaryRecords && (anyVisible || pages > s.config.DeniedPageWalk) {
 			// The cap is checked after a whole page, so pages are never
-			// split and the cap may be overshot by up to one page.
+			// split and the cap may be overshot by up to one page. While the
+			// caller has seen nothing, the read keeps walking as far as the
+			// plain search walks denied pages before it exposes a
+			// continuation, so a scope the caller cannot see and a scope
+			// that does not exist stay indistinguishable to the same extent.
 			boundary, canResume := runs.boundary()
 			if canResume {
 				// Leave out the organization the read stopped inside: its
@@ -157,7 +168,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 				// than only off the tail.
 				kept := rows[:0]
 				for row := range rows {
-					if rowRuns[row] != runs.current {
+					if rows[row] != nil && rowRuns[row] != runs.current {
 						kept = append(kept, rows[row])
 					}
 				}
@@ -182,6 +193,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		searchCriteria.SearchAfter = page.NextSearchAfter
 	}
 
+	rows = withdrawnRowsRemoved(rows)
 	result := &model.MembershipSummaryResult{
 		Summaries:   foldMembershipTerms(rows),
 		TermsTotal:  uint64(len(rows)),
@@ -205,6 +217,17 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 	)
 
 	return result, nil
+}
+
+// withdrawnRowsRemoved drops the rows a later copy of the record withdrew.
+func withdrawnRowsRemoved(rows []map[string]any) []map[string]any {
+	kept := rows[:0]
+	for _, row := range rows {
+		if row != nil {
+			kept = append(kept, row)
+		}
+	}
+	return kept
 }
 
 // membershipSearchCriteria builds the search the summary drains: the

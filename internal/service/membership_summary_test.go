@@ -237,6 +237,96 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, cursor(`["a corp","m-1"]`), result.SearchAfter)
 	})
 
+	t.Run("a caller who sees nothing walks past the cap as far as the plain search walks denied pages", func(t *testing.T) {
+		hidden := func(uid string) model.Resource {
+			return orderedMembershipRecord(uid, "a corp", map[string]any{
+				"uid": uid, "b2b_org_uid": "org-1", "company_name": "A Corp",
+				"project_uid": "proj-1", "project_slug": "example-project",
+				"status": "Active", "tier_name": "Gold",
+			})
+		}
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(
+			membershipPage(cursor(`["a corp","m-1"]`), hidden("m-1")),
+			membershipPage(cursor(`["a corp","m-2"]`), hidden("m-2")),
+			membershipPage(cursor(`["a corp","m-3"]`), hidden("m-3")),
+			membershipPage(nil, hidden("m-4")),
+		)
+		checker := mock.NewMockAccessControlChecker()
+		checker.DeniedResourceIDs = []string{constants.MembershipResourceType + ":"}
+		config := DefaultConfig()
+		config.MaxSummaryRecords = 1
+		config.DeniedPageWalk = 5
+		service := newTestResourceSearchWithConfig(t, searcher, checker, config)
+
+		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+			ProjectUID: "proj-1",
+		})
+
+		require.NoError(t, err)
+		require.True(t, result.Complete, "an exhausted scope the caller cannot see looks like an absent one")
+		require.Nil(t, result.SearchAfter)
+		require.Empty(t, result.Summaries)
+		require.Equal(t, 4, searcher.QueryResourceCalls(), "the cap did not stop a read that had seen nothing")
+	})
+
+	t.Run("a caller who sees nothing gets a continuation only past the denied-page walk", func(t *testing.T) {
+		hidden := func(uid string) model.Resource {
+			return orderedMembershipRecord(uid, "a corp", map[string]any{
+				"uid": uid, "b2b_org_uid": "org-1", "company_name": "A Corp",
+				"project_uid": "proj-1", "project_slug": "example-project",
+				"status": "Active", "tier_name": "Gold",
+			})
+		}
+		searcher := mock.NewMockResourceSearcher()
+		searcher.SetQueryResourcePages(
+			membershipPage(cursor(`["a corp","m-1"]`), hidden("m-1")),
+			membershipPage(cursor(`["a corp","m-2"]`), hidden("m-2")),
+			membershipPage(cursor(`["a corp","m-3"]`), hidden("m-3")),
+		)
+		checker := mock.NewMockAccessControlChecker()
+		checker.DeniedResourceIDs = []string{constants.MembershipResourceType + ":"}
+		config := DefaultConfig()
+		config.MaxSummaryRecords = 1
+		config.DeniedPageWalk = 1
+		service := newTestResourceSearchWithConfig(t, searcher, checker, config)
+
+		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+			ProjectUID: "proj-1",
+		})
+
+		require.NoError(t, err)
+		require.False(t, result.Complete)
+		require.NotNil(t, result.SearchAfter, "past the walk the empty read keeps its continuation, as the plain search does")
+		require.Empty(t, result.Summaries)
+		require.Equal(t, 2, searcher.QueryResourceCalls(), "one page plus the walk")
+	})
+
+	t.Run("a record whose later copy carries no data is withdrawn", func(t *testing.T) {
+		searcher := mock.NewMockResourceSearcher()
+		withData := membershipRecord("m-1", map[string]any{
+			"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+			"project_uid": "proj-1", "project_slug": "example-project",
+			"status": "Active", "tier_name": "Gold",
+		})
+		withoutData := membershipRecord("m-1", nil)
+		withoutData.Data = nil
+		searcher.SetQueryResourcePages(
+			membershipPage(cursor(`["example corp","m-1"]`), withData),
+			membershipPage(nil, withoutData),
+		)
+		service := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+
+		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+			B2BOrgUID: "org-1",
+		})
+
+		require.NoError(t, err)
+		require.True(t, result.Complete)
+		require.Equal(t, uint64(0), result.TermsTotal, "the copy read last carried nothing to fold, so the earlier row is withdrawn")
+		require.Empty(t, result.Summaries)
+	})
+
 	t.Run("the record cap cuts at the last organization boundary and returns the cursor that resumes there", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(

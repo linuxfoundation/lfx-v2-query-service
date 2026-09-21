@@ -340,7 +340,11 @@ normalizes them.
    [Access Control Flow](#access-control-flow) describes, and only the records
    the caller may see reach the fold. A failed access check is a `503`, never a
    partial summary: a summary is never returned as if whole while part of the
-   caller's visibility is unknown.
+   caller's visibility is unknown. While the caller has seen nothing, the read
+   keeps walking past the record cap as far as the plain search walks denied
+   pages (`SEARCH_DENIED_PAGE_WALK`) before it exposes a continuation, so a
+   scope the caller cannot see and a scope that does not exist stay
+   indistinguishable to the same extent as on the plain search.
 3. **Record cap** — the read stops at a configured record cap
    (`SUMMARY_MAX_RECORDS`, validated at startup like the count route's bucket
    cap) and reports `complete: false`. The cap is checked after a whole page,
