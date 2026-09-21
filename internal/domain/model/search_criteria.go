@@ -47,10 +47,6 @@ type SearchCriteria struct {
 	PublicOnly bool
 	// PrivateOnly indicates if only private resources should be returned
 	PrivateOnly bool
-	// GroupBy indicates the field to group by
-	GroupBy string
-	// GroupBySize indicates the size of the group by
-	GroupBySize int
 	// DateField is the field to filter by date range (auto-prefixed with "data.")
 	DateField *string
 	// DateFrom is the start date for range filter (inclusive, ISO 8601 or date-only)
@@ -69,6 +65,11 @@ type SearchResult struct {
 	Resources []Resource
 	// Opaque token if more results are available
 	PageToken *string
+	// NextSearchAfter is the raw search_after cursor the PageToken encodes
+	// (JSON array of the last hit's sort values). Internal: it lets the service
+	// fetch the following page directly via SearchCriteria.SearchAfter without
+	// decoding the opaque token; never returned to clients.
+	NextSearchAfter *string
 	// Cache control header
 	CacheControl *string
 	// Total number of resources found
@@ -79,10 +80,18 @@ type SearchResult struct {
 type CountResult struct {
 	// Count number of resources found
 	Count int
-	// Aggregations
-	Aggregation TermsAggregation
-	// HasMore indicates if there are more results
+	// HasMore indicates the count is not guaranteed to be exhaustive
 	HasMore bool
+	// Groups holds per-group counts when a group_by prefix was requested
+	Groups []CountGroup
+	// GroupsComplete is set when a group_by prefix was requested
+	GroupsComplete *bool
+	// GroupCountErrorUpperBound is set for grouped counts (zero when exact).
+	GroupCountErrorUpperBound *uint64
+	// MetricValue is set when a metric was requested
+	MetricValue *uint64
+	// MetricComplete is set when a metric was requested
+	MetricComplete *bool
 	// Cache control header
 	CacheControl *string
 }

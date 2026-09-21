@@ -195,6 +195,22 @@ go run ./cmd
 - `NATS_MAX_RECONNECT`: Maximum reconnection attempts (default: "3")
 - `NATS_RECONNECT_WAIT`: Time between reconnection attempts (default: "2s")
 
+**Access Checks and Counting:**
+
+- `ACCESS_CHECK_TIMEOUT`: Timeout of each batched fga-sync access check (default: "15s")
+- `READ_TUPLES_TIMEOUT`: Timeout of the `filter_grants=direct` tuple read (default: "15s")
+- `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
+- `COUNT_MAX_ACCESS_BUCKETS`: Access-key walk cap (page size..10000, default: "5000"); startup validation also requires at most 100 pages per count (`ceil(cap/page) <= 100`). Whole pages are never split, so the final page can overshoot by at most page size minus one (always fewer than 11000 granted keys). An index with a lowered `index.max_terms_count` must accommodate that bound.
+- `SEARCH_DENIED_PAGE_WALK`: Extra raw OpenSearch pages `/query/resources` fetches when a page leaves the caller no visible resource after `cel_filter` and the access check (1–25, default: "10"). A result set the caller may not see that exhausts within the walk therefore returns `[]` with no `page_token`, exactly like a miss — closing the exact-tag existence oracle for unique lookups; past the limit an empty page keeps its token so paging can continue (revealing only that further raw matches exist). Worst case `1 + SEARCH_DENIED_PAGE_WALK` sequential OpenSearch + access-check round trips.
+
+The count route reads the index mapping on first use to pick the access-check
+field in every backing index. Failed reads, unsupported shapes, or disagreeing
+alias mappings return `503` for authenticated counts until resolution is retried
+(30 s), with a warning; there is no guessed-field fallback. The resolution is
+revalidated every 5 minutes; a failed or unsupported revalidation fails closed
+like the first read. Anonymous counts and public-only aggregations do not read
+the mapping and are unaffected.
+
 **Clearbit Configuration:**
 
 - `CLEARBIT_CREDENTIAL`: Clearbit API key (required for organization search)
@@ -235,9 +251,11 @@ Authorization: Bearer <jwt_token>
 - `parent`: Parent resource for hierarchical queries
 - `tags`: Array of tags to filter by (OR logic - matches resources with any of these tags)
 - `tags_all`: Array of tags to filter by (AND logic - matches resources that have all of these tags)
-- `filters`, `filters_all`, `filters_or`: `field:value` filters against `data.*`
-- `cel_filter`: CEL expression for advanced post-query filtering
+- `filters`: Legacy/backwards-compatible array of exact field filters with AND logic (format: `field:value`, e.g. `stage:Active`). Fields are auto-prefixed with `data.`
+- `filters_all`: Preferred array of exact field filters with AND logic (same `field:value` format). If both `filters` and `filters_all` are provided, both sets of filters are applied and combined with AND logic
+- `filters_or`: Array of exact field filters with OR logic — at least one must match (same `field:value` format)
 - `filter_grants`: `direct` to pre-filter to resources with direct FGA grants (requires `type`)
+- `cel_filter`: CEL expression for advanced post-query filtering (see [CEL Filter](docs/query-service-contract.md#cel-filter))
 - `date_field`: Date field to filter on (within data object) - used with date_from and/or date_to
 - `date_from`: Start date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses start of day UTC
 - `date_to`: End date (inclusive). Format: ISO 8601 datetime or date-only (YYYY-MM-DD). Date-only uses end of day UTC
@@ -287,6 +305,20 @@ returns a count rather than the resources themselves:
 
 `has_more` is `true` when the count is not guaranteed to be exhaustive and the
 client should request a narrower query.
+
+Two optional parameters aggregate the count over the resources the caller may
+see: `group_by=<tag prefix>` returns `groups` (one entry per tag value after
+`<prefix>:`, capped by `group_by_size`, omitted when no group matched;
+`groups_complete` says whether all are present, while `group_count_error_upper_bound`
+is 0 only when the returned group counts are exact within the walked authorized
+set; otherwise counts may be lower bounds) and `metric=cardinality:<tag prefix>` returns `metric_value` (distinct
+tag values) with `metric_complete`. They cannot be combined, and `data.*`
+fields cannot be aggregated on this index.
+
+```bash
+GET /query/resources/count?v=1&type=v1_past_meeting&group_by=project_uid
+GET /query/resources/count?v=1&type=v1_past_meeting_participant&tags_all=is_attended:true&metric=cardinality:email
+```
 
 For API contract details (page size, date ranges, CEL filter, clause limits,
 anonymous vs authenticated semantics, access-control flow), see

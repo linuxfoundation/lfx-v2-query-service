@@ -22,11 +22,95 @@ type ResourceSearcher interface {
 	// QueryResources searches for resources based on the provided criteria
 	QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error)
 
-	// QueryResourcesCount searches for resources based on the provided criteria
-	QueryResourcesCount(ctx context.Context, countCriteria model.SearchCriteria, aggregationCriteria model.SearchCriteria) (*model.CountResult, error)
+	// QueryResourcesCount counts the resources matching the criteria that the
+	// caller may see, optionally grouped or reduced to a metric.
+	QueryResourcesCount(ctx context.Context, publicCriteria model.SearchCriteria, privateCriteria model.SearchCriteria, aggregation model.CountAggregation) (*model.CountResult, error)
 
 	// IsReady checks if the search service is ready
 	IsReady(ctx context.Context) error
+}
+
+// Config carries the tunables of the resource search service. Zero values are
+// replaced by the defaults in pkg/constants; the constructor validates the
+// result.
+type Config struct {
+	// AccessCheckTimeout bounds each batched access check sent to fga-sync.
+	AccessCheckTimeout time.Duration
+	// ReadTuplesTimeout bounds the direct tuple read used by filter_grants=direct.
+	ReadTuplesTimeout time.Duration
+	// AccessBucketPage is the number of access-key buckets fetched and
+	// checked per page of the count walk (1..constants.MaxAccessBucketPage).
+	AccessBucketPage int
+	// MaxAccessBuckets caps the number of access-key buckets a single count
+	// walks before it stops and reports has_more (AccessBucketPage..10000).
+	MaxAccessBuckets int
+	// DeniedPageWalk is the number of additional raw pages QueryResources
+	// fetches when a page leaves the caller no visible resource (after
+	// cel_filter and the access check). Within the walk, "exists but not
+	// visible" and "does not exist" are identical ([] with no token); past
+	// the limit the empty page keeps its token so paging can continue
+	// (1..constants.MaxDeniedPageWalk).
+	DeniedPageWalk int
+}
+
+// DefaultConfig returns the configuration used when nothing is set in the
+// environment.
+func DefaultConfig() Config {
+	return Config{
+		AccessCheckTimeout: 15 * time.Second,
+		ReadTuplesTimeout:  15 * time.Second,
+		AccessBucketPage:   constants.DefaultAccessBucketPage,
+		MaxAccessBuckets:   constants.DefaultMaxAccessBuckets,
+		DeniedPageWalk:     constants.DefaultDeniedPageWalk,
+	}
+}
+
+// withDefaults fills zero values from DefaultConfig.
+func (c Config) withDefaults() Config {
+	defaults := DefaultConfig()
+	if c.AccessCheckTimeout == 0 {
+		c.AccessCheckTimeout = defaults.AccessCheckTimeout
+	}
+	if c.ReadTuplesTimeout == 0 {
+		c.ReadTuplesTimeout = defaults.ReadTuplesTimeout
+	}
+	if c.AccessBucketPage == 0 {
+		c.AccessBucketPage = defaults.AccessBucketPage
+	}
+	if c.MaxAccessBuckets == 0 {
+		c.MaxAccessBuckets = defaults.MaxAccessBuckets
+	}
+	if c.DeniedPageWalk == 0 {
+		c.DeniedPageWalk = defaults.DeniedPageWalk
+	}
+	return c
+}
+
+// Validate reports the first invalid setting.
+func (c Config) Validate() error {
+	if c.AccessCheckTimeout <= 0 {
+		return fmt.Errorf("access check timeout must be positive, got %s", c.AccessCheckTimeout)
+	}
+	if c.ReadTuplesTimeout <= 0 {
+		return fmt.Errorf("read tuples timeout must be positive, got %s", c.ReadTuplesTimeout)
+	}
+	if c.AccessBucketPage < 1 || c.AccessBucketPage > constants.MaxAccessBucketPage {
+		return fmt.Errorf("access bucket page must be between 1 and %d, got %d", constants.MaxAccessBucketPage, c.AccessBucketPage)
+	}
+	if c.MaxAccessBuckets < c.AccessBucketPage {
+		return fmt.Errorf("max access buckets (%d) must be at least the access bucket page (%d)", c.MaxAccessBuckets, c.AccessBucketPage)
+	}
+	if c.MaxAccessBuckets > constants.MaxCountAccessBuckets {
+		return fmt.Errorf("max access buckets must not exceed %d, got %d", constants.MaxCountAccessBuckets, c.MaxAccessBuckets)
+	}
+	pages := (c.MaxAccessBuckets + c.AccessBucketPage - 1) / c.AccessBucketPage
+	if pages > constants.MaxCountAccessPages {
+		return fmt.Errorf("max access buckets / access bucket page must not exceed %d pages, got %d (buckets=%d, page=%d)", constants.MaxCountAccessPages, pages, c.MaxAccessBuckets, c.AccessBucketPage)
+	}
+	if c.DeniedPageWalk < 1 || c.DeniedPageWalk > constants.MaxDeniedPageWalk {
+		return fmt.Errorf("denied page walk must be between 1 and %d, got %d", constants.MaxDeniedPageWalk, c.DeniedPageWalk)
+	}
+	return nil
 }
 
 // ResourceSearch handles resource-related business operations
@@ -35,6 +119,7 @@ type ResourceSearch struct {
 	resourceSearcher port.ResourceSearcher
 	accessChecker    port.AccessControlChecker
 	resourceFilter   port.ResourceFilter
+	config           Config
 }
 
 // QueryResources performs resource search with business logic validation
@@ -75,7 +160,7 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		if principal == constants.AnonymousPrincipal {
 			return nil, errors.NewValidation("filter_grants requires authentication")
 		}
-		objectRefs, errTuples := s.accessChecker.ReadTuples(ctx, "user:"+principal, *criteria.ResourceType, 15*time.Second)
+		objectRefs, errTuples := s.accessChecker.ReadTuples(ctx, "user:"+principal, *criteria.ResourceType, s.config.ReadTuplesTimeout)
 		if errTuples != nil {
 			slog.ErrorContext(ctx, "failed to read FGA tuples for filter_grants",
 				"error", errTuples,
@@ -102,15 +187,83 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 	// Log the search operation
 	slog.DebugContext(ctx, "validated search criteria, proceeding with search")
 
-	// Delegate to the search implementation
-	result, err := s.resourceSearcher.QueryResources(ctx, criteria)
-	if err != nil {
-		slog.ErrorContext(ctx, "search operation failed while executing query resources",
-			"error", err,
+	// The page token is derived from the raw OpenSearch page, before the CEL
+	// filter and the access check. Returned as-is, a page whose hits were all
+	// denied would come back with no resources but a token, while a query
+	// matching nothing comes back with neither — letting any authenticated
+	// caller learn that a resource they cannot read exists (e.g. probe an
+	// organization by its slug tag). So when a page filters down to nothing,
+	// keep walking the raw pages server-side until the caller can see
+	// something or the result set is exhausted: within the walk, "denied" and
+	// "absent" are identical (empty, no token). The walk advances the raw
+	// search_after cursor the adapter hands back next to the token
+	// (SearchCriteria.SearchAfter is what the OpenSearch query renders; the
+	// opaque token is never decoded here). It is bounded: when the walk ends
+	// with no visible resource and raw pages remain, the empty page keeps its
+	// token so paging can continue — the token then only reveals that further
+	// raw matches exist.
+	searchResult := &model.SearchResult{}
+	pageCriteria := criteria
+	for fetched := 1; ; fetched++ {
+		result, err := s.resourceSearcher.QueryResources(ctx, pageCriteria)
+		if err != nil {
+			slog.ErrorContext(ctx, "search operation failed while executing query resources",
+				"error", err,
+			)
+			return nil, fmt.Errorf("search operation failed: %w", err)
+		}
+
+		checkedResources, errPage := s.filterAndCheckPage(ctx, principal, pageCriteria, result)
+		if errPage != nil {
+			return nil, errPage
+		}
+
+		searchResult.Resources = checkedResources
+		searchResult.PageToken = result.PageToken
+
+		if len(checkedResources) > 0 || result.PageToken == nil {
+			break
+		}
+		if fetched > s.config.DeniedPageWalk {
+			slog.WarnContext(ctx, "denied page walk limit reached with no visible resources; returning continuation token",
+				"pages_fetched", fetched,
+				"limit", s.config.DeniedPageWalk,
+			)
+			break
+		}
+		if errCtx := ctx.Err(); errCtx != nil {
+			return nil, fmt.Errorf("search operation cancelled during denied page walk: %w", errCtx)
+		}
+		if result.NextSearchAfter == nil {
+			// A token without its cursor cannot be followed; surface it rather
+			// than looping on the same page.
+			return nil, fmt.Errorf("search result carries a page token without a search_after cursor")
+		}
+		if pageCriteria.SearchAfter != nil && *pageCriteria.SearchAfter == *result.NextSearchAfter {
+			// The cursor must move, or the walk would refetch the same page up
+			// to the limit and hand back its token — the oracle this loop closes.
+			return nil, fmt.Errorf("search_after cursor did not advance during denied page walk")
+		}
+
+		slog.DebugContext(ctx, "page has no visible resources, fetching next raw page",
+			"pages_fetched", fetched,
 		)
-		return nil, fmt.Errorf("search operation failed: %w", err)
+		pageCriteria.SearchAfter = result.NextSearchAfter
+		pageCriteria.PageToken = nil
 	}
 
+	if principal == constants.AnonymousPrincipal {
+		// Set a cache control header for anonymous users.
+		cacheControl := constants.AnonymousCacheControlHeader
+		searchResult.CacheControl = &cacheControl
+	}
+
+	return searchResult, nil
+}
+
+// filterAndCheckPage applies the optional CEL filter to one raw page and then
+// the access check, returning only the resources the principal may see.
+func (s *ResourceSearch) filterAndCheckPage(ctx context.Context, principal string, criteria model.SearchCriteria, result *model.SearchResult) ([]model.Resource, error) {
 	// Apply CEL filter if provided (before access control to reduce the number of resources to check).
 	// Note: applying this filter before access control and pagination can change the effective result set
 	// seen by the caller, which may cause pagination tokens (based on the unfiltered set) to skip or miss
@@ -140,10 +293,6 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 
 	messageCheckAccess := s.BuildMessage(ctx, principal, result)
 
-	searchResult := &model.SearchResult{
-		PageToken: result.PageToken,
-	}
-
 	// Check access control for the resources if needed
 	checkedResources, errCheckAccess := s.CheckAccess(ctx, principal, result.Resources, messageCheckAccess)
 	if errCheckAccess != nil {
@@ -153,20 +302,12 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		)
 		return nil, fmt.Errorf("access control check failed: %w", errCheckAccess)
 	}
-	searchResult.Resources = checkedResources
 
-	slog.DebugContext(ctx, "resource search completed",
+	slog.DebugContext(ctx, "resource page access check completed",
 		"query_count", len(result.Resources),
-		"response_after_access_check", len(searchResult.Resources),
+		"response_after_access_check", len(checkedResources),
 	)
-
-	if principal == constants.AnonymousPrincipal {
-		// Set a cache control header for anonymous users.
-		cacheControl := constants.AnonymousCacheControlHeader
-		searchResult.CacheControl = &cacheControl
-	}
-
-	return searchResult, nil
+	return checkedResources, nil
 }
 
 // validateSearchCriteria validates the search criteria according to business rules
@@ -246,7 +387,7 @@ func (s *ResourceSearch) CheckAccess(ctx context.Context, principal string, reso
 
 		// Trim trailing newline.
 		accessCheckMessage = accessCheckMessage[:len(accessCheckMessage)-1]
-		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, 15*time.Second)
+		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, s.config.AccessCheckTimeout)
 		if errCheckAccess != nil {
 			slog.ErrorContext(ctx, "access control check failed",
 				"error", errCheckAccess,
@@ -276,15 +417,27 @@ func (s *ResourceSearch) CheckAccess(ctx context.Context, principal string, reso
 
 }
 
+// QueryResourcesCount counts the matching resources the caller may see.
+//
+// For an anonymous principal the answer is the public /_count alone. For an
+// authenticated principal the service additionally walks the private
+// resources grouped by access-check key in pages of config.AccessBucketPage
+// buckets, access-checks each page in one batched request, and adds the
+// document counts of the granted keys. The walk stops at a short page
+// (exhaustive) or once config.MaxAccessBuckets buckets have been walked
+// (HasMore = true). When aggregation asks for groups or a metric, they are
+// computed afterwards over the authorized set only.
 func (s *ResourceSearch) QueryResourcesCount(
 	ctx context.Context,
-	publicCountCriteria model.SearchCriteria,
-	aggregationCriteria model.SearchCriteria,
+	publicCriteria model.SearchCriteria,
+	privateCriteria model.SearchCriteria,
+	aggregation model.CountAggregation,
 ) (*model.CountResult, error) {
 
 	slog.DebugContext(ctx, "starting resource count search",
-		"count_criteria", publicCountCriteria,
-		"aggregation_criteria", aggregationCriteria,
+		"group_prefix", aggregation.GroupByPrefix,
+		"metric_prefix", aggregation.CardinalityPrefix,
+		"group_size", aggregation.GroupBySize,
 	)
 
 	// Grab the principal which was stored into the context by the security handler.
@@ -294,67 +447,207 @@ func (s *ResourceSearch) QueryResourcesCount(
 		return nil, errors.NewValidation("missing principal in context")
 	}
 
-	// Log the search operation
-	slog.DebugContext(ctx, "validated search criteria, proceeding with count search")
-
-	// Delegate to the search implementation
-	publicOnly := principal == constants.AnonymousPrincipal
-	result, err := s.resourceSearcher.QueryResourcesCount(ctx, publicCountCriteria, aggregationCriteria, publicOnly)
+	publicCount, err := s.resourceSearcher.CountPublic(ctx, publicCriteria)
 	if err != nil {
-		slog.ErrorContext(ctx, "search operation failed while executing query resources",
+		slog.ErrorContext(ctx, "search operation failed while counting public resources",
 			"error", err,
 		)
 		return nil, fmt.Errorf("search operation failed: %w", err)
 	}
 
-	// If the principal is anonymous, we can return the result immediately without checking access control
-	// since we already retrieved the public-only count.
+	result := &model.CountResult{
+		Count: publicCount,
+	}
+
+	// Anonymous callers see public resources only; no access checks needed.
+	aggregation.IncludePublic = true
 	if principal == constants.AnonymousPrincipal {
 		slog.DebugContext(ctx, "returning anonymous count result",
 			"count", result.Count,
 		)
-		// Set a cache control header for anonymous users.
 		cacheControl := constants.AnonymousCacheControlHeader
 		result.CacheControl = &cacheControl
+	} else {
+		authorizedKeys, privateCount, hasMore, errWalk := s.walkAccessBuckets(ctx, principal, privateCriteria)
+		if errWalk != nil {
+			return nil, errWalk
+		}
+		result.Count += int(privateCount)
+		result.HasMore = hasMore
+		aggregation.AuthorizedKeys = authorizedKeys
+	}
+
+	if !aggregation.HasWork() {
 		return result, nil
 	}
 
-	slog.DebugContext(ctx, "checking access control for private resources",
-		"aggregations", result.Aggregation,
-	)
+	// Nothing is visible to the caller: no public document matched and no
+	// private key was granted. The aggregation would return nothing; skip the
+	// round-trip. Completeness still honours has_more.
+	if publicCount == 0 && len(aggregation.AuthorizedKeys) == 0 {
+		complete := !result.HasMore
+		if aggregation.GroupByPrefix != "" {
+			result.Groups = []model.CountGroup{}
+			result.GroupsComplete = &complete
+			var zeroBound uint64
+			result.GroupCountErrorUpperBound = &zeroBound
+		}
+		if aggregation.CardinalityPrefix != "" {
+			var zero uint64
+			metricComplete := complete
+			result.MetricValue = &zero
+			result.MetricComplete = &metricComplete
+		}
+		return result, nil
+	}
 
-	messageCheckAccess := s.BuildCountMessage(ctx, principal, result, aggregationCriteria)
-
-	// Check access control for the resources to determine the authorized response count
-	privateCount, err := s.CheckCountAccess(ctx, principal, result, messageCheckAccess)
+	// The authorized set is public documents plus private documents carrying
+	// one of the granted keys. The walk checks the cap only after a full page,
+	// so len(AuthorizedKeys) < MaxAccessBuckets + AccessBucketPage <= 11000,
+	// below OpenSearch's index.max_terms_count default of 65536. Deployments
+	// with a reduced index setting must allow for this whole-page overshoot.
+	if aggregation.PageSize == 0 {
+		aggregation.PageSize = s.config.AccessBucketPage
+	}
+	if aggregation.MaxDistinct == 0 {
+		aggregation.MaxDistinct = s.config.MaxAccessBuckets
+	}
+	aggregationResult, err := s.resourceSearcher.AuthorizedAggregation(ctx, publicCriteriaWithoutPublicOnly(publicCriteria), aggregation)
 	if err != nil {
-		slog.ErrorContext(ctx, "access control check failed",
+		slog.ErrorContext(ctx, "search operation failed while aggregating authorized resources",
 			"error", err,
 		)
-		return nil, fmt.Errorf("access control check failed: %w", err)
+		return nil, fmt.Errorf("search operation failed: %w", err)
 	}
-	// The count already contains the count of public resources, so we need to add the count of private resources.
-	result.Count += int(privateCount)
-
-	// Check for bucket overflow.
-	// There could be more buckets than the page size, and therefore more results.
-	if result.Aggregation.SumOtherDocCount > 0 {
-		result.HasMore = true
+	// When the walk stopped at the cap, AuthorizedKeys is a truncated view of
+	// what the caller may see, so neither aggregation can claim completeness.
+	if aggregation.GroupByPrefix != "" {
+		result.Groups = aggregationResult.Groups
+		groupsComplete := aggregationResult.GroupsComplete && !result.HasMore
+		result.GroupsComplete = &groupsComplete
+		bound := aggregationResult.GroupCountErrorUpperBound
+		result.GroupCountErrorUpperBound = &bound
+	}
+	if aggregation.CardinalityPrefix != "" {
+		metricValue := aggregationResult.MetricValue
+		metricComplete := aggregationResult.MetricComplete && !result.HasMore
+		result.MetricValue = &metricValue
+		result.MetricComplete = &metricComplete
 	}
 
 	return result, nil
 }
 
-func (s *ResourceSearch) BuildCountMessage(ctx context.Context, principal string, result *model.CountResult, aggregationCriteria model.SearchCriteria) []byte {
+// publicCriteriaWithoutPublicOnly returns the caller's criteria with the
+// public/private switches cleared, for queries whose visibility is expressed
+// by an explicit authorized-set filter instead.
+func publicCriteriaWithoutPublicOnly(criteria model.SearchCriteria) model.SearchCriteria {
+	criteria.PublicOnly = false
+	criteria.PrivateOnly = false
+	return criteria
+}
 
-	// Create a map to store the "doc_count" of each aggregation bucket.
-	docCountMap := make(map[string]uint64, aggregationCriteria.PageSize)
+// walkAccessBuckets pages the private resources grouped by access-check key,
+// access-checks each page, and returns the granted keys, the number of
+// private documents they cover, and whether the walk stopped at the cap.
+//
+// Stopping rule: a page with fewer buckets than the page size is the last one
+// (an after_key on it is ignored). After a full page, if the buckets walked so
+// far reach the cap, the walk stops without requesting the next page and
+// reports hasMore; pages are never split.
+func (s *ResourceSearch) walkAccessBuckets(ctx context.Context, principal string, privateCriteria model.SearchCriteria) ([]string, uint64, bool, error) {
+	started := time.Now()
+	pageSize := s.config.AccessBucketPage
+	maxBuckets := s.config.MaxAccessBuckets
+
+	var (
+		authorizedKeys []string
+		privateCount   uint64
+		walked         int
+		after          *string
+		hasMore        bool
+		pages          int
+	)
+
+	for {
+		pages++
+		page, err := s.resourceSearcher.AccessBuckets(ctx, privateCriteria, model.AccessBucketRequest{
+			PageSize: pageSize,
+			After:    after,
+		})
+		if err != nil {
+			slog.ErrorContext(ctx, "search operation failed while walking access buckets",
+				"error", err,
+				"page", pages,
+			)
+			return nil, 0, false, fmt.Errorf("search operation failed: %w", err)
+		}
+		slog.DebugContext(ctx, "access bucket page fetched",
+			"page", pages,
+			"buckets", len(page.Buckets),
+		)
+
+		if len(page.Buckets) > 0 {
+			message := s.BuildCountMessage(ctx, principal, page.Buckets)
+			pageCount, granted, errCheck := s.CheckCountAccess(ctx, principal, page.Buckets, message)
+			if errCheck != nil {
+				return nil, 0, false, errCheck
+			}
+			privateCount += pageCount
+			authorizedKeys = append(authorizedKeys, granted...)
+		}
+		walked += len(page.Buckets)
+
+		if len(page.Buckets) < pageSize {
+			break
+		}
+		if walked >= maxBuckets {
+			hasMore = true
+			break
+		}
+		if page.AfterKey == nil {
+			// A full page that cannot be continued: the count is not known
+			// to be exhaustive, so say so rather than stop silently.
+			slog.WarnContext(ctx, "access bucket page was full but carried no cursor; reporting has_more",
+				"page", pages,
+				"buckets", walked,
+			)
+			hasMore = true
+			break
+		}
+		after = page.AfterKey
+	}
+
+	elapsed := time.Since(started)
+	if pages > 5 {
+		slog.InfoContext(ctx, "access bucket walk exceeded five pages",
+			"pages", pages,
+			"buckets", walked,
+			"authorized_keys", len(authorizedKeys),
+			"has_more", hasMore,
+			"elapsed", elapsed,
+		)
+	} else {
+		slog.DebugContext(ctx, "access bucket walk completed",
+			"pages", pages,
+			"buckets", walked,
+			"authorized_keys", len(authorizedKeys),
+			"has_more", hasMore,
+			"elapsed", elapsed,
+		)
+	}
+
+	return authorizedKeys, privateCount, hasMore, nil
+}
+
+// BuildCountMessage renders one access-check line per bucket in the format
+// fga-sync expects: "{access_check_query}@user:{principal}\n".
+func (s *ResourceSearch) BuildCountMessage(ctx context.Context, principal string, buckets []model.AggregationBucket) []byte {
 
 	// estimate the size of each line in the access check message
-	accessCheckMessage := make([]byte, 0, 80*aggregationCriteria.PageSize)
+	accessCheckMessage := make([]byte, 0, 80*len(buckets))
 
-	for _, bucket := range result.Aggregation.Buckets {
-		docCountMap[bucket.Key] = bucket.DocCount
+	for _, bucket := range buckets {
 		accessCheckMessage = append(accessCheckMessage, bucket.Key...)
 		accessCheckMessage = append(accessCheckMessage, []byte("@user:")...)
 		accessCheckMessage = append(accessCheckMessage, []byte(principal)...)
@@ -364,44 +657,41 @@ func (s *ResourceSearch) BuildCountMessage(ctx context.Context, principal string
 	return accessCheckMessage
 }
 
-func (s *ResourceSearch) CheckCountAccess(ctx context.Context, principal string, result *model.CountResult, accessCheckMessage []byte) (uint64, error) {
+// CheckCountAccess sends one batched access check for the buckets and returns
+// the summed document count of the granted buckets plus their keys.
+//
+// A failed check is a ServiceUnavailable error: the count must never be
+// returned as if complete when part of the authorized set is unknown.
+func (s *ResourceSearch) CheckCountAccess(ctx context.Context, principal string, buckets []model.AggregationBucket, accessCheckMessage []byte) (uint64, []string, error) {
 	var accessCheckResponses map[string]string
 	if len(accessCheckMessage) > 0 {
-		slog.DebugContext(ctx, "performing access control checks",
-			"message", string(accessCheckMessage),
-		)
+		slog.DebugContext(ctx, "performing count access control checks", "bucket_count", len(buckets))
 
 		// Trim trailing newline.
 		accessCheckMessage = accessCheckMessage[:len(accessCheckMessage)-1]
-		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, 15*time.Second)
+		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, s.config.AccessCheckTimeout)
 		if errCheckAccess != nil {
-			slog.ErrorContext(ctx, "access control check failed",
-				"error", errCheckAccess,
-				"message", string(accessCheckMessage),
-			)
-			return 0, fmt.Errorf("access control check failed: %w", errCheckAccess)
+			slog.ErrorContext(ctx, "count access control check failed", "error", errCheckAccess, "bucket_count", len(buckets))
+			return 0, nil, errors.NewServiceUnavailable("access control check failed", errCheckAccess)
 		}
 		accessCheckResponses = accessCheckResult
 	}
-	slog.DebugContext(ctx, "access check responses", "responses", accessCheckResponses)
+	slog.DebugContext(ctx, "count access check completed", "bucket_count", len(buckets), "response_count", len(accessCheckResponses))
 
 	var count uint64
-	for _, bucket := range result.Aggregation.Buckets {
-		// The bucket.Key already contains the full access check query including the principal
-		// e.g.: "committee:830513f8-0e77-4a48-a8e4-ede4c1a61f98#viewer@user:project_super_admin"
-		// The BuildCountMessage function appends "@user:" + principal to create the access check key
-		// So we need to use the same format here
+	granted := make([]string, 0, len(buckets))
+	for _, bucket := range buckets {
+		// The bucket.Key is the stored access_check_query
+		// ("{access_check_object}#{access_check_relation}"); BuildCountMessage
+		// appended "@user:" + principal, so the response is keyed the same way.
 		accessCheckKey := bucket.Key + "@user:" + principal
-		slog.DebugContext(ctx, "checking access control for bucket",
-			"bucket", bucket.Key,
-			"access_check_key", accessCheckKey,
-		)
 		if allowed, ok := accessCheckResponses[accessCheckKey]; ok && allowed == "true" {
 			count += bucket.DocCount
+			granted = append(granted, bucket.Key)
 		}
 	}
 
-	return count, nil
+	return count, granted, nil
 }
 
 func (s *ResourceSearch) IsReady(ctx context.Context) error {
@@ -416,11 +706,17 @@ func (s *ResourceSearch) IsReady(ctx context.Context) error {
 	return nil
 }
 
-// NewResourceSearch creates a new ResourceSearch instance
-func NewResourceSearch(resourceSearcher port.ResourceSearcher, accessChecker port.AccessControlChecker, resourceFilter port.ResourceFilter) ResourceSearcher {
+// NewResourceSearch creates a new ResourceSearch instance. Zero values in
+// config are replaced by DefaultConfig; an invalid config is an error.
+func NewResourceSearch(resourceSearcher port.ResourceSearcher, accessChecker port.AccessControlChecker, resourceFilter port.ResourceFilter, config Config) (ResourceSearcher, error) {
+	config = config.withDefaults()
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid resource search config: %w", err)
+	}
 	return &ResourceSearch{
 		resourceSearcher: resourceSearcher,
 		accessChecker:    accessChecker,
 		resourceFilter:   resourceFilter,
-	}
+		config:           config,
+	}, nil
 }

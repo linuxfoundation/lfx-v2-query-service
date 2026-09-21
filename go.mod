@@ -31,6 +31,7 @@ require (
 	goa.design/clue v1.2.6
 	goa.design/goa/v3 v3.30.0
 	golang.org/x/crypto v0.55.0
+	golang.org/x/sync v0.22.0
 )
 
 require (
@@ -58,7 +59,6 @@ require (
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.41.0 // indirect

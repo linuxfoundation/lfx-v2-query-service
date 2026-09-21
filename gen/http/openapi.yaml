@@ -40,11 +40,6 @@ paths:
                   required: false
                   type: string
                   pattern: ^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}$
-                - name: Authorization
-                  in: header
-                  description: Token
-                  required: true
-                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -99,11 +94,6 @@ paths:
                   required: true
                   type: string
                   minLength: 1
-                - name: Authorization
-                  in: header
-                  description: Token
-                  required: true
-                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -258,11 +248,6 @@ paths:
                   default: 50
                   maximum: 1000
                   minimum: 1
-                - name: Authorization
-                  in: header
-                  description: Token
-                  required: true
-                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -383,11 +368,26 @@ paths:
                   items:
                     type: string
                   collectionFormat: multi
-                - name: Authorization
-                  in: header
-                  description: JWT token issued by Heimdall
-                  required: true
+                - name: group_by
+                  in: query
+                  description: Tag prefix to group the count by; groups are keyed by the tag value after '<prefix>:'
+                  required: false
                   type: string
+                  maxLength: 64
+                  pattern: ^[a-z][a-z0-9_]*$
+                - name: group_by_size
+                  in: query
+                  description: Maximum number of groups returned (default 100); requires group_by
+                  required: false
+                  type: integer
+                  maximum: 1000
+                  minimum: 1
+                - name: metric
+                  in: query
+                  description: Metric to compute over the authorized resources; only 'cardinality:<tag_prefix>' (^cardinality:[a-z][a-z0-9_]*$) is supported
+                  required: false
+                  type: string
+                  maxLength: 80
             responses:
                 "200":
                     description: OK response.
@@ -436,6 +436,26 @@ definitions:
             message: The request was invalid.
         required:
             - message
+    CountGroup:
+        title: CountGroup
+        type: object
+        properties:
+            count:
+                type: integer
+                description: Number of authorized resources in the group
+                example: 30
+                format: int64
+            key:
+                type: string
+                description: 'Group key: the tag value with the group_by prefix stripped'
+                example: a1b2c3d4
+        description: One group of a grouped resource count.
+        example:
+            count: 30
+            key: a1b2c3d4
+        required:
+            - key
+            - count
     InternalServerError:
         title: InternalServerError
         type: object
@@ -486,6 +506,7 @@ definitions:
                 type: string
                 description: Business sector classification
                 example: Technology
+        description: An organization is a universal representation of an LFX API organization.
         example:
             domain: linuxfoundation.org
             employees: 100-499
@@ -523,15 +544,47 @@ definitions:
             count:
                 type: integer
                 description: Count of resources found
-                example: 1234
+                example: 42
                 format: int64
+            group_count_error_upper_bound:
+                type: integer
+                description: Maximum possible undercount per returned group within the walked authorized set; zero means exact
+                example: 0
+                format: int64
+            groups:
+                type: array
+                items:
+                    $ref: '#/definitions/CountGroup'
+                description: Per-group counts when group_by is set, ordered by count descending then key ascending; omitted when no group matched
+                example:
+                    - count: 30
+                      key: a1b2c3d4
+                    - count: 30
+                      key: a1b2c3d4
+                    - count: 30
+                      key: a1b2c3d4
+            groups_complete:
+                type: boolean
+                description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
+                example: true
             has_more:
                 type: boolean
                 description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
-                example: false
+                example: true
+            metric_complete:
+                type: boolean
+                description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
+                example: true
+            metric_value:
+                type: integer
+                description: Value of the requested metric
+                example: 17
+                format: int64
         example:
-            count: 1234
+            count: 42
             has_more: false
+            metric_complete: true
+            metric_value: 17
         required:
             - count
             - has_more
@@ -618,17 +671,8 @@ definitions:
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
-                    - domain: linuxfoundation.org
-                      logo: https://example.com/logo.png
-                      name: Linux Foundation
         example:
             suggestions:
-                - domain: linuxfoundation.org
-                  logo: https://example.com/logo.png
-                  name: Linux Foundation
-                - domain: linuxfoundation.org
-                  logo: https://example.com/logo.png
-                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation
