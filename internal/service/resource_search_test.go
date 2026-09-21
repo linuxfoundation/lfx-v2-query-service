@@ -864,7 +864,7 @@ func TestNewResourceSearch(t *testing.T) {
 	})
 
 	t.Run("explicit config is kept", func(t *testing.T) {
-		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3, MaxSummaryRecords: 4}
+		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3, MaxSummaryRecords: 4, DeniedPageWalk: 4}
 		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), config)
 		assertion.NoError(err)
 		assertion.Equal(config, result.(*ResourceSearch).config)
@@ -881,6 +881,7 @@ func TestNewResourceSearch(t *testing.T) {
 		{"negative page", Config{AccessBucketPage: -1}, "access bucket page"},
 		{"max below page", Config{AccessBucketPage: 100, MaxAccessBuckets: 50}, "max access buckets"},
 		{"max above limit", Config{MaxAccessBuckets: constants.MaxCountAccessBuckets + 1}, "max access buckets must not exceed 10000"},
+		{"denied page walk above the maximum", Config{DeniedPageWalk: constants.MaxDeniedPageWalk + 1}, "denied page walk"},
 	}
 	for _, tc := range invalid {
 		t.Run("rejects "+tc.name, func(t *testing.T) {

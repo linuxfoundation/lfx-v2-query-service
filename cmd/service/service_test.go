@@ -485,9 +485,9 @@ func TestQuerySvcsrvc_QueryMembershipSummary(t *testing.T) {
 	// cursor has a next page.
 	membershipPage := func(searchAfter *string, resources ...model.Resource) *model.SearchResult {
 		return &model.SearchResult{
-			Resources:   resources,
-			SearchAfter: searchAfter,
-			Total:       len(resources),
+			Resources:       resources,
+			NextSearchAfter: searchAfter,
+			Total:           len(resources),
 		}
 	}
 	twoTermPages := func() []*model.SearchResult {
@@ -615,7 +615,7 @@ func TestQuerySvcsrvc_QueryMembershipSummary(t *testing.T) {
 	t.Run("a read stopped at the record cap is reported incomplete", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		pages := twoTermPages()
-		pages[0].SearchAfter = stringPtr(`["2023-01-02T00:00:00Z","m-1"]`)
+		pages[0].NextSearchAfter = stringPtr(`["2023-01-02T00:00:00Z","m-1"]`)
 		searcher.SetQueryResourcePages(pages...)
 		config := service.DefaultConfig()
 		config.MaxSummaryRecords = 1

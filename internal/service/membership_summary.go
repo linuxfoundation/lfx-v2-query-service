@@ -97,7 +97,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			return nil, errors.NewServiceUnavailable("access control check failed", errCheckAccess)
 		}
 
-		if page.SearchAfter != nil {
+		if page.NextSearchAfter != nil {
 			// A page that carries a cursor was full: the searcher hands a
 			// cursor back only when the page held as many hits as asked.
 			// Counting the page size rather than the converted records keeps
@@ -139,7 +139,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			rowRuns = append(rowRuns, membershipRunKey(resource.SortValues))
 		}
 
-		if page.SearchAfter == nil {
+		if page.NextSearchAfter == nil {
 			// The last page of the read: there is nothing to continue from.
 			complete = true
 			break
@@ -169,7 +169,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 				// organizations that sort after it, keep the run as far as
 				// it was read and continue from the last hit: the run may
 				// go on in the next read.
-				resume = page.SearchAfter
+				resume = page.NextSearchAfter
 			}
 			slog.WarnContext(ctx, "membership summary stopped at the record cap",
 				"pages", pages,
@@ -179,7 +179,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			)
 			break
 		}
-		searchCriteria.SearchAfter = page.SearchAfter
+		searchCriteria.SearchAfter = page.NextSearchAfter
 	}
 
 	result := &model.MembershipSummaryResult{

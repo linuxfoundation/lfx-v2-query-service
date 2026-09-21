@@ -15,8 +15,8 @@ type Config struct {
 type SearchResponse struct {
 	Hits      `json:"hits"`
 	PageToken *string `json:"last_item_id,omitempty"`
-	// SearchAfter holds the sort values of the last hit as a JSON array, the
-	// cursor the next page continues from. It is set alongside PageToken.
+	// SearchAfter is the JSON-encoded sort values of the last hit, present
+	// exactly when PageToken is; it is the cursor the token encodes.
 	SearchAfter *string `json:"-"`
 }
 

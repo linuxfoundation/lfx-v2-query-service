@@ -524,9 +524,9 @@ func cursor(sortValues string) *string {
 // cursor has a next page.
 func membershipPage(searchAfter *string, resources ...model.Resource) *model.SearchResult {
 	return &model.SearchResult{
-		Resources:   resources,
-		SearchAfter: searchAfter,
-		Total:       len(resources),
+		Resources:       resources,
+		NextSearchAfter: searchAfter,
+		Total:           len(resources),
 	}
 }
 

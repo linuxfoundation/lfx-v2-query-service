@@ -14,6 +14,7 @@ import (
 	"github.com/opensearch-project/opensearch-go/v4"
 	"github.com/opensearch-project/opensearch-go/v4/opensearchapi"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // newTestClient points an httpClient at an httptest server.
@@ -189,4 +190,37 @@ func TestHTTPClientSearchCursor(t *testing.T) {
 			assert.NotNil(t, response.PageToken, "a full page also carries the opaque token for callers")
 		})
 	}
+}
+
+// TestHTTPClientSearchMintsCursorWithToken verifies that a full page yields both
+// the opaque page token and the raw search_after cursor it encodes (the JSON
+// sort values of the last hit), and that a short page yields neither.
+func TestHTTPClientSearchMintsCursorWithToken(t *testing.T) {
+	t.Setenv("PAGE_TOKEN_SECRET", "12345678901234567890123456789012")
+	body := `{"hits":{"total":{"value":3},"hits":[` +
+		`{"_id":"a","_score":1,"_source":{"object_id":"a"},"sort":["alpha","a"]},` +
+		`{"_id":"b","_score":1,"_source":{"object_id":"b"},"sort":["beta","b"]}]}}`
+
+	t.Run("full page", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		})
+		resp, err := client.Search(context.Background(), "resources", []byte(`{"size":2}`), 2)
+		require.NoError(t, err)
+		require.NotNil(t, resp.PageToken)
+		require.NotNil(t, resp.SearchAfter)
+		assert.JSONEq(t, `["beta","b"]`, *resp.SearchAfter, "cursor is the last hit's sort values")
+	})
+
+	t.Run("short page", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		})
+		resp, err := client.Search(context.Background(), "resources", []byte(`{"size":5}`), 5)
+		require.NoError(t, err)
+		assert.Nil(t, resp.PageToken)
+		assert.Nil(t, resp.SearchAfter)
+	})
 }

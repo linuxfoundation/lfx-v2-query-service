@@ -52,6 +52,13 @@ type Config struct {
 	// summary reads before it stops and reports itself incomplete
 	// (1..constants.MaxSummaryRecordCap).
 	MaxSummaryRecords int
+	// DeniedPageWalk is the number of additional raw pages QueryResources
+	// fetches when a page leaves the caller no visible resource (after
+	// cel_filter and the access check). Within the walk, "exists but not
+	// visible" and "does not exist" are identical ([] with no token); past
+	// the limit the empty page keeps its token so paging can continue
+	// (1..constants.MaxDeniedPageWalk).
+	DeniedPageWalk int
 }
 
 // DefaultConfig returns the configuration used when nothing is set in the
@@ -63,6 +70,7 @@ func DefaultConfig() Config {
 		AccessBucketPage:   constants.DefaultAccessBucketPage,
 		MaxAccessBuckets:   constants.DefaultMaxAccessBuckets,
 		MaxSummaryRecords:  constants.DefaultMaxSummaryRecords,
+		DeniedPageWalk:     constants.DefaultDeniedPageWalk,
 	}
 }
 
@@ -83,6 +91,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxSummaryRecords == 0 {
 		c.MaxSummaryRecords = defaults.MaxSummaryRecords
+	}
+	if c.DeniedPageWalk == 0 {
+		c.DeniedPageWalk = defaults.DeniedPageWalk
 	}
 	return c
 }
@@ -113,6 +124,9 @@ func (c Config) Validate() error {
 	}
 	if c.MaxSummaryRecords > constants.MaxSummaryRecordCap {
 		return fmt.Errorf("max summary records must not exceed %d, got %d", constants.MaxSummaryRecordCap, c.MaxSummaryRecords)
+	}
+	if c.DeniedPageWalk < 1 || c.DeniedPageWalk > constants.MaxDeniedPageWalk {
+		return fmt.Errorf("denied page walk must be between 1 and %d, got %d", constants.MaxDeniedPageWalk, c.DeniedPageWalk)
 	}
 	return nil
 }
@@ -191,15 +205,83 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 	// Log the search operation
 	slog.DebugContext(ctx, "validated search criteria, proceeding with search")
 
-	// Delegate to the search implementation
-	result, err := s.resourceSearcher.QueryResources(ctx, criteria)
-	if err != nil {
-		slog.ErrorContext(ctx, "search operation failed while executing query resources",
-			"error", err,
+	// The page token is derived from the raw OpenSearch page, before the CEL
+	// filter and the access check. Returned as-is, a page whose hits were all
+	// denied would come back with no resources but a token, while a query
+	// matching nothing comes back with neither — letting any authenticated
+	// caller learn that a resource they cannot read exists (e.g. probe an
+	// organization by its slug tag). So when a page filters down to nothing,
+	// keep walking the raw pages server-side until the caller can see
+	// something or the result set is exhausted: within the walk, "denied" and
+	// "absent" are identical (empty, no token). The walk advances the raw
+	// search_after cursor the adapter hands back next to the token
+	// (SearchCriteria.SearchAfter is what the OpenSearch query renders; the
+	// opaque token is never decoded here). It is bounded: when the walk ends
+	// with no visible resource and raw pages remain, the empty page keeps its
+	// token so paging can continue — the token then only reveals that further
+	// raw matches exist.
+	searchResult := &model.SearchResult{}
+	pageCriteria := criteria
+	for fetched := 1; ; fetched++ {
+		result, err := s.resourceSearcher.QueryResources(ctx, pageCriteria)
+		if err != nil {
+			slog.ErrorContext(ctx, "search operation failed while executing query resources",
+				"error", err,
+			)
+			return nil, fmt.Errorf("search operation failed: %w", err)
+		}
+
+		checkedResources, errPage := s.filterAndCheckPage(ctx, principal, pageCriteria, result)
+		if errPage != nil {
+			return nil, errPage
+		}
+
+		searchResult.Resources = checkedResources
+		searchResult.PageToken = result.PageToken
+
+		if len(checkedResources) > 0 || result.PageToken == nil {
+			break
+		}
+		if fetched > s.config.DeniedPageWalk {
+			slog.WarnContext(ctx, "denied page walk limit reached with no visible resources; returning continuation token",
+				"pages_fetched", fetched,
+				"limit", s.config.DeniedPageWalk,
+			)
+			break
+		}
+		if errCtx := ctx.Err(); errCtx != nil {
+			return nil, fmt.Errorf("search operation cancelled during denied page walk: %w", errCtx)
+		}
+		if result.NextSearchAfter == nil {
+			// A token without its cursor cannot be followed; surface it rather
+			// than looping on the same page.
+			return nil, fmt.Errorf("search result carries a page token without a search_after cursor")
+		}
+		if pageCriteria.SearchAfter != nil && *pageCriteria.SearchAfter == *result.NextSearchAfter {
+			// The cursor must move, or the walk would refetch the same page up
+			// to the limit and hand back its token — the oracle this loop closes.
+			return nil, fmt.Errorf("search_after cursor did not advance during denied page walk")
+		}
+
+		slog.DebugContext(ctx, "page has no visible resources, fetching next raw page",
+			"pages_fetched", fetched,
 		)
-		return nil, fmt.Errorf("search operation failed: %w", err)
+		pageCriteria.SearchAfter = result.NextSearchAfter
+		pageCriteria.PageToken = nil
 	}
 
+	if principal == constants.AnonymousPrincipal {
+		// Set a cache control header for anonymous users.
+		cacheControl := constants.AnonymousCacheControlHeader
+		searchResult.CacheControl = &cacheControl
+	}
+
+	return searchResult, nil
+}
+
+// filterAndCheckPage applies the optional CEL filter to one raw page and then
+// the access check, returning only the resources the principal may see.
+func (s *ResourceSearch) filterAndCheckPage(ctx context.Context, principal string, criteria model.SearchCriteria, result *model.SearchResult) ([]model.Resource, error) {
 	// Apply CEL filter if provided (before access control to reduce the number of resources to check).
 	// Note: applying this filter before access control and pagination can change the effective result set
 	// seen by the caller, which may cause pagination tokens (based on the unfiltered set) to skip or miss
@@ -229,10 +311,6 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 
 	messageCheckAccess := s.BuildMessage(ctx, principal, result)
 
-	searchResult := &model.SearchResult{
-		PageToken: result.PageToken,
-	}
-
 	// Check access control for the resources if needed
 	checkedResources, errCheckAccess := s.CheckAccess(ctx, principal, result.Resources, messageCheckAccess)
 	if errCheckAccess != nil {
@@ -242,20 +320,12 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		)
 		return nil, fmt.Errorf("access control check failed: %w", errCheckAccess)
 	}
-	searchResult.Resources = checkedResources
 
-	slog.DebugContext(ctx, "resource search completed",
+	slog.DebugContext(ctx, "resource page access check completed",
 		"query_count", len(result.Resources),
-		"response_after_access_check", len(searchResult.Resources),
+		"response_after_access_check", len(checkedResources),
 	)
-
-	if principal == constants.AnonymousPrincipal {
-		// Set a cache control header for anonymous users.
-		cacheControl := constants.AnonymousCacheControlHeader
-		searchResult.CacheControl = &cacheControl
-	}
-
-	return searchResult, nil
+	return checkedResources, nil
 }
 
 // validateSearchCriteria validates the search criteria according to business rules

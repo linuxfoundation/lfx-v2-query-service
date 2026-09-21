@@ -96,18 +96,13 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 			return nil, errEncodePageToken
 		}
 		result.PageToken = &pageToken
-		if len(searchAfter) > 0 {
-			// The same cursor in the clear, for callers that stay inside the
-			// service and continue the keyset themselves. Callers outside the
-			// service still receive the token only.
-			encodedSearchAfter, errEncodeSearchAfter := json.Marshal(searchAfter)
-			if errEncodeSearchAfter != nil {
-				slog.ErrorContext(ctx, "failed to encode search after cursor", "error", errEncodeSearchAfter)
-				return nil, errEncodeSearchAfter
-			}
-			cursor := string(encodedSearchAfter)
-			result.SearchAfter = &cursor
+		cursor, errCursor := json.Marshal(searchAfter)
+		if errCursor != nil {
+			slog.ErrorContext(ctx, "failed to encode search_after cursor", "error", errCursor)
+			return nil, fmt.Errorf("failed to encode search_after cursor: %w", errCursor)
 		}
+		cursorStr := string(cursor)
+		result.SearchAfter = &cursorStr
 		slog.DebugContext(ctx, "pagination token generated",
 			"page_token", *result.PageToken,
 			"total_hits", searchResponse.Hits.Total.Value,

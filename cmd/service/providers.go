@@ -31,6 +31,7 @@ import (
 //   - COUNT_ACCESS_BUCKET_PAGE (default 100) access-key buckets fetched and checked per page
 //   - COUNT_MAX_ACCESS_BUCKETS (default 5000) buckets walked before a count reports has_more
 //   - SUMMARY_MAX_RECORDS    (default 5000) membership records read before a summary reports itself incomplete
+//   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page has no visible resource (1..25)
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config := service.DefaultConfig()
 
@@ -39,6 +40,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config.AccessBucketPage = envInt("COUNT_ACCESS_BUCKET_PAGE", constants.DefaultAccessBucketPage)
 	config.MaxAccessBuckets = envInt("COUNT_MAX_ACCESS_BUCKETS", constants.DefaultMaxAccessBuckets)
 	config.MaxSummaryRecords = envInt("SUMMARY_MAX_RECORDS", constants.DefaultMaxSummaryRecords)
+	config.DeniedPageWalk = envInt("SEARCH_DENIED_PAGE_WALK", constants.DefaultDeniedPageWalk)
 
 	if err := config.Validate(); err != nil {
 		log.Fatalf("invalid resource search configuration: %v", err)
@@ -50,6 +52,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 		"count_access_bucket_page", config.AccessBucketPage,
 		"count_max_access_buckets", config.MaxAccessBuckets,
 		"summary_max_records", config.MaxSummaryRecords,
+		"search_denied_page_walk", config.DeniedPageWalk,
 	)
 	return config
 }

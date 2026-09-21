@@ -661,10 +661,10 @@ func (os *OpenSearchSearcher) Render(ctx context.Context, criteria model.SearchC
 func (os *OpenSearchSearcher) convertSearchResponse(ctx context.Context, response *SearchResponse) (*model.SearchResult, error) {
 
 	result := &model.SearchResult{
-		Resources:   make([]model.Resource, 0, len(response.Hits.Hits)),
-		PageToken:   response.PageToken,
-		SearchAfter: response.SearchAfter,
-		Total:       response.Value,
+		Resources:       make([]model.Resource, 0, len(response.Hits.Hits)),
+		PageToken:       response.PageToken,
+		NextSearchAfter: response.SearchAfter,
+		Total:           response.Value,
 	}
 
 	for _, hit := range response.Hits.Hits {

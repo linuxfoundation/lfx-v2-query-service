@@ -298,10 +298,10 @@ func (m *MockResourceSearcher) queryPage(idx int, criteria model.SearchCriteria)
 	page := m.queryPages[idx]
 
 	served := &model.SearchResult{
-		PageToken:   page.PageToken,
-		SearchAfter: page.SearchAfter,
-		Total:       page.Total,
-		Resources:   make([]model.Resource, 0, len(page.Resources)),
+		PageToken:       page.PageToken,
+		NextSearchAfter: page.NextSearchAfter,
+		Total:           page.Total,
+		Resources:       make([]model.Resource, 0, len(page.Resources)),
 	}
 	for _, resource := range page.Resources {
 		if criteria.PublicOnly && !resource.Public {
