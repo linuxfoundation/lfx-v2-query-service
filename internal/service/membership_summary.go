@@ -325,8 +325,13 @@ func (r *membershipRunTracker) observe(sortValues string) {
 		r.current = key
 	case key != r.current:
 		r.current = key
-		r.boundaryCursor = r.previous
-		r.hasBoundary = r.previous != ""
+		// A run change after a hit the searcher did not order carries no
+		// cursor to resume from; a boundary found earlier in the read
+		// stands rather than being thrown away.
+		if r.previous != "" {
+			r.boundaryCursor = r.previous
+			r.hasBoundary = true
+		}
 	}
 	r.previous = sortValues
 }

@@ -695,3 +695,24 @@ func orderedMembershipRecord(uid, sortName string, data map[string]any) model.Re
 	record.SortValues = `["` + sortName + `","` + uid + `"]`
 	return record
 }
+
+// TestMembershipRunTrackerKeepsAnEarlierBoundary pins that a run change
+// after a hit the searcher did not order does not discard a boundary the
+// tracker already found.
+func TestMembershipRunTrackerKeepsAnEarlierBoundary(t *testing.T) {
+	tracker := membershipRunTracker{}
+	tracker.observe(`["a corp","m-1"]`)
+	tracker.observe(`["b corp","m-2"]`)
+	boundary, ok := tracker.boundary()
+	require.True(t, ok)
+	require.Equal(t, `["a corp","m-1"]`, boundary)
+
+	// The unordered hit opens a run of its own after the last ordered hit,
+	// which is a boundary; the run change out of it carries no cursor and
+	// must leave that boundary standing.
+	tracker.observe("")
+	tracker.observe(`["c corp","m-4"]`)
+	boundary, ok = tracker.boundary()
+	require.True(t, ok, "an unordered hit does not throw the boundary away")
+	require.Equal(t, `["b corp","m-2"]`, boundary)
+}
