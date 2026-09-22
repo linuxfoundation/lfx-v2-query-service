@@ -45,6 +45,26 @@ type QueryResourcesCountResponseBody struct {
 	MetricComplete *bool `form:"metric_complete,omitempty" json:"metric_complete,omitempty" xml:"metric_complete,omitempty"`
 }
 
+// QueryMembershipSummaryResponseBody is the type of the "query-svc" service
+// "query-membership-summary" endpoint HTTP response body.
+type QueryMembershipSummaryResponseBody struct {
+	// Summaries ordered by organization name, project slug, organization UID and
+	// project UID; a read that stops at the record cap and can continue holds only
+	// the organizations it read whole, while a read that fell whole inside a
+	// single run of records sharing one company name, usually one organization,
+	// holds that run as far as it was read and continues inside it
+	Summaries []*MembershipTermSummaryResponseBody `form:"summaries" json:"summaries" xml:"summaries"`
+	// Number of membership records folded into the summaries
+	TermsTotal uint64 `form:"terms_total" json:"terms_total" xml:"terms_total"`
+	// True when every matching membership record was read; false when the read
+	// stopped at the record cap and returned a page_token to continue
+	Complete bool `form:"complete" json:"complete" xml:"complete"`
+	// Opaque token present when the read stopped at the record cap; pass it back
+	// with the same project_uid and b2b_org_uid to continue the read where it
+	// stopped: at the next organization, or inside the one run that filled the read
+	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
+}
+
 // QueryOrgsResponseBody is the type of the "query-svc" service "query-orgs"
 // endpoint HTTP response body.
 type QueryOrgsResponseBody struct {
@@ -110,6 +130,30 @@ type QueryResourcesCountInternalServerErrorResponseBody struct {
 // "query-svc" service "query-resources-count" endpoint HTTP response body for
 // the "ServiceUnavailable" error.
 type QueryResourcesCountServiceUnavailableResponseBody struct {
+	// Error message
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryMembershipSummaryBadRequestResponseBody is the type of the "query-svc"
+// service "query-membership-summary" endpoint HTTP response body for the
+// "BadRequest" error.
+type QueryMembershipSummaryBadRequestResponseBody struct {
+	// Error message
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryMembershipSummaryInternalServerErrorResponseBody is the type of the
+// "query-svc" service "query-membership-summary" endpoint HTTP response body
+// for the "InternalServerError" error.
+type QueryMembershipSummaryInternalServerErrorResponseBody struct {
+	// Error message
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryMembershipSummaryServiceUnavailableResponseBody is the type of the
+// "query-svc" service "query-membership-summary" endpoint HTTP response body
+// for the "ServiceUnavailable" error.
+type QueryMembershipSummaryServiceUnavailableResponseBody struct {
 	// Error message
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -203,6 +247,63 @@ type CountGroupResponseBody struct {
 	Count uint64 `form:"count" json:"count" xml:"count"`
 }
 
+// MembershipTermSummaryResponseBody is used to define fields on response body
+// types.
+type MembershipTermSummaryResponseBody struct {
+	// Organization UID; empty when the records carry no organization UID
+	B2bOrgUID string `form:"b2b_org_uid" json:"b2b_org_uid" xml:"b2b_org_uid"`
+	// Organization name as stored on the current record
+	CompanyName string `form:"company_name" json:"company_name" xml:"company_name"`
+	// Project UID; empty when the records carry no project UID
+	ProjectUID string `form:"project_uid" json:"project_uid" xml:"project_uid"`
+	// Project slug as stored on the current record
+	ProjectSlug string `form:"project_slug" json:"project_slug" xml:"project_slug"`
+	// Number of membership records folded into this summary
+	TermCount uint64 `form:"term_count" json:"term_count" xml:"term_count"`
+	// Earliest start date across the records; omitted when no record has one
+	FirstStart *string `form:"first_start,omitempty" json:"first_start,omitempty" xml:"first_start,omitempty"`
+	// Latest end date across the records; omitted when no record has one
+	LastEnd *string `form:"last_end,omitempty" json:"last_end,omitempty" xml:"last_end,omitempty"`
+	// Status of the current record; omitted when there is no current record or the
+	// current record carries none
+	CurrentStatus *string `form:"current_status,omitempty" json:"current_status,omitempty" xml:"current_status,omitempty"`
+	// Tier product name of the current record; omitted when there is no current
+	// record or the current record carries none
+	CurrentTierName *string `form:"current_tier_name,omitempty" json:"current_tier_name,omitempty" xml:"current_tier_name,omitempty"`
+	// Start date of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentStart *string `form:"current_start,omitempty" json:"current_start,omitempty" xml:"current_start,omitempty"`
+	// End date of the current record; omitted when there is no current record or
+	// the current record carries none
+	CurrentEnd *string `form:"current_end,omitempty" json:"current_end,omitempty" xml:"current_end,omitempty"`
+	// UID of the current record; omitted when there is no current record or the
+	// current record carries none
+	CurrentMembershipUID *string `form:"current_membership_uid,omitempty" json:"current_membership_uid,omitempty" xml:"current_membership_uid,omitempty"`
+	// Distinct tier product names in first appearance order
+	TierNames []string `form:"tier_names" json:"tier_names" xml:"tier_names"`
+	// Distinct statuses in first appearance order
+	Statuses []string `form:"statuses" json:"statuses" xml:"statuses"`
+	// Membership records of this organization on this project, oldest first
+	Terms []*MembershipTermResponseBody `form:"terms" json:"terms" xml:"terms"`
+}
+
+// MembershipTermResponseBody is used to define fields on response body types.
+type MembershipTermResponseBody struct {
+	// Membership record UID
+	MembershipUID string `form:"membership_uid" json:"membership_uid" xml:"membership_uid"`
+	// Membership status as stored on the record
+	Status string `form:"status" json:"status" xml:"status"`
+	// Membership tier product name as stored on the record
+	TierName string `form:"tier_name" json:"tier_name" xml:"tier_name"`
+	// Membership tier label as stored on the record; omitted when the record has
+	// none
+	Tier *string `form:"tier,omitempty" json:"tier,omitempty" xml:"tier,omitempty"`
+	// Start date of the membership record; omitted when the record carries none
+	StartDate *string `form:"start_date,omitempty" json:"start_date,omitempty" xml:"start_date,omitempty"`
+	// End date of the membership record; omitted when the record carries none
+	EndDate *string `form:"end_date,omitempty" json:"end_date,omitempty" xml:"end_date,omitempty"`
+}
+
 // OrganizationSuggestionResponseBody is used to define fields on response body
 // types.
 type OrganizationSuggestionResponseBody struct {
@@ -247,6 +348,25 @@ func NewQueryResourcesCountResponseBody(res *querysvc.QueryResourcesCountResult)
 		for i, val := range res.Groups {
 			body.Groups[i] = marshalQuerysvcCountGroupToCountGroupResponseBody(val)
 		}
+	}
+	return body
+}
+
+// NewQueryMembershipSummaryResponseBody builds the HTTP response body from the
+// result of the "query-membership-summary" endpoint of the "query-svc" service.
+func NewQueryMembershipSummaryResponseBody(res *querysvc.QueryMembershipSummaryResult) *QueryMembershipSummaryResponseBody {
+	body := &QueryMembershipSummaryResponseBody{
+		TermsTotal: res.TermsTotal,
+		Complete:   res.Complete,
+		PageToken:  res.PageToken,
+	}
+	if res.Summaries != nil {
+		body.Summaries = make([]*MembershipTermSummaryResponseBody, len(res.Summaries))
+		for i, val := range res.Summaries {
+			body.Summaries[i] = marshalQuerysvcMembershipTermSummaryToMembershipTermSummaryResponseBody(val)
+		}
+	} else {
+		body.Summaries = []*MembershipTermSummaryResponseBody{}
 	}
 	return body
 }
@@ -333,6 +453,36 @@ func NewQueryResourcesCountInternalServerErrorResponseBody(res *querysvc.Interna
 // "query-svc" service.
 func NewQueryResourcesCountServiceUnavailableResponseBody(res *querysvc.ServiceUnavailableError) *QueryResourcesCountServiceUnavailableResponseBody {
 	body := &QueryResourcesCountServiceUnavailableResponseBody{
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewQueryMembershipSummaryBadRequestResponseBody builds the HTTP response
+// body from the result of the "query-membership-summary" endpoint of the
+// "query-svc" service.
+func NewQueryMembershipSummaryBadRequestResponseBody(res *querysvc.BadRequestError) *QueryMembershipSummaryBadRequestResponseBody {
+	body := &QueryMembershipSummaryBadRequestResponseBody{
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewQueryMembershipSummaryInternalServerErrorResponseBody builds the HTTP
+// response body from the result of the "query-membership-summary" endpoint of
+// the "query-svc" service.
+func NewQueryMembershipSummaryInternalServerErrorResponseBody(res *querysvc.InternalServerError) *QueryMembershipSummaryInternalServerErrorResponseBody {
+	body := &QueryMembershipSummaryInternalServerErrorResponseBody{
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewQueryMembershipSummaryServiceUnavailableResponseBody builds the HTTP
+// response body from the result of the "query-membership-summary" endpoint of
+// the "query-svc" service.
+func NewQueryMembershipSummaryServiceUnavailableResponseBody(res *querysvc.ServiceUnavailableError) *QueryMembershipSummaryServiceUnavailableResponseBody {
+	body := &QueryMembershipSummaryServiceUnavailableResponseBody{
 		Message: res.Message,
 	}
 	return body
@@ -460,6 +610,19 @@ func NewQueryResourcesCountPayload(version string, name *string, parent *string,
 	v.GroupBy = groupBy
 	v.GroupBySize = groupBySize
 	v.Metric = metric
+	v.BearerToken = bearerToken
+
+	return v
+}
+
+// NewQueryMembershipSummaryPayload builds a query-svc service
+// query-membership-summary endpoint payload.
+func NewQueryMembershipSummaryPayload(version string, projectUID *string, b2bOrgUID *string, pageToken *string, bearerToken string) *querysvc.QueryMembershipSummaryPayload {
+	v := &querysvc.QueryMembershipSummaryPayload{}
+	v.Version = version
+	v.ProjectUID = projectUID
+	v.B2bOrgUID = b2bOrgUID
+	v.PageToken = pageToken
 	v.BearerToken = bearerToken
 
 	return v

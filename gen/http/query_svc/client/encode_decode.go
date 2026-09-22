@@ -371,6 +371,148 @@ func DecodeQueryResourcesCountResponse(decoder func(*http.Response) goahttp.Deco
 	}
 }
 
+// BuildQueryMembershipSummaryRequest instantiates a HTTP request object with
+// method and path set to call the "query-svc" service
+// "query-membership-summary" endpoint
+func (c *Client) BuildQueryMembershipSummaryRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: QueryMembershipSummaryQuerySvcPath()}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("query-svc", "query-membership-summary", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeQueryMembershipSummaryRequest returns an encoder for requests sent to
+// the query-svc query-membership-summary server.
+func EncodeQueryMembershipSummaryRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*querysvc.QueryMembershipSummaryPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("query-svc", "query-membership-summary", "*querysvc.QueryMembershipSummaryPayload", v)
+		}
+		{
+			head := p.BearerToken
+			if !strings.Contains(head, " ") {
+				req.Header.Set("Authorization", "Bearer "+head)
+			} else {
+				req.Header.Set("Authorization", head)
+			}
+		}
+		values := req.URL.Query()
+		values.Add("v", p.Version)
+		if p.ProjectUID != nil {
+			values.Add("project_uid", *p.ProjectUID)
+		}
+		if p.B2bOrgUID != nil {
+			values.Add("b2b_org_uid", *p.B2bOrgUID)
+		}
+		if p.PageToken != nil {
+			values.Add("page_token", *p.PageToken)
+		}
+		req.URL.RawQuery = values.Encode()
+		return nil
+	}
+}
+
+// DecodeQueryMembershipSummaryResponse returns a decoder for responses
+// returned by the query-svc query-membership-summary endpoint. restoreBody
+// controls whether the response body should be restored after having been read.
+// DecodeQueryMembershipSummaryResponse may return the following errors:
+//   - "BadRequest" (type *querysvc.BadRequestError): http.StatusBadRequest
+//   - "InternalServerError" (type *querysvc.InternalServerError): http.StatusInternalServerError
+//   - "ServiceUnavailable" (type *querysvc.ServiceUnavailableError): http.StatusServiceUnavailable
+//   - error: internal error
+func DecodeQueryMembershipSummaryResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body QueryMembershipSummaryResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-membership-summary", err)
+			}
+			err = ValidateQueryMembershipSummaryResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-membership-summary", err)
+			}
+			var (
+				cacheControl *string
+			)
+			cacheControlRaw := resp.Header.Get("Cache-Control")
+			if cacheControlRaw != "" {
+				cacheControl = &cacheControlRaw
+			}
+			res := NewQueryMembershipSummaryResultOK(&body, cacheControl)
+			return res, nil
+		case http.StatusBadRequest:
+			var (
+				body QueryMembershipSummaryBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-membership-summary", err)
+			}
+			err = ValidateQueryMembershipSummaryBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-membership-summary", err)
+			}
+			return nil, NewQueryMembershipSummaryBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body QueryMembershipSummaryInternalServerErrorResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-membership-summary", err)
+			}
+			err = ValidateQueryMembershipSummaryInternalServerErrorResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-membership-summary", err)
+			}
+			return nil, NewQueryMembershipSummaryInternalServerError(&body)
+		case http.StatusServiceUnavailable:
+			var (
+				body QueryMembershipSummaryServiceUnavailableResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-membership-summary", err)
+			}
+			err = ValidateQueryMembershipSummaryServiceUnavailableResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-membership-summary", err)
+			}
+			return nil, NewQueryMembershipSummaryServiceUnavailable(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("query-svc", "query-membership-summary", resp.StatusCode, string(body))
+		}
+	}
+}
+
 // BuildQueryOrgsRequest instantiates a HTTP request object with method and
 // path set to call the "query-svc" service "query-orgs" endpoint
 func (c *Client) BuildQueryOrgsRequest(ctx context.Context, v any) (*http.Request, error) {
@@ -777,6 +919,56 @@ func unmarshalCountGroupResponseBodyToQuerysvcCountGroup(v *CountGroupResponseBo
 	res := &querysvc.CountGroup{
 		Key:   *v.Key,
 		Count: *v.Count,
+	}
+
+	return res
+}
+
+// unmarshalMembershipTermSummaryResponseBodyToQuerysvcMembershipTermSummary
+// builds a value of type *querysvc.MembershipTermSummary from a value of type
+// *MembershipTermSummaryResponseBody.
+func unmarshalMembershipTermSummaryResponseBodyToQuerysvcMembershipTermSummary(v *MembershipTermSummaryResponseBody) *querysvc.MembershipTermSummary {
+	res := &querysvc.MembershipTermSummary{
+		B2bOrgUID:            *v.B2bOrgUID,
+		CompanyName:          *v.CompanyName,
+		ProjectUID:           *v.ProjectUID,
+		ProjectSlug:          *v.ProjectSlug,
+		TermCount:            *v.TermCount,
+		FirstStart:           v.FirstStart,
+		LastEnd:              v.LastEnd,
+		CurrentStatus:        v.CurrentStatus,
+		CurrentTierName:      v.CurrentTierName,
+		CurrentStart:         v.CurrentStart,
+		CurrentEnd:           v.CurrentEnd,
+		CurrentMembershipUID: v.CurrentMembershipUID,
+	}
+	res.TierNames = make([]string, len(v.TierNames))
+	for i, val := range v.TierNames {
+		res.TierNames[i] = val
+	}
+	res.Statuses = make([]string, len(v.Statuses))
+	for i, val := range v.Statuses {
+		res.Statuses[i] = val
+	}
+	res.Terms = make([]*querysvc.MembershipTerm, len(v.Terms))
+	for i, val := range v.Terms {
+		res.Terms[i] = unmarshalMembershipTermResponseBodyToQuerysvcMembershipTerm(val)
+	}
+
+	return res
+}
+
+// unmarshalMembershipTermResponseBodyToQuerysvcMembershipTerm builds a value
+// of type *querysvc.MembershipTerm from a value of type
+// *MembershipTermResponseBody.
+func unmarshalMembershipTermResponseBodyToQuerysvcMembershipTerm(v *MembershipTermResponseBody) *querysvc.MembershipTerm {
+	res := &querysvc.MembershipTerm{
+		MembershipUID: *v.MembershipUID,
+		Status:        *v.Status,
+		TierName:      *v.TierName,
+		Tier:          v.Tier,
+		StartDate:     v.StartDate,
+		EndDate:       v.EndDate,
 	}
 
 	return res

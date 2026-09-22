@@ -253,6 +253,80 @@ var _ = dsl.Service("query-svc", func() {
 		})
 	})
 
+	dsl.Method("query-membership-summary", func() {
+		dsl.Description("Summarize the membership records of an organization, a project, or both, into one summary per organization and project.")
+
+		dsl.Security(JWTAuth)
+
+		dsl.Payload(func() {
+			dsl.Token("bearer_token", dsl.String, func() {
+				dsl.Description("JWT token issued by Heimdall")
+				dsl.Example("eyJhbGci...")
+			})
+			dsl.Attribute("version", dsl.String, "Version of the API", func() {
+				dsl.Enum("1")
+				dsl.Example("1")
+			})
+			dsl.Attribute("project_uid", dsl.String, "Project UID to summarize; at least one of project_uid and b2b_org_uid is required, both restrict the read to the memberships of that organization on that project", func() {
+				dsl.Example("proj-1")
+				dsl.MinLength(1)
+			})
+			dsl.Attribute("b2b_org_uid", dsl.String, "Organization UID to summarize; at least one of project_uid and b2b_org_uid is required, both restrict the read to the memberships of that organization on that project", func() {
+				dsl.Example("org-1")
+				dsl.MinLength(1)
+			})
+			dsl.Attribute("page_token", dsl.String, "Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read where it stopped: at the next organization, or inside the one run that filled the read", func() {
+				dsl.Example("****")
+			})
+			dsl.Required("bearer_token", "version")
+		})
+
+		// Declared inline like the other body-carrying results: a named
+		// result type carrying a header-mapped attribute would publish a
+		// second, unreferenced schema in the OpenAPI document.
+		dsl.Result(func() {
+			dsl.Description("Membership term summaries, one per organization and project.")
+
+			dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that fell whole inside a single run of records sharing one company name, usually one organization, holds that run as far as it was read and continues inside it", func() {
+				// Declared so the schema example agrees with the terms_total example
+				// below; Goa would otherwise synthesize an array of its own length.
+				dsl.Example([]dsl.Val{membershipTermSummaryExample})
+			})
+			// Goa renders UInt64 as int64 in OpenAPI; keep scalar samples in range.
+			dsl.Attribute("terms_total", dsl.UInt64, "Number of membership records folded into the summaries", func() {
+				dsl.Example(2)
+			})
+			dsl.Attribute("complete", dsl.Boolean, "True when every matching membership record was read; false when the read stopped at the record cap and returned a page_token to continue")
+			dsl.Attribute("page_token", dsl.String, "Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue the read where it stopped: at the next organization, or inside the one run that filled the read", func() {
+				dsl.Example("****")
+			})
+			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {
+				dsl.Example("public, max-age=300")
+			})
+			dsl.Required("summaries", "terms_total", "complete")
+			dsl.Example("summary", dsl.Val{
+				"summaries":   []dsl.Val{membershipTermSummaryExample},
+				"terms_total": 2,
+				"complete":    true,
+			})
+		})
+
+		dsl.HTTP(func() {
+			dsl.GET("/query/memberships/summary")
+			dsl.Param("version:v")
+			dsl.Param("project_uid")
+			dsl.Param("b2b_org_uid")
+			dsl.Param("page_token")
+			dsl.Header("bearer_token:Authorization")
+			dsl.Response(dsl.StatusOK, func() {
+				dsl.Header("cache_control:Cache-Control")
+			})
+			dsl.Response("BadRequest", dsl.StatusBadRequest)
+			dsl.Response("InternalServerError", dsl.StatusInternalServerError)
+			dsl.Response("ServiceUnavailable", dsl.StatusServiceUnavailable)
+		})
+	})
+
 	dsl.Method("query-orgs", func() {
 		dsl.Description("Locate a single organization by name or domain.")
 

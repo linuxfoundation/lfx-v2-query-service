@@ -80,6 +80,8 @@ app:
     ##   value: "5000"
     ## SEARCH_DENIED_PAGE_WALK:   # default 10, 1..25 - extra raw pages fetched when a page has no visible resource
     ##   value: "10"
+    ## SUMMARY_MAX_RECORDS:       # default 5000, 1..50000 - membership records read before a summary reports complete: false
+    ##   value: "5000"
   # extraEnv allows injecting additional environment variables before OTEL configuration.
   # Supports both simple values and Kubernetes field references.
   extraEnv: []

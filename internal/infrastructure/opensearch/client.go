@@ -24,6 +24,16 @@ type httpClient struct {
 	client  *opensearchapi.Client
 }
 
+// Search runs one page of a query and returns its hits with their cursors.
+//
+// Partial results are refused, as on AggregationSearch: a page missing a
+// shard's hits would be a shorter page, and a short page is what ends a
+// paged read. The plain search would mint a cursor past the hits it never
+// saw, and the membership summary would report a read complete that was
+// not, so a response with a failed shard or a timeout is an error, never a
+// smaller page. allow_partial_search_results=false makes OpenSearch fail
+// the request instead of returning a partial 200; the _shards/timed_out
+// check covers engines that ignore the parameter.
 func (c *httpClient) Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error) {
 
 	slog.DebugContext(ctx, "executing opensearch search",
@@ -31,11 +41,13 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 		"query", string(query),
 	)
 
+	allowPartial := false
 	searchRequest := opensearchapi.SearchReq{
 		Indices: []string{index},
 		Body:    bytes.NewReader(query),
 		Params: opensearchapi.SearchParams{
-			Source: true,
+			AllowPartialSearchResults: &allowPartial,
+			Source:                    true,
 			SourceIncludes: []string{
 				"object_ref",
 				"object_type",
@@ -50,16 +62,16 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 
 	searchResponse, errSearchResponse := c.client.Search(ctx, &searchRequest)
 	if errSearchResponse != nil {
-		var structErr *opensearch.StructError
-		if stderrors.As(errSearchResponse, &structErr) && hasTooManyClauses(structErr) {
-			return nil, errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", errSearchResponse)
-		}
-		return nil, fmt.Errorf("failed to execute search: %w", errSearchResponse)
+		return nil, requestFailure(ctx, "failed to execute search", errSearchResponse)
 	}
 
 	// Check for errors in the response
 	if searchResponse.Errors {
 		return nil, fmt.Errorf("opensearch search returned errors")
+	}
+	if searchResponse.Timeout || searchResponse.Shards.Failed > 0 {
+		return nil, errors.NewServiceUnavailable("opensearch returned a partial search result",
+			fmt.Errorf("timed_out=%t shards_failed=%d", searchResponse.Timeout, searchResponse.Shards.Failed))
 	}
 
 	result := &SearchResponse{
@@ -74,6 +86,16 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 		result.Hits.Hits[i] = Hit{
 			ID:     hit.ID,
 			Source: hit.Source,
+		}
+		if len(hit.Sort) > 0 {
+			// Each hit keeps its own cursor, so a service-side read can
+			// resume from any hit, not only from the last of a page.
+			sortValues, errSortValues := json.Marshal(hit.Sort)
+			if errSortValues != nil {
+				slog.ErrorContext(ctx, "failed to encode hit sort values", "error", errSortValues)
+				return nil, errSortValues
+			}
+			result.Hits.Hits[i].Sort = sortValues
 		}
 	}
 
@@ -125,11 +147,7 @@ func (c *httpClient) AggregationSearch(ctx context.Context, index string, query 
 	// Perform the search.
 	searchResponse, err := c.client.Search(ctx, &searchRequest)
 	if err != nil {
-		var structErr *opensearch.StructError
-		if stderrors.As(err, &structErr) && hasTooManyClauses(structErr) {
-			return nil, errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", err)
-		}
-		return nil, fmt.Errorf("opensearch search failed: %w", err)
+		return nil, requestFailure(ctx, "opensearch search failed", err)
 	}
 
 	if searchResponse.Errors {
@@ -173,11 +191,7 @@ func (c *httpClient) Count(ctx context.Context, index string, query []byte) (*Co
 	}
 	countResponse, err := c.client.Indices.Count(ctx, &countRequest)
 	if err != nil {
-		var structErr *opensearch.StructError
-		if stderrors.As(err, &structErr) && hasTooManyClauses(structErr) {
-			return nil, errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", err)
-		}
-		return nil, fmt.Errorf("opensearch count failed: %w", err)
+		return nil, requestFailure(ctx, "opensearch count failed", err)
 	}
 	// _count has no allow_partial_search_results; a failed shard means the
 	// number is a lower bound, which the count route must not present as exact.
@@ -215,6 +229,29 @@ func (c *httpClient) IsReady(ctx context.Context) error {
 		return errors.NewServiceUnavailable("opensearch is not ready", fmt.Errorf("status code: %d", resp.StatusCode))
 	}
 	return nil
+}
+
+// requestFailure classifies a failed OpenSearch request. A clause-limit
+// rejection is the caller's to fix. A request OpenSearch could not answer
+// whole is service unavailable: with allow_partial_search_results=false a
+// failed shard or a timeout comes back as a 5xx error response rather than
+// a partial 200, and a request that never reached OpenSearch is the same
+// outage. A request the caller's own context ended, and any other error
+// response, is the service's own request at fault.
+func requestFailure(ctx context.Context, operation string, err error) error {
+	var structErr *opensearch.StructError
+	if stderrors.As(err, &structErr) {
+		if hasTooManyClauses(structErr) {
+			return errors.NewValidation("query exceeds the OpenSearch maximum clause limit: reduce the number of filter values", err)
+		}
+		if structErr.Status < http.StatusInternalServerError {
+			return fmt.Errorf("%s: %w", operation, err)
+		}
+	}
+	if ctx.Err() != nil {
+		return fmt.Errorf("%s: %w", operation, err)
+	}
+	return errors.NewServiceUnavailable(operation, err)
 }
 
 // hasTooManyClauses checks whether a StructError was caused by too_many_nested_clauses.

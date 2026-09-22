@@ -685,6 +685,9 @@ func (os *OpenSearchSearcher) convertHit(hit Hit) (model.Resource, error) {
 	resource := model.Resource{
 		ID: hit.ID,
 	}
+	if len(hit.Sort) > 0 {
+		resource.SortValues = string(hit.Sort)
+	}
 
 	// Parse the source data
 	if hit.Source != nil {

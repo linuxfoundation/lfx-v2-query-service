@@ -35,4 +35,22 @@ const (
 	MaxDeniedPageWalk = 25
 	// MaxCountAccessPages bounds the configured number of count-walk pages.
 	MaxCountAccessPages = 100
+	// DefaultMaxSummaryRecords is the default cap on membership records read
+	// before a membership summary stops and reports itself incomplete
+	DefaultMaxSummaryRecords = 5000
+	// MaxSummaryRecordCap is the maximum configurable membership record cap.
+	// A whole page is always read, so the cap may be overshot by up to
+	// MaxPageSize records.
+	MaxSummaryRecordCap = 50000
+)
+
+// Membership summary scope: the indexed resource type the read covers and the
+// tag prefixes it scopes the read with.
+const (
+	// MembershipResourceType is the indexed type of a membership record
+	MembershipResourceType = "project_membership"
+	// MembershipProjectTagPrefix prefixes the tag carrying a membership record's project UID
+	MembershipProjectTagPrefix = "project_uid:"
+	// MembershipOrgTagPrefix prefixes the tag carrying a membership record's organization UID
+	MembershipOrgTagPrefix = "b2b_org_uid:"
 )

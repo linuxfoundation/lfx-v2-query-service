@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 )
@@ -16,6 +17,11 @@ import (
 // This demonstrates how the clean architecture allows easy swapping of implementations
 type MockResourceSearcher struct {
 	resources                     []model.Resource
+	queryPages                    []*model.SearchResult
+	queryCalls                    atomic.Int64
+	recordQueryCriteria           bool
+	queryCriteria                 []model.SearchCriteria
+	queryError                    error
 	countPublicResponse           *int
 	countPublicError              error
 	accessBucketPages             []*model.AccessBucketPage
@@ -145,6 +151,21 @@ func NewMockResourceSearcher() *MockResourceSearcher {
 func (m *MockResourceSearcher) QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error) {
 	slog.DebugContext(ctx, "executing mock search", "criteria", criteria)
 
+	// The mock also serves a process wired with SEARCH_SOURCE=mock, where
+	// requests run concurrently, so the counter is atomic.
+	call := int(m.queryCalls.Add(1) - 1)
+	if m.recordQueryCriteria {
+		// Kept for the tests that assert on the criteria of each page; a
+		// mock wired as the process searcher retains nothing.
+		m.queryCriteria = append(m.queryCriteria, criteria)
+	}
+	if m.queryError != nil {
+		return nil, m.queryError
+	}
+	if len(m.queryPages) > 0 {
+		return m.queryPage(call, criteria), nil
+	}
+
 	var filteredResources []model.Resource
 
 	// Filter by type
@@ -263,6 +284,35 @@ func (m *MockResourceSearcher) QueryResources(ctx context.Context, criteria mode
 
 	slog.DebugContext(ctx, "mock search completed", "results_count", len(result.Resources))
 	return result, nil
+}
+
+// queryPage serves one of the canned pages set by SetQueryResourcePages: the
+// page at call index idx, the last one once they are exhausted. The page is
+// copied so a caller classifying its resources does not change the fixture,
+// and public-only criteria drop the private resources as the index filter
+// does.
+func (m *MockResourceSearcher) queryPage(idx int, criteria model.SearchCriteria) *model.SearchResult {
+	if idx >= len(m.queryPages) {
+		idx = len(m.queryPages) - 1
+	}
+	page := m.queryPages[idx]
+
+	served := &model.SearchResult{
+		PageToken:       page.PageToken,
+		NextSearchAfter: page.NextSearchAfter,
+		Total:           page.Total,
+		Resources:       make([]model.Resource, 0, len(page.Resources)),
+	}
+	for _, resource := range page.Resources {
+		if criteria.PublicOnly && !resource.Public {
+			continue
+		}
+		if criteria.PrivateOnly && resource.Public {
+			continue
+		}
+		served.Resources = append(served.Resources, resource)
+	}
+	return served
 }
 
 // filterForCount applies the count-route criteria (type, name, tags,
@@ -628,6 +678,33 @@ func (m *MockResourceSearcher) GetResourceCount() int {
 }
 
 // Test helper methods for setting up mock responses
+
+// SetQueryResourcePages forces the pages returned by successive
+// QueryResources calls, in order; the last page repeats once exhausted. It
+// also starts recording the criteria of each call (see
+// QueryResourceCriteria).
+func (m *MockResourceSearcher) SetQueryResourcePages(pages ...*model.SearchResult) {
+	m.queryPages = pages
+	m.queryCalls.Store(0)
+	m.queryCriteria = nil
+	m.recordQueryCriteria = true
+}
+
+// SetQueryResourcesError forces QueryResources to fail.
+func (m *MockResourceSearcher) SetQueryResourcesError(err error) {
+	m.queryError = err
+}
+
+// QueryResourceCalls returns how many QueryResources pages were requested.
+func (m *MockResourceSearcher) QueryResourceCalls() int {
+	return int(m.queryCalls.Load())
+}
+
+// QueryResourceCriteria returns the criteria of each QueryResources call
+// recorded since SetQueryResourcePages was called, in call order.
+func (m *MockResourceSearcher) QueryResourceCriteria() []model.SearchCriteria {
+	return m.queryCriteria
+}
 
 // SetCountPublicResponse forces the value returned by CountPublic.
 func (m *MockResourceSearcher) SetCountPublicResponse(count int) {

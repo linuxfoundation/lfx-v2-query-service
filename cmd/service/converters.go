@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -207,6 +208,16 @@ func (s *querySvcsrvc) payloadToCriteria(ctx context.Context, p *querysvc.QueryR
 			slog.ErrorContext(ctx, "failed to decode page token", "error", errPageToken)
 			return criteria, wrapError(ctx, errPageToken)
 		}
+		// The summary route seals its own token shape under the same secret,
+		// so one of its tokens decrypts here too. Only a keyset cursor may
+		// reach OpenSearch as search_after: anything else is the caller
+		// mixing up two tokens that look alike, which is a bad request and
+		// not a server failure.
+		var cursor []json.RawMessage
+		if errCursor := json.Unmarshal([]byte(pageToken), &cursor); errCursor != nil {
+			slog.ErrorContext(ctx, "page token carries no keyset cursor", "error", errCursor)
+			return criteria, wrapError(ctx, errors.NewValidation("invalid page token"))
+		}
 		criteria.SearchAfter = &pageToken
 		slog.DebugContext(ctx, "decoded page token",
 			"page_token", *criteria.PageToken,
@@ -352,6 +363,139 @@ func (s *querySvcsrvc) domainCountResultToResponse(result *model.CountResult) *q
 		}
 	}
 	return response
+}
+
+// errMembershipSummaryScope is returned when a summary read names neither a
+// project nor an organization. The wording matches the service-layer guard so
+// the caller reads the same sentence wherever the scope is checked.
+const errMembershipSummaryScope = "at least one summary parameter must be provided: project_uid or b2b_org_uid"
+
+// errMembershipSummaryPageToken is returned when a summary page token was
+// issued for another scope: continuing it here would silently skip the
+// organizations of this scope that sort before its cursor.
+const errMembershipSummaryPageToken = "page_token belongs to a different read: pass the project_uid and b2b_org_uid it was issued with"
+
+// membershipSummaryPageToken is the content of a summary page token: the
+// keyset cursor at the organization the read stopped inside, bound to the
+// scope it was issued for.
+type membershipSummaryPageToken struct {
+	ProjectUID string          `json:"project_uid,omitempty"`
+	B2BOrgUID  string          `json:"b2b_org_uid,omitempty"`
+	After      json.RawMessage `json:"after"`
+}
+
+// payloadToMembershipSummaryCriteria builds the scope of a membership summary
+// read. Goa cannot express "at least one of these attributes", so the pair is
+// checked here; given together they restrict the read to the memberships of
+// that organization on that project. A page token continues an earlier read
+// of the same scope from the cursor it carries.
+func (s *querySvcsrvc) payloadToMembershipSummaryCriteria(ctx context.Context, payload *querysvc.QueryMembershipSummaryPayload) (model.MembershipSummaryCriteria, error) {
+	criteria := model.MembershipSummaryCriteria{}
+	if payload.ProjectUID != nil {
+		criteria.ProjectUID = strings.TrimSpace(*payload.ProjectUID)
+	}
+	if payload.B2bOrgUID != nil {
+		criteria.B2BOrgUID = strings.TrimSpace(*payload.B2bOrgUID)
+	}
+	if criteria.ProjectUID == "" && criteria.B2BOrgUID == "" {
+		return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryScope)
+	}
+
+	if payload.PageToken != nil {
+		decoded, errPageToken := paging.DecodePageToken(ctx, *payload.PageToken, global.PageTokenSecret(ctx))
+		if errPageToken != nil {
+			slog.ErrorContext(ctx, "failed to decode summary page token", "error", errPageToken)
+			return model.MembershipSummaryCriteria{}, errPageToken
+		}
+		var token membershipSummaryPageToken
+		if errToken := json.Unmarshal([]byte(decoded), &token); errToken != nil || len(token.After) == 0 {
+			slog.ErrorContext(ctx, "summary page token carries no cursor", "error", errToken)
+			return model.MembershipSummaryCriteria{}, errors.NewValidation("invalid page token")
+		}
+		if token.ProjectUID != criteria.ProjectUID || token.B2BOrgUID != criteria.B2BOrgUID {
+			slog.ErrorContext(ctx, "summary page token scope mismatch")
+			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryPageToken)
+		}
+		after := string(token.After)
+		criteria.SearchAfter = &after
+	}
+	return criteria, nil
+}
+
+// domainMembershipSummaryToResponse converts the domain summary result. The
+// attributes of the current record and the date range are present only when a
+// record carries them. A cursor at the next organization becomes an opaque
+// page token bound to the read's scope.
+func (s *querySvcsrvc) domainMembershipSummaryToResponse(ctx context.Context, result *model.MembershipSummaryResult, criteria model.MembershipSummaryCriteria) (*querysvc.QueryMembershipSummaryResult, error) {
+	response := &querysvc.QueryMembershipSummaryResult{
+		Summaries:    make([]*querysvc.MembershipTermSummary, 0, len(result.Summaries)),
+		TermsTotal:   result.TermsTotal,
+		Complete:     result.Complete,
+		CacheControl: optionalAttribute(result.CacheControl),
+	}
+	for _, summary := range result.Summaries {
+		response.Summaries = append(response.Summaries, membershipSummaryToResponse(summary))
+	}
+	if result.SearchAfter != nil {
+		pageToken, errPageToken := paging.EncodePageToken(membershipSummaryPageToken{
+			ProjectUID: criteria.ProjectUID,
+			B2BOrgUID:  criteria.B2BOrgUID,
+			After:      json.RawMessage(*result.SearchAfter),
+		}, global.PageTokenSecret(ctx))
+		if errPageToken != nil {
+			slog.ErrorContext(ctx, "failed to encode summary page token", "error", errPageToken)
+			return nil, errPageToken
+		}
+		response.PageToken = &pageToken
+	}
+	return response, nil
+}
+
+// membershipSummaryToResponse converts one folded summary and its records.
+func membershipSummaryToResponse(summary model.MembershipTermSummary) *querysvc.MembershipTermSummary {
+	converted := &querysvc.MembershipTermSummary{
+		B2bOrgUID:            summary.B2BOrgUID,
+		CompanyName:          summary.CompanyName,
+		ProjectUID:           summary.ProjectUID,
+		ProjectSlug:          summary.ProjectSlug,
+		TermCount:            summary.TermCount,
+		FirstStart:           optionalAttribute(summary.FirstStart),
+		LastEnd:              optionalAttribute(summary.LastEnd),
+		CurrentStatus:        optionalAttribute(summary.CurrentStatus),
+		CurrentTierName:      optionalAttribute(summary.CurrentTierName),
+		CurrentStart:         optionalAttribute(summary.CurrentStart),
+		CurrentEnd:           optionalAttribute(summary.CurrentEnd),
+		CurrentMembershipUID: optionalAttribute(summary.CurrentMembershipUID),
+		TierNames:            summary.TierNames,
+		Statuses:             summary.Statuses,
+		Terms:                make([]*querysvc.MembershipTerm, 0, len(summary.Terms)),
+	}
+	if converted.TierNames == nil {
+		converted.TierNames = []string{}
+	}
+	if converted.Statuses == nil {
+		converted.Statuses = []string{}
+	}
+	for _, term := range summary.Terms {
+		converted.Terms = append(converted.Terms, &querysvc.MembershipTerm{
+			MembershipUID: term.MembershipUID,
+			Status:        term.Status,
+			TierName:      term.TierName,
+			Tier:          optionalAttribute(term.Tier),
+			StartDate:     optionalAttribute(term.StartDate),
+			EndDate:       optionalAttribute(term.EndDate),
+		})
+	}
+	return converted
+}
+
+// optionalAttribute renders an optional string attribute, which is omitted
+// when the fold found no value for it.
+func optionalAttribute(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 // payloadToOrganizationCriteria converts the generated payload to domain organization search criteria

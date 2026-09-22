@@ -94,4 +94,7 @@ type Hit struct {
 	ID     string          `json:"_id"`
 	Score  float64         `json:"_score"`
 	Source json.RawMessage `json:"_source"`
+	// Sort holds the hit's sort values as a JSON array; empty when the
+	// search carried no sort.
+	Sort json.RawMessage `json:"sort,omitempty"`
 }
