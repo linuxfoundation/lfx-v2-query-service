@@ -27,13 +27,15 @@ type MockAccessControlChecker struct {
 	// DefaultResult is the default access result ("allowed" or "denied")
 	DefaultResult string
 	// Test helper fields
-	checkAccessResponse    map[string]string
-	checkAccessError       error
-	checkAccessErrorOnCall int
-	checkAccessCalls       int
-	recordMessages         bool
-	checkAccessMessages    []string
-	isReadyError           error
+	checkAccessResponse       map[string]string
+	checkAccessError          error
+	checkAccessErrorOnCall    int
+	checkAccessTransientErr   error
+	checkAccessTransientUntil int
+	checkAccessCalls          int
+	recordMessages            bool
+	checkAccessMessages       []string
+	isReadyError              error
 	// MockTupleRefs is the list of object refs returned by ReadTuples
 	MockTupleRefs []string
 	// SimulateTuplesError determines if ReadTuples should return an error
@@ -61,6 +63,13 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	// call keeps failing too, like a real outage would).
 	if m.checkAccessError != nil && (m.checkAccessErrorOnCall == 0 || m.checkAccessCalls >= m.checkAccessErrorOnCall) {
 		return nil, m.checkAccessError
+	}
+
+	// If test has set a transient error, fail while the call count is at or
+	// below the configured threshold, then succeed — simulating a blip that
+	// a retry resolves.
+	if m.checkAccessTransientErr != nil && m.checkAccessCalls <= m.checkAccessTransientUntil {
+		return nil, m.checkAccessTransientErr
 	}
 
 	// If test has set a mock response, return it
@@ -237,6 +246,14 @@ func (m *MockAccessControlChecker) SetCheckAccessError(err error) {
 func (m *MockAccessControlChecker) SetCheckAccessErrorOnCall(n int, err error) {
 	m.checkAccessError = err
 	m.checkAccessErrorOnCall = n
+}
+
+// SetCheckAccessTransientError makes CheckAccess fail with err for its first
+// n calls (1-based), then behave normally from call n+1 onward — a blip that
+// a retry resolves, unlike SetCheckAccessErrorOnCall's persistent outage.
+func (m *MockAccessControlChecker) SetCheckAccessTransientError(n int, err error) {
+	m.checkAccessTransientErr = err
+	m.checkAccessTransientUntil = n
 }
 
 // RecordCheckAccessMessages makes the mock keep the batched message of each

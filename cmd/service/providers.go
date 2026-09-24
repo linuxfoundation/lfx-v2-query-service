@@ -34,7 +34,8 @@ import (
 //   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page has no visible resource (1..25)
 //   - COUNT_REQUEST_TIMEOUT  (default 30s)  total deadline across every round-trip QueryResourcesCount issues
 //   - ACCESS_CHECK_CHUNK_BYTES (default 512KiB) soft ceiling on a single batched access-check message
-//   - ACCESS_CHECK_RETRIES   (default 1)    retries for a single access-check chunk that fails outright
+//   - ACCESS_CHECK_RETRIES   (default 1)    retries for a single access-check chunk that fails outright;
+//     0 is not currently distinguishable from "unset" and still yields the default of 1
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config := service.DefaultConfig()
 

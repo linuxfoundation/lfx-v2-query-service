@@ -72,7 +72,10 @@ type Config struct {
 	AccessCheckChunkBytes int
 	// AccessCheckRetries is the number of retries for a single access-check
 	// chunk that fails outright, on top of the initial attempt
-	// (0..constants.MaxAccessCheckRetries).
+	// (0..constants.MaxAccessCheckRetries). Like every other field here, a
+	// zero value is indistinguishable from "unset" and is replaced by
+	// constants.DefaultAccessCheckRetries in withDefaults, so an explicit
+	// "never retry" cannot currently be configured.
 	AccessCheckRetries int
 }
 
@@ -487,6 +490,10 @@ func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byt
 			err    error
 		)
 		for attempt := 0; attempt <= s.config.AccessCheckRetries; attempt++ {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				err = ctxErr
+				break
+			}
 			result, err = s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, chunk, s.config.AccessCheckTimeout)
 			if err == nil {
 				break
