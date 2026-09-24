@@ -831,6 +831,119 @@ func TestResourceSearchCheckAccess(t *testing.T) {
 	}
 }
 
+func TestSplitAccessCheckMessage(t *testing.T) {
+	tests := []struct {
+		name       string
+		message    string
+		chunkBytes int
+		want       []string
+	}{
+		{
+			name:       "empty message",
+			message:    "",
+			chunkBytes: 100,
+			want:       nil,
+		},
+		{
+			name:       "message under the limit is a single chunk",
+			message:    "a#b@user:u\nc#d@user:u\n",
+			chunkBytes: 100,
+			want:       []string{"a#b@user:u\nc#d@user:u\n"},
+		},
+		{
+			name:       "non-positive chunkBytes never splits",
+			message:    "a#b@user:u\nc#d@user:u\n",
+			chunkBytes: 0,
+			want:       []string{"a#b@user:u\nc#d@user:u\n"},
+		},
+		{
+			name:       "splits on line boundaries, never mid-line",
+			message:    "aaaa\nbbbb\ncccc\n",
+			chunkBytes: 10,
+			want:       []string{"aaaa\nbbbb\n", "cccc\n"},
+		},
+		{
+			name:       "a single line larger than chunkBytes is kept whole",
+			message:    "short\nthis-line-is-longer-than-the-limit\nshort2\n",
+			chunkBytes: 10,
+			want:       []string{"short\n", "this-line-is-longer-than-the-limit\n", "short2\n"},
+		},
+		{
+			name:       "trailing oversized line with no following newline is kept whole",
+			message:    "short\nthis-line-is-longer-than-the-limit-and-unterminated",
+			chunkBytes: 10,
+			want:       []string{"short\n", "this-line-is-longer-than-the-limit-and-unterminated"},
+		},
+	}
+
+	assertion := assert.New(t)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitAccessCheckMessage([]byte(tc.message), tc.chunkBytes)
+			gotStrings := make([]string, len(got))
+			for i, chunk := range got {
+				gotStrings[i] = string(chunk)
+			}
+			if tc.want == nil {
+				assertion.Nil(got)
+				return
+			}
+			assertion.Equal(tc.want, gotStrings)
+		})
+	}
+}
+
+func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
+	assertion := assert.New(t)
+
+	t.Run("a transient failure resolved by a retry returns the merged result", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.DefaultResult = "allowed"
+		accessChecker.AllowedUserIDs = []string{"user123"}
+		accessChecker.SetCheckAccessTransientError(1, stderrors.New("fga-sync timeout"))
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = 1
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
+		assertion.NoError(err)
+		assertion.Equal(model.AccessCheckResult{"project:test-project#view@user:user123": "true"}, result)
+		assertion.Equal(2, accessChecker.CheckAccessCalls())
+	})
+
+	t.Run("a failure that outlasts the retry budget is returned", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.SetCheckAccessError(stderrors.New("fga-sync down"))
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = 1
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
+		assertion.Error(err)
+		assertion.Nil(result)
+		assertion.Equal(2, accessChecker.CheckAccessCalls())
+	})
+
+	t.Run("a cancelled context aborts the retry loop without exhausting all attempts", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.SetCheckAccessError(stderrors.New("fga-sync down"))
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = 5
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result, err := search.sendAccessCheckBatch(ctx, []byte("project:test-project#view@user:user123\n"))
+		assertion.Error(err)
+		assertion.Nil(result)
+		assertion.Equal(0, accessChecker.CheckAccessCalls())
+	})
+}
+
 func TestNewResourceSearch(t *testing.T) {
 	assertion := assert.New(t)
 
@@ -867,7 +980,13 @@ func TestNewResourceSearch(t *testing.T) {
 		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3, MaxSummaryRecords: 4, DeniedPageWalk: 4}
 		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), config)
 		assertion.NoError(err)
-		assertion.Equal(config, result.(*ResourceSearch).config)
+		// Fields left unset in the literal above are zero values, which
+		// withDefaults fills from DefaultConfig().
+		want := config
+		want.CountRequestTimeout = constants.DefaultCountRequestTimeout
+		want.AccessCheckChunkBytes = constants.DefaultAccessCheckChunkBytes
+		want.AccessCheckRetries = constants.DefaultAccessCheckRetries
+		assertion.Equal(want, result.(*ResourceSearch).config)
 	})
 
 	invalid := []struct {
@@ -993,18 +1112,22 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                 string
-		principal            string
-		config               Config
-		aggregation          model.CountAggregation
-		setupMocks           func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
-		expectedError        bool
-		expectedUnavailable  bool
-		expectedCount        int
-		expectedHasMore      bool
-		expectedPages        int
-		expectedCacheControl bool
-		check                func(*testing.T, *model.CountResult)
+		name                string
+		principal           string
+		config              Config
+		aggregation         model.CountAggregation
+		setupMocks          func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
+		expectedError       bool
+		expectedUnavailable bool
+		expectedCount       int
+		expectedHasMore     bool
+		expectedPages       int
+		// expectedCheckAccessCalls overrides expectedPages for the
+		// CheckAccessCalls assertion, for cases where a failing call is
+		// retried; zero means "same as expectedPages".
+		expectedCheckAccessCalls int
+		expectedCacheControl     bool
+		check                    func(*testing.T, *model.CountResult)
 	}{
 		{
 			name:      "anonymous user gets the public count only, cacheable, no walk",
@@ -1103,9 +1226,10 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 				accessChecker.DefaultResult = "allowed"
 				accessChecker.SetCheckAccessErrorOnCall(2, assert.AnError)
 			},
-			expectedError:       true,
-			expectedUnavailable: true,
-			expectedPages:       2,
+			expectedError:            true,
+			expectedUnavailable:      true,
+			expectedPages:            2,
+			expectedCheckAccessCalls: 3, // page 2's failing check is retried once (DefaultAccessCheckRetries)
 		},
 		{
 			name:        "group_by runs over public plus granted resources",
@@ -1254,8 +1378,12 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 				var unavailable errors.ServiceUnavailable
 				assertion.Equal(tc.expectedUnavailable, stderrors.As(err, &unavailable), "service unavailable classification")
 				if tc.expectedPages > 0 {
+					expectedChecks := tc.expectedCheckAccessCalls
+					if expectedChecks == 0 {
+						expectedChecks = tc.expectedPages
+					}
 					assertion.Equal(tc.expectedPages, resourceSearcher.AccessBucketCalls(), "pages walked before failing")
-					assertion.Equal(tc.expectedPages, accessChecker.CheckAccessCalls(), "checks issued before failing")
+					assertion.Equal(expectedChecks, accessChecker.CheckAccessCalls(), "checks issued before failing")
 				}
 				return
 			}

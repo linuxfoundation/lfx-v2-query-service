@@ -192,13 +192,16 @@ go run ./cmd
 
 - `NATS_URL`: NATS server URL (default: `nats://localhost:4222`)
 - `NATS_TIMEOUT`: Request timeout duration (default: "10s")
-- `NATS_MAX_RECONNECT`: Maximum reconnection attempts (default: "3")
+- `NATS_MAX_RECONNECT`: Maximum reconnection attempts, or "-1" to retry indefinitely (default: "-1")
 - `NATS_RECONNECT_WAIT`: Time between reconnection attempts (default: "2s")
 
 **Access Checks and Counting:**
 
 - `ACCESS_CHECK_TIMEOUT`: Timeout of each batched fga-sync access check (default: "15s")
 - `READ_TUPLES_TIMEOUT`: Timeout of the `filter_grants=direct` tuple read (default: "15s")
+- `COUNT_REQUEST_TIMEOUT`: Total wall-clock deadline for every round-trip pair `QueryResourcesCount` issues combined, on top of (not instead of) each individual call's own timeout (1s–5m, default: "30s")
+- `ACCESS_CHECK_CHUNK_BYTES`: Soft ceiling on the size of a single batched access-check message sent to fga-sync; larger messages are split into chunks no bigger than this, never mid-line (1B–1MiB, default: "512KiB")
+- `ACCESS_CHECK_RETRIES`: Retries for a single access-check chunk that fails outright, on top of the initial attempt (0–5, default: "1"); a retry is abandoned early if the request context is already cancelled or past its deadline
 - `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
 - `COUNT_MAX_ACCESS_BUCKETS`: Access-key walk cap (page size..10000, default: "5000"); startup validation also requires at most 100 pages per count (`ceil(cap/page) <= 100`). Whole pages are never split, so the final page can overshoot by at most page size minus one (always fewer than 11000 granted keys). An index with a lowered `index.max_terms_count` must accommodate that bound.
 - `SUMMARY_MAX_RECORDS`: Membership records `GET /query/memberships/summary` reads before it folds what it has and reports `complete: false` with a `page_token` (1–50000, default: "5000"). The cap is checked after a whole page, so it can be overshot by up to one page; while the caller has seen nothing it yields to the denied-page walk, so the worst case for such a read is the larger of the cap rounded up to whole pages and one full page more than `SEARCH_DENIED_PAGE_WALK`.
