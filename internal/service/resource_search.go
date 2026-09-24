@@ -4,6 +4,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -59,18 +60,35 @@ type Config struct {
 	// the limit the empty page keeps its token so paging can continue
 	// (1..constants.MaxDeniedPageWalk).
 	DeniedPageWalk int
+	// CountRequestTimeout bounds the total wall-clock time
+	// QueryResourcesCount may spend across every round-trip pair it issues,
+	// on top of (not instead of) each individual call's own timeout
+	// (1..constants.MaxCountRequestTimeout).
+	CountRequestTimeout time.Duration
+	// AccessCheckChunkBytes is the soft ceiling on the size of a single
+	// batched access-check message sent to fga-sync; larger messages are
+	// split into chunks no bigger than this before sending
+	// (1..constants.MaxAccessCheckChunkBytes).
+	AccessCheckChunkBytes int
+	// AccessCheckRetries is the number of retries for a single access-check
+	// chunk that fails outright, on top of the initial attempt
+	// (0..constants.MaxAccessCheckRetries).
+	AccessCheckRetries int
 }
 
 // DefaultConfig returns the configuration used when nothing is set in the
 // environment.
 func DefaultConfig() Config {
 	return Config{
-		AccessCheckTimeout: 15 * time.Second,
-		ReadTuplesTimeout:  15 * time.Second,
-		AccessBucketPage:   constants.DefaultAccessBucketPage,
-		MaxAccessBuckets:   constants.DefaultMaxAccessBuckets,
-		MaxSummaryRecords:  constants.DefaultMaxSummaryRecords,
-		DeniedPageWalk:     constants.DefaultDeniedPageWalk,
+		AccessCheckTimeout:    15 * time.Second,
+		ReadTuplesTimeout:     15 * time.Second,
+		AccessBucketPage:      constants.DefaultAccessBucketPage,
+		MaxAccessBuckets:      constants.DefaultMaxAccessBuckets,
+		MaxSummaryRecords:     constants.DefaultMaxSummaryRecords,
+		DeniedPageWalk:        constants.DefaultDeniedPageWalk,
+		CountRequestTimeout:   constants.DefaultCountRequestTimeout,
+		AccessCheckChunkBytes: constants.DefaultAccessCheckChunkBytes,
+		AccessCheckRetries:    constants.DefaultAccessCheckRetries,
 	}
 }
 
@@ -94,6 +112,15 @@ func (c Config) withDefaults() Config {
 	}
 	if c.DeniedPageWalk == 0 {
 		c.DeniedPageWalk = defaults.DeniedPageWalk
+	}
+	if c.CountRequestTimeout == 0 {
+		c.CountRequestTimeout = defaults.CountRequestTimeout
+	}
+	if c.AccessCheckChunkBytes == 0 {
+		c.AccessCheckChunkBytes = defaults.AccessCheckChunkBytes
+	}
+	if c.AccessCheckRetries == 0 {
+		c.AccessCheckRetries = defaults.AccessCheckRetries
 	}
 	return c
 }
@@ -127,6 +154,15 @@ func (c Config) Validate() error {
 	}
 	if c.DeniedPageWalk < 1 || c.DeniedPageWalk > constants.MaxDeniedPageWalk {
 		return fmt.Errorf("denied page walk must be between 1 and %d, got %d", constants.MaxDeniedPageWalk, c.DeniedPageWalk)
+	}
+	if c.CountRequestTimeout <= 0 || c.CountRequestTimeout > constants.MaxCountRequestTimeout {
+		return fmt.Errorf("count request timeout must be between 1ns and %s, got %s", constants.MaxCountRequestTimeout, c.CountRequestTimeout)
+	}
+	if c.AccessCheckChunkBytes < 1 || c.AccessCheckChunkBytes > constants.MaxAccessCheckChunkBytes {
+		return fmt.Errorf("access check chunk bytes must be between 1 and %d, got %d", constants.MaxAccessCheckChunkBytes, c.AccessCheckChunkBytes)
+	}
+	if c.AccessCheckRetries < 0 || c.AccessCheckRetries > constants.MaxAccessCheckRetries {
+		return fmt.Errorf("access check retries must be between 0 and %d, got %d", constants.MaxAccessCheckRetries, c.AccessCheckRetries)
 	}
 	return nil
 }
@@ -394,26 +430,97 @@ func (s *ResourceSearch) BuildMessage(ctx context.Context, principal string, res
 	return accessCheckMessage
 }
 
+// splitAccessCheckMessage splits an access-check message (newline-terminated
+// lines, one check per line) into chunks no larger than chunkBytes, so a
+// large batch built from a big result page stays comfortably under NATS'
+// default max payload. A single line larger than chunkBytes is kept whole in
+// its own chunk rather than split mid-line.
+func splitAccessCheckMessage(message []byte, chunkBytes int) [][]byte {
+	if len(message) == 0 {
+		return nil
+	}
+	if chunkBytes <= 0 || len(message) <= chunkBytes {
+		return [][]byte{message}
+	}
+
+	var chunks [][]byte
+	start := 0
+	for start < len(message) {
+		end := start + chunkBytes
+		if end >= len(message) {
+			chunks = append(chunks, message[start:])
+			break
+		}
+		if lastNL := bytes.LastIndexByte(message[start:end], '\n'); lastNL >= 0 {
+			end = start + lastNL + 1
+		} else if nextNL := bytes.IndexByte(message[end:], '\n'); nextNL >= 0 {
+			// The line starting at `start` is itself larger than chunkBytes;
+			// take it whole rather than split it.
+			end += nextNL + 1
+		} else {
+			chunks = append(chunks, message[start:])
+			break
+		}
+		chunks = append(chunks, message[start:end])
+		start = end
+	}
+	return chunks
+}
+
+// sendAccessCheckBatch splits message into chunks bounded by
+// config.AccessCheckChunkBytes, sends each chunk (retrying up to
+// config.AccessCheckRetries times on failure) and merges the responses.
+func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byte) (model.AccessCheckResult, error) {
+	responses := make(model.AccessCheckResult)
+	if len(message) == 0 {
+		return responses, nil
+	}
+
+	for _, chunk := range splitAccessCheckMessage(message, s.config.AccessCheckChunkBytes) {
+		chunk = bytes.TrimSuffix(chunk, []byte("\n"))
+		if len(chunk) == 0 {
+			continue
+		}
+
+		var (
+			result model.AccessCheckResult
+			err    error
+		)
+		for attempt := 0; attempt <= s.config.AccessCheckRetries; attempt++ {
+			result, err = s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, chunk, s.config.AccessCheckTimeout)
+			if err == nil {
+				break
+			}
+			slog.WarnContext(ctx, "access control check chunk failed",
+				"attempt", attempt+1,
+				"max_attempts", s.config.AccessCheckRetries+1,
+				"error", err,
+			)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("access control check failed: %w", err)
+		}
+		for key, value := range result {
+			responses[key] = value
+		}
+	}
+
+	return responses, nil
+}
+
 func (s *ResourceSearch) CheckAccess(ctx context.Context, principal string, resourceList []model.Resource, accessCheckMessage []byte) ([]model.Resource, error) {
 
-	var accessCheckResponses map[string]string
-	if len(accessCheckMessage) > 0 {
+	slog.DebugContext(ctx, "performing access control checks",
+		"message", string(accessCheckMessage),
+	)
 
-		slog.DebugContext(ctx, "performing access control checks",
+	accessCheckResponses, err := s.sendAccessCheckBatch(ctx, accessCheckMessage)
+	if err != nil {
+		slog.ErrorContext(ctx, "access control check failed",
+			"error", err,
 			"message", string(accessCheckMessage),
 		)
-
-		// Trim trailing newline.
-		accessCheckMessage = accessCheckMessage[:len(accessCheckMessage)-1]
-		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, s.config.AccessCheckTimeout)
-		if errCheckAccess != nil {
-			slog.ErrorContext(ctx, "access control check failed",
-				"error", errCheckAccess,
-				"message", string(accessCheckMessage),
-			)
-			return nil, fmt.Errorf("access control check failed: %w", errCheckAccess)
-		}
-		accessCheckResponses = accessCheckResult
+		return nil, err
 	}
 
 	var resources []model.Resource
@@ -457,6 +564,15 @@ func (s *ResourceSearch) QueryResourcesCount(
 		"metric_prefix", aggregation.CardinalityPrefix,
 		"group_size", aggregation.GroupBySize,
 	)
+
+	// Each round-trip pair (search plus access check) this method issues has
+	// its own timeout, but nothing else bounds the total time across all of
+	// them for a caller whose private resources span many access-check
+	// buckets. Bound the whole handler so a worst-case walk fails fast
+	// instead of running unbounded.
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, s.config.CountRequestTimeout)
+	defer cancel()
 
 	// Grab the principal which was stored into the context by the security handler.
 	principal, ok := ctx.Value(constants.PrincipalContextID).(string)
@@ -681,18 +797,12 @@ func (s *ResourceSearch) BuildCountMessage(ctx context.Context, principal string
 // A failed check is a ServiceUnavailable error: the count must never be
 // returned as if complete when part of the authorized set is unknown.
 func (s *ResourceSearch) CheckCountAccess(ctx context.Context, principal string, buckets []model.AggregationBucket, accessCheckMessage []byte) (uint64, []string, error) {
-	var accessCheckResponses map[string]string
-	if len(accessCheckMessage) > 0 {
-		slog.DebugContext(ctx, "performing count access control checks", "bucket_count", len(buckets))
+	slog.DebugContext(ctx, "performing count access control checks", "bucket_count", len(buckets))
 
-		// Trim trailing newline.
-		accessCheckMessage = accessCheckMessage[:len(accessCheckMessage)-1]
-		accessCheckResult, errCheckAccess := s.accessChecker.CheckAccess(ctx, constants.AccessCheckSubject, accessCheckMessage, s.config.AccessCheckTimeout)
-		if errCheckAccess != nil {
-			slog.ErrorContext(ctx, "count access control check failed", "error", errCheckAccess, "bucket_count", len(buckets))
-			return 0, nil, errors.NewServiceUnavailable("access control check failed", errCheckAccess)
-		}
-		accessCheckResponses = accessCheckResult
+	accessCheckResponses, err := s.sendAccessCheckBatch(ctx, accessCheckMessage)
+	if err != nil {
+		slog.ErrorContext(ctx, "count access control check failed", "error", err, "bucket_count", len(buckets))
+		return 0, nil, errors.NewServiceUnavailable("access control check failed", err)
 	}
 	slog.DebugContext(ctx, "count access check completed", "bucket_count", len(buckets), "response_count", len(accessCheckResponses))
 

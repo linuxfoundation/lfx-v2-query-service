@@ -689,30 +689,35 @@ func (os *OpenSearchSearcher) convertHit(hit Hit) (model.Resource, error) {
 		resource.SortValues = string(hit.Sort)
 	}
 
-	// Parse the source data
+	// Parse the source data. Unmarshal once into TransactionBodyStub plus a
+	// raw "data" field, so the (often much larger) "data" payload is only
+	// unmarshalled a second time on its own isolated bytes, not re-decoded
+	// as part of the whole source.
 	if hit.Source != nil {
-		sourceData := make(map[string]any)
-		if err := json.Unmarshal(hit.Source, &sourceData); err != nil {
+		var parsed struct {
+			model.TransactionBodyStub
+			Data json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(hit.Source, &parsed); err != nil {
 			return resource, fmt.Errorf("failed to unmarshal source data: %w", err)
 		}
+		resource.TransactionBodyStub = parsed.TransactionBodyStub
+		resource.Type = parsed.ObjectType
 
-		// Extract type
-		if typeVal, ok := sourceData["object_type"].(string); ok {
-			resource.Type = typeVal
+		if len(parsed.Data) > 0 {
+			var data any
+			if err := json.Unmarshal(parsed.Data, &data); err != nil {
+				return resource, fmt.Errorf("failed to unmarshal data field: %w", err)
+			}
+			resource.Data = data
+		} else {
+			// No separate data field: use the entire source as data.
+			var data any
+			if err := json.Unmarshal(hit.Source, &data); err != nil {
+				return resource, fmt.Errorf("failed to unmarshal source data: %w", err)
+			}
+			resource.Data = data
 		}
-
-		// Extract data
-		data, ok := sourceData["data"]
-		if !ok {
-			// If no separate data field, use the entire source as data
-			data = sourceData
-		}
-		resource.Data = data
-
-		if err := json.Unmarshal(hit.Source, &resource.TransactionBodyStub); err != nil {
-			return resource, fmt.Errorf("failed to unmarshal source data into TransactionBodyStub: %w", err)
-		}
-
 	}
 
 	return resource, nil

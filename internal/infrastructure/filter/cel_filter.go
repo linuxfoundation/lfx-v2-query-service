@@ -4,6 +4,7 @@
 package filter
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"log/slog"
@@ -34,14 +35,18 @@ type CELFilter struct {
 	programCache *programCache
 }
 
-// programCache stores compiled CEL programs with TTL
+// programCache stores compiled CEL programs with TTL and LRU eviction: once
+// full, inserting a new expression evicts the least-recently-used entry
+// rather than refusing to cache it.
 type programCache struct {
-	mu      sync.RWMutex
-	cache   map[string]*cacheEntry
+	mu      sync.Mutex
+	cache   map[string]*list.Element
+	order   *list.List // front = most recently used
 	maxSize int
 }
 
 type cacheEntry struct {
+	key       string
 	program   cel.Program
 	expiresAt time.Time
 }
@@ -49,6 +54,15 @@ type cacheEntry struct {
 // isExpired checks if the cache entry has expired
 func (ce *cacheEntry) isExpired() bool {
 	return time.Now().After(ce.expiresAt)
+}
+
+// newProgramCache creates an empty programCache with the given capacity.
+func newProgramCache(maxSize int) *programCache {
+	return &programCache{
+		cache:   make(map[string]*list.Element),
+		order:   list.New(),
+		maxSize: maxSize,
+	}
 }
 
 // NewCELFilter creates a new CEL-based resource filter
@@ -64,11 +78,8 @@ func NewCELFilter() (*CELFilter, error) {
 	}
 
 	return &CELFilter{
-		env: env,
-		programCache: &programCache{
-			cache:   make(map[string]*cacheEntry),
-			maxSize: MaxCacheSize,
-		},
+		env:          env,
+		programCache: newProgramCache(MaxCacheSize),
 	}, nil
 }
 
@@ -152,24 +163,16 @@ func (f *CELFilter) evaluateResource(ctx context.Context, prg cel.Program, resou
 	return boolResult, nil
 }
 
-// getOrCompileProgram retrieves a cached program or compiles a new one
-// Uses double-checked locking to prevent race conditions
+// getOrCompileProgram retrieves a cached program or compiles a new one.
+// Compilation happens outside the cache lock so a slow compile never blocks
+// lookups or inserts for unrelated expressions; a duplicate concurrent
+// compile of the same expression is harmless, since put simply overwrites
+// or moves the existing entry to the front either way.
 func (f *CELFilter) getOrCompileProgram(expression string) (cel.Program, error) {
-	// First check: try to get from cache without write lock (fast path)
-	if prg := f.programCache.get(expression); prg != nil {
+	if prg, ok := f.programCache.get(expression); ok {
 		return prg, nil
 	}
 
-	// Acquire write lock for compilation
-	f.programCache.mu.Lock()
-	defer f.programCache.mu.Unlock()
-
-	// Second check: another goroutine might have compiled it while we waited for the lock
-	if entry, exists := f.programCache.cache[expression]; exists && !entry.isExpired() {
-		return entry.program, nil
-	}
-
-	// Compile new program (only one goroutine reaches here per expression)
 	ast, issues := f.env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
 		return nil, fmt.Errorf("compilation error: %w", issues.Err())
@@ -186,68 +189,71 @@ func (f *CELFilter) getOrCompileProgram(expression string) (cel.Program, error) 
 		return nil, fmt.Errorf("program creation error: %w", err)
 	}
 
-	// Cache the program (already holding write lock)
-	f.programCache.putLocked(expression, prg)
+	f.programCache.put(expression, prg)
 
 	return prg, nil
 }
 
-// get retrieves a program from cache if not expired
-// Removes expired entries immediately when detected
-func (pc *programCache) get(expression string) cel.Program {
-	// First attempt: fast path with read lock
-	pc.mu.RLock()
-	entry, exists := pc.cache[expression]
+// get retrieves a program from cache if not expired, marking it as the
+// most-recently-used entry. Removes expired entries immediately when detected.
+func (pc *programCache) get(expression string) (cel.Program, bool) {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+
+	elem, exists := pc.cache[expression]
 	if !exists {
-		pc.mu.RUnlock()
-		return nil
+		return nil, false
 	}
 
-	// Check if expired (still under read lock)
+	entry := elem.Value.(*cacheEntry)
 	if entry.isExpired() {
-		pc.mu.RUnlock()
-
-		// Upgrade to write lock to delete expired entry
-		pc.mu.Lock()
-		// Double-check it still exists and is still expired
-		if entry, exists := pc.cache[expression]; exists && entry.isExpired() {
-			delete(pc.cache, expression)
-		}
-		pc.mu.Unlock()
-
-		return nil
+		pc.removeLocked(elem)
+		return nil, false
 	}
 
-	program := entry.program
-	pc.mu.RUnlock()
-	return program
+	pc.order.MoveToFront(elem)
+	return entry.program, true
 }
 
-// putLocked adds a program to the cache with TTL (must be called with lock held)
-func (pc *programCache) putLocked(expression string, program cel.Program) {
-	// Clean up expired entries if cache is full
-	if len(pc.cache) >= pc.maxSize {
-		pc.cleanupExpiredLocked()
-	}
+// put adds or refreshes a program in the cache with a new TTL, evicting the
+// least-recently-used entry if the cache is at capacity (must not be called
+// with the lock held).
+func (pc *programCache) put(expression string, program cel.Program) {
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
 
-	// If still full after cleanup, remove oldest entry
-	if len(pc.cache) >= pc.maxSize {
-		// Simple eviction: just skip caching this program
+	if elem, exists := pc.cache[expression]; exists {
+		entry := elem.Value.(*cacheEntry)
+		entry.program = program
+		entry.expiresAt = time.Now().Add(CacheTTL)
+		pc.order.MoveToFront(elem)
 		return
 	}
 
-	pc.cache[expression] = &cacheEntry{
+	if pc.order.Len() >= pc.maxSize {
+		pc.evictOldestLocked()
+	}
+
+	elem := pc.order.PushFront(&cacheEntry{
+		key:       expression,
 		program:   program,
 		expiresAt: time.Now().Add(CacheTTL),
-	}
+	})
+	pc.cache[expression] = elem
 }
 
-// cleanupExpiredLocked removes expired entries (must be called with lock held)
-func (pc *programCache) cleanupExpiredLocked() {
-	now := time.Now()
-	for key, entry := range pc.cache {
-		if now.After(entry.expiresAt) {
-			delete(pc.cache, key)
-		}
+// removeLocked deletes an entry from both the map and the LRU list (must be
+// called with the lock held).
+func (pc *programCache) removeLocked(elem *list.Element) {
+	entry := elem.Value.(*cacheEntry)
+	delete(pc.cache, entry.key)
+	pc.order.Remove(elem)
+}
+
+// evictOldestLocked removes the least-recently-used entry, if any (must be
+// called with the lock held).
+func (pc *programCache) evictOldestLocked() {
+	if oldest := pc.order.Back(); oldest != nil {
+		pc.removeLocked(oldest)
 	}
 }

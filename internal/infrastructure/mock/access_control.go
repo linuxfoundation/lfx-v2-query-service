@@ -56,9 +56,10 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 		m.checkAccessMessages = append(m.checkAccessMessages, string(data))
 	}
 
-	// If test has set a mock error, return it (on every call, or only on the
-	// configured call number).
-	if m.checkAccessError != nil && (m.checkAccessErrorOnCall == 0 || m.checkAccessErrorOnCall == m.checkAccessCalls) {
+	// If test has set a mock error, return it (on every call, or from the
+	// configured call number onward — a retried call after the configured
+	// call keeps failing too, like a real outage would).
+	if m.checkAccessError != nil && (m.checkAccessErrorOnCall == 0 || m.checkAccessCalls >= m.checkAccessErrorOnCall) {
 		return nil, m.checkAccessError
 	}
 
@@ -229,8 +230,10 @@ func (m *MockAccessControlChecker) SetCheckAccessError(err error) {
 	m.checkAccessErrorOnCall = 0
 }
 
-// SetCheckAccessErrorOnCall makes only the n-th CheckAccess call (1-based)
-// fail with err; earlier and later calls behave normally.
+// SetCheckAccessErrorOnCall makes the n-th CheckAccess call (1-based) and
+// every call after it fail with err; earlier calls behave normally. This
+// also fails a retry of the n-th call, since a retry is just another call
+// with a higher count.
 func (m *MockAccessControlChecker) SetCheckAccessErrorOnCall(n int, err error) {
 	m.checkAccessError = err
 	m.checkAccessErrorOnCall = n

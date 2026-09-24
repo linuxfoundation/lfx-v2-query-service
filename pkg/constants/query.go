@@ -3,6 +3,8 @@
 
 package constants
 
+import "time"
+
 const (
 
 	// DefaultPageSize is the default number of results per page for queries
@@ -42,6 +44,27 @@ const (
 	// A whole page is always read, so the cap may be overshot by up to
 	// MaxPageSize records.
 	MaxSummaryRecordCap = 50000
+	// DefaultCountRequestTimeout bounds the total wall-clock time
+	// QueryResourcesCount may spend across every round-trip pair (search
+	// plus access check) it issues to satisfy one request. Individual
+	// calls have their own timeouts, but nothing else bounds the sum.
+	DefaultCountRequestTimeout = 30 * time.Second
+	// MaxCountRequestTimeout is the maximum configurable count-request deadline.
+	MaxCountRequestTimeout = 5 * time.Minute
+	// DefaultAccessCheckChunkBytes is the default soft ceiling on the size of
+	// a single batched access-check message sent to fga-sync over NATS. A
+	// message built from a large result page is split into chunks no bigger
+	// than this before it is sent, so it stays comfortably under NATS'
+	// default 1MiB max payload regardless of how many resources a page held.
+	DefaultAccessCheckChunkBytes = 512 * 1024
+	// MaxAccessCheckChunkBytes is the maximum configurable access-check chunk size.
+	MaxAccessCheckChunkBytes = 1024 * 1024
+	// DefaultAccessCheckRetries is the default number of retries for a single
+	// access-check chunk that fails outright (e.g. a transient NATS timeout),
+	// on top of the initial attempt.
+	DefaultAccessCheckRetries = 1
+	// MaxAccessCheckRetries is the maximum configurable access-check retry count.
+	MaxAccessCheckRetries = 5
 )
 
 // Membership summary scope: the indexed resource type the read covers and the

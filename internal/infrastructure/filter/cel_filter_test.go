@@ -300,7 +300,8 @@ func TestCELFilter_ProgramCaching(t *testing.T) {
 	assertion.Equal(1, len(result2))
 
 	// Verify cache contains the expression
-	assertion.NotNil(filter.programCache.get(expression))
+	_, ok := filter.programCache.get(expression)
+	assertion.True(ok)
 }
 
 func TestCELFilter_CacheExpiration(t *testing.T) {
@@ -314,24 +315,25 @@ func TestCELFilter_CacheExpiration(t *testing.T) {
 	assertion.NoError(err)
 
 	// Verify it's in cache
-	filter.programCache.mu.RLock()
+	filter.programCache.mu.Lock()
 	cacheSize := len(filter.programCache.cache)
-	filter.programCache.mu.RUnlock()
+	filter.programCache.mu.Unlock()
 	assertion.Equal(1, cacheSize, "expected 1 cached entry")
 
 	// Manually expire the cache entry
 	filter.programCache.mu.Lock()
-	entry := filter.programCache.cache[expression]
-	entry.expiresAt = time.Now().Add(-1 * time.Hour)
+	elem := filter.programCache.cache[expression]
+	elem.Value.(*cacheEntry).expiresAt = time.Now().Add(-1 * time.Hour)
 	filter.programCache.mu.Unlock()
 
-	// Should return nil for expired entry
-	assertion.Nil(filter.programCache.get(expression))
+	// Should report absent for an expired entry
+	_, ok := filter.programCache.get(expression)
+	assertion.False(ok)
 
 	// Verify expired entry was removed from cache
-	filter.programCache.mu.RLock()
+	filter.programCache.mu.Lock()
 	cacheSize = len(filter.programCache.cache)
-	filter.programCache.mu.RUnlock()
+	filter.programCache.mu.Unlock()
 	assertion.Equal(0, cacheSize, "expected expired entry to be removed from cache")
 }
 
@@ -394,35 +396,52 @@ func TestCELFilter_ComplexExpressions(t *testing.T) {
 	}
 }
 
-func TestProgramCache_CleanupExpired(t *testing.T) {
+func TestProgramCache_ExpiredEntryRemovedOnGet(t *testing.T) {
 	assertion := assert.New(t)
 
-	cache := &programCache{
-		cache:   make(map[string]*cacheEntry),
-		maxSize: 10,
-	}
+	cache := newProgramCache(10)
 
-	// Add entries with different expiration times
 	filter, _ := NewCELFilter()
 	prg1, _ := filter.env.Program(nil) // Dummy program
 
-	cache.cache["expired1"] = &cacheEntry{
-		program:   prg1,
-		expiresAt: time.Now().Add(-1 * time.Hour),
-	}
-	cache.cache["expired2"] = &cacheEntry{
-		program:   prg1,
-		expiresAt: time.Now().Add(-30 * time.Minute),
-	}
-	cache.cache["valid"] = &cacheEntry{
-		program:   prg1,
-		expiresAt: time.Now().Add(5 * time.Minute),
-	}
-
+	cache.put("expired", prg1)
 	cache.mu.Lock()
-	cache.cleanupExpiredLocked()
+	cache.cache["expired"].Value.(*cacheEntry).expiresAt = time.Now().Add(-1 * time.Hour)
 	cache.mu.Unlock()
 
+	cache.put("valid", prg1)
+
+	_, ok := cache.get("expired")
+	assertion.False(ok, "expired entry should not be returned")
+
 	assertion.Equal(1, len(cache.cache))
-	assertion.NotNil(cache.cache["valid"])
+	_, ok = cache.cache["valid"]
+	assertion.True(ok)
+}
+
+func TestProgramCache_LRUEviction(t *testing.T) {
+	assertion := assert.New(t)
+
+	cache := newProgramCache(2)
+
+	filter, _ := NewCELFilter()
+	prg1, _ := filter.env.Program(nil) // Dummy program
+
+	cache.put("a", prg1)
+	cache.put("b", prg1)
+
+	// Touch "a" so it becomes more recently used than "b".
+	_, ok := cache.get("a")
+	assertion.True(ok)
+
+	// Inserting a third entry should evict "b", the least-recently-used.
+	cache.put("c", prg1)
+
+	assertion.Equal(2, len(cache.cache))
+	_, ok = cache.get("a")
+	assertion.True(ok, "a should survive eviction")
+	_, ok = cache.get("b")
+	assertion.False(ok, "b should have been evicted")
+	_, ok = cache.get("c")
+	assertion.True(ok, "c should be present")
 }
