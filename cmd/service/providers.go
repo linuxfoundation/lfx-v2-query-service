@@ -33,6 +33,9 @@ import (
 //   - SUMMARY_MAX_RECORDS    (default 5000) membership records read before the read stops at the next organization boundary and reports complete: false
 //   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page has no visible resource (1..25)
 //   - UNSATISFIABLE_FILTER_REJECTION (default true) reject absent indexed filter dimensions on zero results
+//   - COUNT_REQUEST_TIMEOUT  (default 30s)  total deadline across every round-trip QueryResourcesCount issues
+//   - ACCESS_CHECK_CHUNK_BYTES (default 512KiB) soft ceiling on a single batched access-check message
+//   - ACCESS_CHECK_RETRIES   (default 1)    retries for a single access-check chunk that fails outright
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config := service.DefaultConfig()
 
@@ -43,6 +46,9 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config.MaxSummaryRecords = envInt("SUMMARY_MAX_RECORDS", constants.DefaultMaxSummaryRecords)
 	config.DeniedPageWalk = envInt("SEARCH_DENIED_PAGE_WALK", constants.DefaultDeniedPageWalk)
 	config.DisableUnsatisfiableFilterRejection = !envBool("UNSATISFIABLE_FILTER_REJECTION", true)
+	config.CountRequestTimeout = envDuration("COUNT_REQUEST_TIMEOUT", config.CountRequestTimeout)
+	config.AccessCheckChunkBytes = envInt("ACCESS_CHECK_CHUNK_BYTES", config.AccessCheckChunkBytes)
+	config.AccessCheckRetries = envInt("ACCESS_CHECK_RETRIES", config.AccessCheckRetries)
 
 	if err := config.Validate(); err != nil {
 		log.Fatalf("invalid resource search configuration: %v", err)
@@ -56,6 +62,9 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 		"summary_max_records", config.MaxSummaryRecords,
 		"search_denied_page_walk", config.DeniedPageWalk,
 		"unsatisfiable_filter_rejection", !config.DisableUnsatisfiableFilterRejection,
+		"count_request_timeout", config.CountRequestTimeout,
+		"access_check_chunk_bytes", config.AccessCheckChunkBytes,
+		"access_check_retries", config.AccessCheckRetries,
 	)
 	return config
 }
@@ -214,9 +223,13 @@ func AccessControlCheckerImpl(ctx context.Context) port.AccessControlChecker {
 		log.Fatalf("invalid NATS timeout duration: %v", err)
 	}
 
+	// -1 tells the NATS client to reconnect indefinitely rather than giving
+	// up and closing the connection after a handful of attempts, which is
+	// what the previous default of 3 did during any outage longer than a
+	// few reconnect-wait intervals.
 	natsMaxReconnect := os.Getenv("NATS_MAX_RECONNECT")
 	if natsMaxReconnect == "" {
-		natsMaxReconnect = "3"
+		natsMaxReconnect = "-1"
 	}
 	natsMaxReconnectInt, err := strconv.Atoi(natsMaxReconnect)
 	if err != nil {
