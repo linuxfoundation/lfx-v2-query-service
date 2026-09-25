@@ -52,6 +52,10 @@ const (
 // Membership summary scope: the indexed resource type the read covers and the
 // tag prefixes it scopes the read with.
 const (
+	// MembershipSummaryTokenVersion identifies the whole-run summary read.
+	// Tokens from the unversioned read may point inside a run and must not
+	// be accepted by this version. This does not version other query tokens.
+	MembershipSummaryTokenVersion = 1
 	// MembershipResourceType is the indexed type of a membership record
 	MembershipResourceType = "project_membership"
 	// MembershipProjectTagPrefix prefixes the tag carrying a membership record's project UID

@@ -49,9 +49,8 @@ type QueryResourcesCountResponseBody struct {
 // "query-membership-summary" endpoint HTTP response body.
 type QueryMembershipSummaryResponseBody struct {
 	// Summaries ordered by organization name, project slug, organization UID and
-	// project UID; reads started without a legacy token return whole organization
-	// runs, never runs cut short by the record cap. A legacy mid-run token returns
-	// only the remainder; restart without a token for whole-run results
+	// project UID; every returned summary covers a whole organization run, never a
+	// run cut short by the record cap
 	Summaries []*MembershipTermSummaryResponseBody `form:"summaries" json:"summaries" xml:"summaries"`
 	// Number of membership records folded into the summaries
 	TermsTotal uint64 `form:"terms_total" json:"terms_total" xml:"terms_total"`

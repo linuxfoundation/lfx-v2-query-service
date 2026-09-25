@@ -255,9 +255,9 @@ returning whole runs rather than partial summaries. If neither a resumable
 boundary nor end-of-results can be established within the hard ceiling of
 50000 raw hits, the read fails with `503` and no summaries.
 
-Legacy tokens issued by the previous implementation may still resume inside
-a run and return only its remainder. Tokens do not expire automatically;
-restart without a token for whole-run results.
+A `page_token` is accepted only from the same version of the summary read; a
+token from an earlier version is rejected with `400` and the read must restart
+without it.
 See [GET /query/memberships/summary](query-service-contract.md#get-querymembershipssummary)
 for the parameters, the result fields and the fold rules.
 
