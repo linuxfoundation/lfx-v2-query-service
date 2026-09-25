@@ -42,7 +42,7 @@ paths:
                   minLength: 1
                 - name: page_token
                   in: query
-                  description: 'Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read where it stopped: at the next organization, or inside the one run that filled the read'
+                  description: Opaque token from a previous summary response with the same project_uid and b2b_org_uid; resumes at the next organization run. A page_token is accepted only from the same version of the summary read; a token from an earlier version is rejected with 400 and the read must restart without it
                   required: false
                   type: string
                 - name: Authorization
@@ -807,13 +807,13 @@ definitions:
                 example: true
             page_token:
                 type: string
-                description: 'Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue the read where it stopped: at the next organization, or inside the one run that filled the read'
+                description: Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue at the start of the next organization run
                 example: '****'
             summaries:
                 type: array
                 items:
                     $ref: '#/definitions/MembershipTermSummary'
-                description: Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that fell whole inside a single run of records sharing one company name, usually one organization, holds that run as far as it was read and continues inside it
+                description: Summaries ordered by organization name, project slug, organization UID and project UID; every returned summary covers a whole organization run, never a run cut short by the record cap
                 example:
                     - b2b_org_uid: org-1
                       company_name: Example Corp

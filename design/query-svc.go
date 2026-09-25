@@ -275,7 +275,7 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Example("org-1")
 				dsl.MinLength(1)
 			})
-			dsl.Attribute("page_token", dsl.String, "Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read where it stopped: at the next organization, or inside the one run that filled the read", func() {
+			dsl.Attribute("page_token", dsl.String, "Opaque token from a previous summary response with the same project_uid and b2b_org_uid; resumes at the next organization run. A page_token is accepted only from the same version of the summary read; a token from an earlier version is rejected with 400 and the read must restart without it", func() {
 				dsl.Example("****")
 			})
 			dsl.Required("bearer_token", "version")
@@ -287,7 +287,7 @@ var _ = dsl.Service("query-svc", func() {
 		dsl.Result(func() {
 			dsl.Description("Membership term summaries, one per organization and project.")
 
-			dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; a read that stops at the record cap and can continue holds only the organizations it read whole, while a read that fell whole inside a single run of records sharing one company name, usually one organization, holds that run as far as it was read and continues inside it", func() {
+			dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; every returned summary covers a whole organization run, never a run cut short by the record cap", func() {
 				// Declared so the schema example agrees with the terms_total example
 				// below; Goa would otherwise synthesize an array of its own length.
 				dsl.Example([]dsl.Val{membershipTermSummaryExample})
@@ -297,7 +297,7 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Example(2)
 			})
 			dsl.Attribute("complete", dsl.Boolean, "True when every matching membership record was read; false when the read stopped at the record cap and returned a page_token to continue")
-			dsl.Attribute("page_token", dsl.String, "Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue the read where it stopped: at the next organization, or inside the one run that filled the read", func() {
+			dsl.Attribute("page_token", dsl.String, "Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue at the start of the next organization run", func() {
 				dsl.Example("****")
 			})
 			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {

@@ -375,10 +375,16 @@ const errMembershipSummaryScope = "at least one summary parameter must be provid
 // organizations of this scope that sort before its cursor.
 const errMembershipSummaryPageToken = "page_token belongs to a different read: pass the project_uid and b2b_org_uid it was issued with"
 
+// errMembershipSummaryTokenPredatesRead gives the restart instruction for a
+// summary token not issued by the current read version. Only that version
+// can safely be continued, regardless of the mismatched value.
+const errMembershipSummaryTokenPredatesRead = "page_token predates the current summary read; restart the read without it"
+
 // membershipSummaryPageToken is the content of a summary page token: the
-// keyset cursor at the organization the read stopped inside, bound to the
-// scope it was issued for.
+// keyset cursor at the next organization, bound to the scope and summary
+// read version it was issued for.
 type membershipSummaryPageToken struct {
+	Version    int             `json:"version"`
 	ProjectUID string          `json:"project_uid,omitempty"`
 	B2BOrgUID  string          `json:"b2b_org_uid,omitempty"`
 	After      json.RawMessage `json:"after"`
@@ -412,6 +418,9 @@ func (s *querySvcsrvc) payloadToMembershipSummaryCriteria(ctx context.Context, p
 			slog.ErrorContext(ctx, "summary page token carries no cursor", "error", errToken)
 			return model.MembershipSummaryCriteria{}, errors.NewValidation("invalid page token")
 		}
+		if token.Version != constants.MembershipSummaryTokenVersion {
+			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryTokenPredatesRead)
+		}
 		if token.ProjectUID != criteria.ProjectUID || token.B2BOrgUID != criteria.B2BOrgUID {
 			slog.ErrorContext(ctx, "summary page token scope mismatch")
 			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryPageToken)
@@ -425,7 +434,7 @@ func (s *querySvcsrvc) payloadToMembershipSummaryCriteria(ctx context.Context, p
 // domainMembershipSummaryToResponse converts the domain summary result. The
 // attributes of the current record and the date range are present only when a
 // record carries them. A cursor at the next organization becomes an opaque
-// page token bound to the read's scope.
+// page token bound to the read's scope and version.
 func (s *querySvcsrvc) domainMembershipSummaryToResponse(ctx context.Context, result *model.MembershipSummaryResult, criteria model.MembershipSummaryCriteria) (*querysvc.QueryMembershipSummaryResult, error) {
 	response := &querysvc.QueryMembershipSummaryResult{
 		Summaries:    make([]*querysvc.MembershipTermSummary, 0, len(result.Summaries)),
@@ -438,6 +447,7 @@ func (s *querySvcsrvc) domainMembershipSummaryToResponse(ctx context.Context, re
 	}
 	if result.SearchAfter != nil {
 		pageToken, errPageToken := paging.EncodePageToken(membershipSummaryPageToken{
+			Version:    constants.MembershipSummaryTokenVersion,
 			ProjectUID: criteria.ProjectUID,
 			B2BOrgUID:  criteria.B2BOrgUID,
 			After:      json.RawMessage(*result.SearchAfter),

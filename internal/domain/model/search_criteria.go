@@ -39,6 +39,9 @@ type SearchCriteria struct {
 	SortBy string
 	// SortOrder for results
 	SortOrder string
+	// SortMode selects a value from a multi-valued sort field. Internal only;
+	// unset on plain searches, "min" for the membership summary's parent refs.
+	SortMode string
 	// Opaque token for pagination
 	PageToken *string
 	// Pagesize for pagination

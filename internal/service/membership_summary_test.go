@@ -6,6 +6,7 @@ package service
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -64,6 +65,8 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, constants.MaxPageSize, criteria[0].PageSize)
 		require.Equal(t, membershipSortField, criteria[0].SortBy)
 		require.Equal(t, "asc", criteria[0].SortOrder)
+		require.Equal(t, "parent_refs", criteria[0].SortBy)
+		require.Equal(t, "min", criteria[0].SortMode)
 		require.False(t, criteria[0].PublicOnly)
 		require.Nil(t, criteria[0].SearchAfter, "the first page starts the keyset")
 		require.Equal(t, `["2023-01-02T00:00:00Z","m-1"]`, *criteria[1].SearchAfter,
@@ -161,7 +164,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, []string{"b2b_org_uid:org-1"}, searcher.QueryResourceCriteria()[0].TagsAll)
 	})
 
-	t.Run("the record cap stops the read and reports it incomplete", func(t *testing.T) {
+	t.Run("the record cap inside a single run reads it to the end", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["2023-01-02T00:00:00Z","m-2"]`),
@@ -178,8 +181,8 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
 			),
-			// The organization continues on a page the capped read never
-			// asks for, so the summary holds it only as far as it was read.
+			// The organization continues beyond the cap: the read must
+			// fetch its final page before returning a whole summary.
 			membershipPage(nil,
 				membershipRecord("m-3", map[string]any{
 					"uid": "m-3", "b2b_org_uid": "org-1", "company_name": "Example Corp",
@@ -198,28 +201,28 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		})
 
 		require.NoError(t, err)
-		require.False(t, result.Complete)
-		require.Equal(t, uint64(2), result.TermsTotal)
+		require.True(t, result.Complete)
+		require.Equal(t, uint64(3), result.TermsTotal)
 		require.Len(t, result.Summaries, 1)
-		require.Equal(t, uint64(2), result.Summaries[0].TermCount,
-			"the organization the cap fell inside is held as far as it was read, not dropped")
-		require.NotNil(t, result.SearchAfter)
-		require.Equal(t, `["2023-01-02T00:00:00Z","m-2"]`, *result.SearchAfter,
-			"a read that fell inside a single run continues from its last hit rather than stranding what follows")
-		require.Equal(t, 1, searcher.QueryResourceCalls(), "the read stops at the cap instead of asking for the next page")
+		require.Equal(t, uint64(3), result.Summaries[0].TermCount)
+		require.Equal(t, "m-3", result.Summaries[0].CurrentMembershipUID)
+		require.Nil(t, result.SearchAfter)
+		require.Equal(t, 2, searcher.QueryResourceCalls(), "the run is read whole even beyond the cap")
 	})
 
 	t.Run("a page carrying a cursor counts as a full page against the cap", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
-			// One converted record on a page that carries a cursor: the
+			// Two converted records on a page that carries a cursor: the
 			// searcher dropped the rest, but the page was read in full.
-			membershipPage(cursor(`["a corp","m-1"]`),
-				membershipRecord("m-1", map[string]any{
+			// A boundary lets the read stop once that raw page hits the cap.
+			membershipPage(cursor(`["b corp","m-2"]`),
+				orderedMembershipRecord("m-1", "a corp", map[string]any{
 					"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 				}),
+				orderedMembershipRecord("m-2", "b corp", map[string]any{"uid": "m-2", "b2b_org_uid": "org-2"}),
 			),
 			membershipPage(nil),
 		)
@@ -270,9 +273,9 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, 4, searcher.QueryResourceCalls(), "the cap did not stop a read that had seen nothing")
 	})
 
-	t.Run("a caller who sees nothing gets a continuation only past the denied-page walk", func(t *testing.T) {
+	t.Run("a caller who sees nothing gets a boundary continuation only past the denied-page walk", func(t *testing.T) {
 		hidden := func(uid string) model.Resource {
-			return orderedMembershipRecord(uid, "a corp", map[string]any{
+			return orderedMembershipRecord(uid, uid, map[string]any{
 				"uid": uid, "b2b_org_uid": "org-1", "company_name": "A Corp",
 				"project_uid": "proj-1", "project_slug": "example-project",
 				"status": "Active", "tier_name": "Gold",
@@ -370,7 +373,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, 1, searcher.QueryResourceCalls())
 	})
 
-	t.Run("a record renamed into the organization the read stopped inside is left out with it", func(t *testing.T) {
+	t.Run("a record reassigned to the organization the read stopped inside is left out with it", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["b corp","m-2"]`),
@@ -387,12 +390,12 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
 			),
-			// The first record was renamed and re-indexed while the read was
+			// The first record was reassigned and re-indexed while the read was
 			// between pages, so it is served again, now inside the last
 			// organization run of the read.
 			membershipPage(cursor(`["c corp","m-3"]`),
 				orderedMembershipRecord("m-1", "c corp", map[string]any{
-					"uid": "m-1", "b2b_org_uid": "org-a", "company_name": "C Corp",
+					"uid": "m-1", "b2b_org_uid": "org-c", "company_name": "C Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
@@ -419,10 +422,10 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.False(t, result.Complete)
 		require.NotNil(t, result.SearchAfter)
 		require.Equal(t, `["b corp","m-2"]`, *result.SearchAfter)
-		require.Len(t, result.Summaries, 1, "the renamed record belongs to the organization left out")
+		require.Len(t, result.Summaries, 1, "the reassigned record belongs to the organization left out")
 		require.Equal(t, "org-b", result.Summaries[0].B2BOrgUID)
 		require.Equal(t, uint64(1), result.TermsTotal,
-			"the resumed read serves the renamed record again, so this read must not fold it")
+			"the resumed read serves the reassigned record again, so this read must not fold it")
 	})
 
 	t.Run("the boundary is found over records the caller cannot see", func(t *testing.T) {
@@ -689,10 +692,10 @@ func membershipRecord(uid string, data map[string]any) model.Resource {
 
 // orderedMembershipRecord builds one indexed membership record as the
 // searcher returns it for the summary read: with the sort values of the
-// organization order, the sortable name first and the record id second.
-func orderedMembershipRecord(uid, sortName string, data map[string]any) model.Resource {
+// organization order, an opaque run key first and the record id second.
+func orderedMembershipRecord(uid, runKey string, data map[string]any) model.Resource {
 	record := membershipRecord(uid, data)
-	record.SortValues = `["` + sortName + `","` + uid + `"]`
+	record.SortValues = `["` + runKey + `","` + uid + `"]`
 	return record
 }
 
@@ -775,6 +778,151 @@ func TestResourceSearchMembershipSummaryCapResume(t *testing.T) {
 	}
 	require.Equal(t, terms(uncapped), union, "the capped read and its resume are exactly the uncapped read")
 	require.Equal(t, uncapped.TermsTotal, first.TermsTotal+second.TermsTotal)
+}
+
+// TestResourceSearchMembershipSummaryWholeRunWalk checks real-size pages and
+// cursor-based resumes, including a multi-page first run and label fallbacks.
+func TestResourceSearchMembershipSummaryWholeRunWalk(t *testing.T) {
+	var records []model.Resource
+	for _, run := range []struct {
+		name, org string
+		count     int
+	}{
+		{"a corp", "org-a", 2500},
+		{"b corp", "", 1200},
+		{"c corp", "org-c", 2500},
+		{"d corp", "org-d", 30},
+	} {
+		for i := 0; i < run.count; i++ {
+			uid := fmt.Sprintf("m-%05d", len(records))
+			project := fmt.Sprintf("proj-%d", i%2)
+			projectUID := project
+			if run.org == "" {
+				projectUID = "" // Exercise both halves of the label fallback.
+			}
+			records = append(records, orderedMembershipRecord(uid, run.name, map[string]any{
+				"uid": uid, "company_name": run.name, "b2b_org_uid": run.org,
+				"project_uid": projectUID, "project_slug": project,
+				"status": "Active", "tier_name": fmt.Sprintf("Tier %d", i%3),
+				"start_date": "2024-01-01", "created_at": fmt.Sprintf("2024-01-%02d", 1+i%28),
+			}))
+		}
+	}
+	newService := func(cap int) (*ResourceSearch, *pagedSearcher) {
+		searcher := membershipFixtureSearcher(records)
+		config := DefaultConfig()
+		config.MaxSummaryRecords = cap
+		svc, err := NewResourceSearch(searcher, mock.NewMockAccessControlChecker(), mock.NewMockResourceFilter(), config)
+		require.NoError(t, err)
+		return svc.(*ResourceSearch), searcher
+	}
+	whole, _ := newService(constants.MaxSummaryRecordCap)
+	uncapped, err := whole.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{ProjectUID: "scope"})
+	require.NoError(t, err)
+	require.True(t, uncapped.Complete)
+
+	capped, searcher := newService(constants.MaxPageSize)
+	var after *string
+	var union []model.MembershipTermSummary
+	var total uint64
+	seen := make(map[[2]string]bool)
+	reads := 0
+	for {
+		reads++
+		require.LessOrEqual(t, reads, 4, "a walk must advance and terminate")
+		result, readErr := capped.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+			ProjectUID: "scope", SearchAfter: after,
+		})
+		require.NoError(t, readErr)
+		if reads == 1 {
+			require.False(t, result.Complete)
+			require.Equal(t, uint64(2500), result.TermsTotal, "the first run spans three pages and is returned whole")
+			require.Len(t, searcher.cursors, 3)
+			require.Equal(t, cursor(records[2499].SortValues), result.SearchAfter, "resume before the second run, not after the last page")
+		}
+		for _, summary := range result.Summaries {
+			org, project := "uid:"+summary.B2BOrgUID, "uid:"+summary.ProjectUID
+			if summary.B2BOrgUID == "" {
+				org = "label:" + summary.CompanyName
+			}
+			if summary.ProjectUID == "" {
+				project = "label:" + summary.ProjectSlug
+			}
+			key := [2]string{org, project}
+			require.False(t, seen[key], "a summary key must never appear in more than one read: %v", key)
+			seen[key] = true
+			union = append(union, summary)
+		}
+		total += result.TermsTotal
+		if result.Complete {
+			require.Nil(t, result.SearchAfter)
+			break
+		}
+		require.NotNil(t, result.SearchAfter)
+		require.NotEqual(t, after, result.SearchAfter)
+		after = result.SearchAfter
+	}
+	require.Equal(t, 3, reads)
+	require.Equal(t, uncapped.TermsTotal, total)
+	require.ElementsMatch(t, uncapped.Summaries, union, "the entire fold, not just term counts, equals a single uncapped read")
+}
+
+// membershipFixtureSearcher serves full pages keyed by cursor, including pages
+// starting at each run boundary a capped read could hand back to the caller.
+func membershipFixtureSearcher(records []model.Resource) *pagedSearcher {
+	pages := make(map[string]*model.SearchResult)
+	for start := range records {
+		if start > 0 && membershipRunKey(records[start-1].SortValues) == membershipRunKey(records[start].SortValues) {
+			continue
+		}
+		for offset := start; offset < len(records); offset += constants.MaxPageSize {
+			key := ""
+			if offset > 0 {
+				key = records[offset-1].SortValues
+			}
+			end := min(offset+constants.MaxPageSize, len(records))
+			next := ""
+			if end-offset == constants.MaxPageSize {
+				next = records[end-1].SortValues
+			}
+			pages[key] = page(next, records[offset:end]...)
+		}
+	}
+	return &pagedSearcher{MockResourceSearcher: mock.NewMockResourceSearcher(), pages: pages}
+}
+
+func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
+	for _, mode := range []string{"visible", "denied", "unconverted"} {
+		t.Run(mode, func(t *testing.T) {
+			records := make([]model.Resource, constants.MaxSummaryRunRecords+1)
+			for i := range records {
+				uid := fmt.Sprintf("m-%05d", i)
+				records[i] = orderedMembershipRecord(uid, "one corp", map[string]any{
+					"uid": uid, "company_name": "One Corp", "b2b_org_uid": "org-1", "project_uid": "proj-1",
+				})
+			}
+			searcher := membershipFixtureSearcher(records)
+			if mode == "unconverted" {
+				for _, page := range searcher.pages {
+					page.Resources = nil
+				}
+			}
+			checker := mock.NewMockAccessControlChecker()
+			if mode == "denied" {
+				checker.DeniedResourceIDs = []string{constants.MembershipResourceType + ":"}
+			}
+			config := DefaultConfig()
+			config.MaxSummaryRecords = 1
+			service, err := NewResourceSearch(searcher, checker, mock.NewMockResourceFilter(), config)
+			require.NoError(t, err)
+			result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{B2BOrgUID: "org-1"})
+			var unavailable pkgerrors.ServiceUnavailable
+			require.ErrorAs(t, err, &unavailable)
+			require.ErrorContains(t, err, "record ceiling")
+			require.Nil(t, result, "no partial summaries escape the hard ceiling")
+			require.Len(t, searcher.cursors, constants.MaxSummaryRunRecords/constants.MaxPageSize)
+		})
+	}
 }
 
 // TestResourceSearchMembershipSummarySearcherFailure pins that a searcher

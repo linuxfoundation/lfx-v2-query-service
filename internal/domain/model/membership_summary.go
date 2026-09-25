@@ -92,8 +92,8 @@ type MembershipSummaryResult struct {
 	Complete bool
 	// SearchAfter is the keyset cursor the next read continues from, as a JSON
 	// array of sort values: the last hit before the organization the read
-	// stopped inside, or the last hit read when the whole read fell inside one
-	// run of records sharing a company name; nil when the read is complete.
+	// stopped inside. A resumed read starts with that whole run of records
+	// sharing a minimum parent ref; nil when the read is complete.
 	SearchAfter *string
 	// CacheControl is the cache-control header value of the response.
 	CacheControl string
