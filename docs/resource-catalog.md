@@ -247,12 +247,17 @@ Use this instead of paging `type=project_membership` and folding the history in
 the client: `status`, `tier_name` and the dates are `data` fields, which cannot
 be aggregated, so the fold has to happen over the records themselves. The
 summaries cover only the records the caller may see. `complete` is `false`
-when the read stopped at a configured record cap; it then carries a
-`page_token`, and passing it back with the same scope continues where the read
-stopped, at the next organization, so a large project's roster is whole in a
-few calls. Only when one run of records sharing a company name fills a whole
-read does the token continue inside that run, whose summaries then go on in the
-next call.
+when the read stopped at an organization boundary after reaching the configured
+record cap; it then carries a `page_token` that resumes at the next run with
+the same scope. If the cap falls inside the first run of records sharing a
+company name, the read continues until a boundary appears or the pages run out,
+returning whole runs rather than partial summaries. If neither a resumable
+boundary nor end-of-results can be established within the hard ceiling of
+50000 raw hits, the read fails with `503` and no summaries.
+
+Legacy tokens issued by the previous implementation may still resume inside
+a run and return only its remainder. Tokens do not expire automatically;
+restart without a token for whole-run results.
 See [GET /query/memberships/summary](query-service-contract.md#get-querymembershipssummary)
 for the parameters, the result fields and the fold rules.
 
