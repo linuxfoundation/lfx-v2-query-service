@@ -188,7 +188,7 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
 | `SEARCH_DENIED_PAGE_WALK` | `10` | Extra raw pages `/query/resources` fetches when a page leaves the caller no visible resource (1–25); see [Page Size](#page-size) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
-| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before it folds what it has and reports `complete: false` (1..50000, validated at startup); the cap is checked after a whole page, so it can be overshot by up to one page, and while the caller has seen nothing it yields to the denied-page walk, so the worst case for such a read is the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK` |
+| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before returning whole organization runs with `complete: false` (1..50000, validated at startup); normally at most the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK`. With no resumable organization boundary yet, the read continues to finish the first run, bounded by 50000 raw hits (the existing configurable cap ceiling). If neither a boundary nor end-of-results is established within that ceiling, the read fails with `503`, never a partial summary |
 
 #### Not supported
 
@@ -243,17 +243,16 @@ callers do not have to drain every page and fold the history themselves.
 | `v` | string (required) | API version, must be `1` |
 | `project_uid` | string | Summarize the memberships on this project |
 | `b2b_org_uid` | string | Summarize the memberships of this organization |
-| `page_token` | string | Continue an earlier read of the same scope where it stopped: at the next organization, or inside the one run that filled the read (see the record cap below) |
+| `page_token` | string | Continue an earlier read of the same scope at the start of the next organization run (see the record cap below) |
 
 At least one of `project_uid` and `b2b_org_uid` must be provided; a request with
 neither is a `400 Bad Request` naming both ("at least one summary parameter must
 be provided: project_uid or b2b_org_uid"). Given together they restrict the read
 to the memberships of that organization on that project. There are no other
 filters. A read that stops at the record cap returns a `page_token`, and
-passing it back with the same `project_uid` and `b2b_org_uid` continues where
-it stopped: at the next organization, or inside the one run that filled the
-read. A token
-passed with another scope is a `400 Bad Request`.
+passing it back with the same `project_uid` and `b2b_org_uid` continues at the
+start of the next organization run. A token passed with another scope is a
+`400 Bad Request`.
 
 **Response**:
 
@@ -301,10 +300,10 @@ passed with another scope is a `400 Bad Request`.
 
 | Field | Present | Meaning |
 | --- | --- | --- |
-| `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Empty when nothing matched or nothing was visible |
+| `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Every returned summary covers a whole organization run, never a run cut short by the record cap. Empty when nothing matched or nothing was visible |
 | `terms_total` | always | Membership records folded into the summaries |
-| `complete` | always | `true` when every matching record was read; `false` when the read stopped at the record cap, so the summaries cover part of the history and `page_token` continues it |
-| `page_token` | when the read stopped at the record cap | Opaque token; pass it back with the same scope to continue the read where it stopped, at the next organization or inside the one run that filled the read. Absent when the read is complete |
+| `complete` | always | `true` when every matching record was read; `false` when the read stopped at an organization boundary after reaching the record cap, so more whole runs remain and `page_token` continues them |
+| `page_token` | when the read stopped at the record cap | Opaque token; pass it back with the same scope to continue at the start of the next organization run. Absent when the read is complete |
 | `cache_control` | anonymous callers | Response header, as on the other reads (see [Anonymous vs Authenticated Requests](#anonymous-vs-authenticated-requests)) |
 
 Fields of one summary:
@@ -349,14 +348,16 @@ normalizes them.
    pages (`SEARCH_DENIED_PAGE_WALK`) before it exposes a continuation, so a
    scope the caller cannot see and a scope that does not exist stay
    indistinguishable to the same extent as on the plain search.
-3. **Record cap** — the read stops at a configured record cap
+3. **Record cap** — after reaching the configured record cap
    (`SUMMARY_MAX_RECORDS`, validated at startup like the count route's bucket
-   cap) and reports `complete: false`. The cap is checked after a whole page,
-   so pages are never split and the cap can be overshot by up to one page;
-   while the caller has seen nothing the cap yields to the denied-page walk
-   described above, so the worst case for such a read is the larger of the
-   cap rounded up to whole pages and one full page more than
-   `SEARCH_DENIED_PAGE_WALK`.
+   cap), the read stops only at an organization boundary and reports
+   `complete: false`, or exhausts the scope and reports `complete: true`.
+   The cap is checked after a whole page, so pages are never split. While the
+   caller has seen nothing the cap yields to the denied-page walk described
+   above. Normally the read uses at most the larger of the cap rounded up to
+   whole pages and one full page more than `SEARCH_DENIED_PAGE_WALK`; when no
+   boundary exists yet it continues to finish the first run, bounded by the
+   hard ceiling described below.
    Because the records arrive in organization order, the read then folds every
    organization it has read whole, leaves out the organization it stopped
    inside (its records may continue on the next page), and returns a
@@ -366,12 +367,18 @@ normalizes them.
    organization still resumes at the right place. A run is the records that
    share one sortable name, so it is usually one organization, but
    organizations sharing a company name form one run and are cut and resumed
-   together. When the whole read fell inside a single run there is no
-   boundary to cut at: rather than strand the organizations that sort after
-   it, the read keeps the run as far as it was read, which may be more than
-   one summary, and returns a token that continues inside it, so that run
-   may go on in the next read and its summaries then continue there. An
-   organization whose records carry company names that differ after
+   together. When the whole read falls inside a single run there is no
+   boundary to cut at: the read continues page by page until a boundary
+   appears or the pages run out. It then applies the same boundary cut, or
+   completes with the whole run. No summary is returned for a run cut short
+   by the cap, and a new token never resumes inside a run.
+   This extension has a hard ceiling of 50000 raw hits, reusing the maximum
+   accepted `SUMMARY_MAX_RECORDS` value without adding configuration. If no
+   resumable boundary or end-of-results can be established within that
+   ceiling, the read returns `503` with no summaries. A full page at the
+   ceiling that still carries a cursor cannot establish the end of the run
+   and fails too. Denied and unconvertible hits count toward the ceiling.
+   An organization whose records carry company names that differ after
    lowercasing sorts as more than one run and can be split across reads into
    more than one summary; a record without a sortable name sorts last. A
    continued read is not a snapshot: like the pages of the plain search, each

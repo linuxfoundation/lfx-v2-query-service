@@ -49,10 +49,8 @@ type QueryResourcesCountResponseBody struct {
 // "query-membership-summary" endpoint HTTP response body.
 type QueryMembershipSummaryResponseBody struct {
 	// Summaries ordered by organization name, project slug, organization UID and
-	// project UID; a read that stops at the record cap and can continue holds only
-	// the organizations it read whole, while a read that fell whole inside a
-	// single run of records sharing one company name, usually one organization,
-	// holds that run as far as it was read and continues inside it
+	// project UID; every returned summary covers a whole organization run, never a
+	// run cut short by the record cap
 	Summaries []*MembershipTermSummaryResponseBody `form:"summaries" json:"summaries" xml:"summaries"`
 	// Number of membership records folded into the summaries
 	TermsTotal uint64 `form:"terms_total" json:"terms_total" xml:"terms_total"`
@@ -60,8 +58,8 @@ type QueryMembershipSummaryResponseBody struct {
 	// stopped at the record cap and returned a page_token to continue
 	Complete bool `form:"complete" json:"complete" xml:"complete"`
 	// Opaque token present when the read stopped at the record cap; pass it back
-	// with the same project_uid and b2b_org_uid to continue the read where it
-	// stopped: at the next organization, or inside the one run that filled the read
+	// with the same project_uid and b2b_org_uid to continue at the start of the
+	// next organization run
 	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
 }
 
