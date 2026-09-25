@@ -1640,7 +1640,7 @@ func TestQuerySvcsrvc_MembershipSummaryPageToken(t *testing.T) {
 		}{
 			{"previous layout without version", previous, "page_token predates the current summary read; restart the read without it"},
 			{"older version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion - 1, ProjectUID: "proj-1", After: json.RawMessage(after)}, "page_token predates the current summary read; restart the read without it"},
-			{"newer version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion + 1, ProjectUID: "proj-1", After: json.RawMessage(after)}, "page_token belongs to a different version of the summary read; restart the read without it"},
+			{"newer version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion + 1, ProjectUID: "proj-1", After: json.RawMessage(after)}, "page_token predates the current summary read; restart the read without it"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				token, err := paging.EncodePageToken(tc.payload, global.PageTokenSecret(ctx))

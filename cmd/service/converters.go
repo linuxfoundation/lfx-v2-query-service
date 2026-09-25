@@ -375,13 +375,10 @@ const errMembershipSummaryScope = "at least one summary parameter must be provid
 // organizations of this scope that sort before its cursor.
 const errMembershipSummaryPageToken = "page_token belongs to a different read: pass the project_uid and b2b_org_uid it was issued with"
 
-// errMembershipSummaryTokenPredatesRead tells callers with an older summary
-// token to restart rather than silently return only part of a run.
+// errMembershipSummaryTokenPredatesRead gives the restart instruction for a
+// summary token not issued by the current read version. Only that version
+// can safely be continued, regardless of the mismatched value.
 const errMembershipSummaryTokenPredatesRead = "page_token predates the current summary read; restart the read without it"
-
-// errMembershipSummaryTokenVersion rejects a token from an unsupported newer
-// summary read as well: only the same version can safely be continued.
-const errMembershipSummaryTokenVersion = "page_token belongs to a different version of the summary read; restart the read without it"
 
 // membershipSummaryPageToken is the content of a summary page token: the
 // keyset cursor at the next organization, bound to the scope and summary
@@ -421,11 +418,8 @@ func (s *querySvcsrvc) payloadToMembershipSummaryCriteria(ctx context.Context, p
 			slog.ErrorContext(ctx, "summary page token carries no cursor", "error", errToken)
 			return model.MembershipSummaryCriteria{}, errors.NewValidation("invalid page token")
 		}
-		if token.Version < constants.MembershipSummaryTokenVersion {
-			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryTokenPredatesRead)
-		}
 		if token.Version != constants.MembershipSummaryTokenVersion {
-			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryTokenVersion)
+			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryTokenPredatesRead)
 		}
 		if token.ProjectUID != criteria.ProjectUID || token.B2BOrgUID != criteria.B2BOrgUID {
 			slog.ErrorContext(ctx, "summary page token scope mismatch")
