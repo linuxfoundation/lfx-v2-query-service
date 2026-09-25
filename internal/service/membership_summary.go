@@ -23,15 +23,13 @@ import (
 // records the caller may see reach the fold. An anonymous caller reads public
 // records alone. The read continues from the keyset cursor of the previous
 // page until a page carries none, or until config.MaxSummaryRecords records
-// have been read. The records are read in organization order, so a read that
-// stops at the cap folds every organization it has read whole, leaves out the
-// organization it stopped inside, and returns the cursor that resumes there;
-// a later read passing that cursor continues with the next organizations.
-// When the whole read fell inside a single run of records sharing one company
-// name, usually one organization, there is no boundary to cut at: the read
-// keeps the run as far as it was read and returns the cursor of the last
-// hit, so the run may continue in the next read. A failed access check fails the whole read: a summary is
-// never returned as if whole while part of the caller's visibility is unknown.
+// have been read and an organization boundary is available. A capped read
+// folds only whole runs, leaves out the trailing run, and returns the cursor
+// that resumes at its start. If the cap falls inside the first run, the read
+// continues until a boundary appears or the pages run out. If neither happens
+// within constants.MaxSummaryRunRecords raw hits, the read fails rather than
+// returning a partial run. A failed access check also fails the whole read:
+// a summary is never returned as if whole while part of it is unknown.
 func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria model.MembershipSummaryCriteria) (*model.MembershipSummaryResult, error) {
 
 	started := time.Now()
@@ -114,6 +112,14 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		for _, hit := range page.Resources {
 			runs.observe(hit.SortValues)
 		}
+		boundary, canResume := runs.boundary()
+		// Without a boundary, no part of this read can be safely returned.
+		// Count raw hits, not just visible/converted records, so denied or
+		// unconvertible pages cannot make the whole-run extension unbounded.
+		if !canResume && (recordsRead > constants.MaxSummaryRunRecords ||
+			(recordsRead >= constants.MaxSummaryRunRecords && page.NextSearchAfter != nil)) {
+			return nil, errors.NewServiceUnavailable("membership summary run did not end within the record ceiling")
+		}
 		anyVisible = anyVisible || len(visible) > 0
 		for _, resource := range visible {
 			identity := resource.ObjectRef
@@ -164,7 +170,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		if errCtx := ctx.Err(); errCtx != nil {
 			return nil, fmt.Errorf("membership summary read cancelled: %w", errCtx)
 		}
-		if recordsRead >= s.config.MaxSummaryRecords && (anyVisible || pages > s.config.DeniedPageWalk) {
+		if recordsRead >= s.config.MaxSummaryRecords && canResume && (anyVisible || pages > s.config.DeniedPageWalk) {
 			// The cap is checked after a whole page, so pages are never
 			// split and the cap may be overshot by up to one page. While the
 			// caller has seen nothing, the cap yields to the denied-page
@@ -172,32 +178,23 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			// denied pages before it exposes a continuation, so a scope the
 			// caller cannot see and a scope that does not exist stay
 			// indistinguishable to the same extent. The worst case for such
-			// a read is therefore the larger of the cap rounded up to whole
-			// pages and the walk plus one page.
-			boundary, canResume := runs.boundary()
-			if canResume {
-				// Leave out the organization the read stopped inside: its
-				// records may continue on the next page, and the resumed
-				// read starts with it. A record re-served under a new
-				// company name sits at the row of its first copy, which may
-				// be anywhere, so the run is dropped wherever it lies rather
-				// than only off the tail.
-				kept := rows[:0]
-				for row := range rows {
-					if rows[row] != nil && rowRuns[row] != runs.current {
-						kept = append(kept, rows[row])
-					}
+			// a read is the larger of the cap rounded up to whole pages
+			// and the walk plus one page, extended when necessary to find
+			// the first run boundary within MaxSummaryRunRecords.
+			// Leave out the organization the read stopped inside: its
+			// records may continue on the next page, and the resumed
+			// read starts with it. A record re-served under a new
+			// company name sits at the row of its first copy, which may
+			// be anywhere, so the run is dropped wherever it lies rather
+			// than only off the tail.
+			kept := rows[:0]
+			for row := range rows {
+				if rows[row] != nil && rowRuns[row] != runs.current {
+					kept = append(kept, rows[row])
 				}
-				rows = kept
-				resume = &boundary
-			} else {
-				// The whole read fell inside one run, so there is no
-				// organization boundary to cut at. Rather than strand the
-				// organizations that sort after it, keep the run as far as
-				// it was read and continue from the last hit: the run may
-				// go on in the next read.
-				resume = page.NextSearchAfter
 			}
+			rows = kept
+			resume = &boundary
 			slog.WarnContext(ctx, "membership summary stopped at the record cap",
 				"pages", pages,
 				"records_read", recordsRead,
@@ -301,7 +298,9 @@ func membershipRunKey(sortValues string) string {
 
 // membershipRunTracker follows the organization runs of a read in index
 // order: which organization the last hit belongs to, and the cursor of the
-// last hit before that organization began.
+// last hit before that organization began. Until a resumable boundary is
+// found, the read must continue to the run's end or fail at the hard ceiling;
+// it must never return a cursor inside that run.
 type membershipRunTracker struct {
 	// current is the run key of the last hit observed.
 	current string
@@ -338,7 +337,8 @@ func (r *membershipRunTracker) observe(sortValues string) {
 
 // boundary returns the cursor a resumed read continues from, at the start of
 // the current run, and whether there is one: a read that has seen a single
-// run, or hits the searcher did not order, has nothing to resume from.
+// run, or hits the searcher did not order, must keep reading rather than
+// returning a partial run.
 func (r *membershipRunTracker) boundary() (string, bool) {
 	if !r.hasBoundary {
 		return "", false

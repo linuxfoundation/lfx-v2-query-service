@@ -612,7 +612,7 @@ func TestQuerySvcsrvc_QueryMembershipSummary(t *testing.T) {
 		assert.True(t, result.Complete)
 	})
 
-	t.Run("a read stopped at the record cap is reported incomplete", func(t *testing.T) {
+	t.Run("a cap inside one run returns its whole summary", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		pages := twoTermPages()
 		pages[0].NextSearchAfter = stringPtr(`["2023-01-02T00:00:00Z","m-1"]`)
@@ -631,8 +631,9 @@ func TestQuerySvcsrvc_QueryMembershipSummary(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.False(t, result.Complete)
-		assert.Equal(t, uint64(1), result.TermsTotal)
+		assert.True(t, result.Complete)
+		assert.Nil(t, result.PageToken)
+		assert.Equal(t, uint64(2), result.TermsTotal)
 		assert.Len(t, result.Summaries, 1)
 	})
 
