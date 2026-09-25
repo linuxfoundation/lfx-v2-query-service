@@ -331,10 +331,14 @@ normalizes them.
    the `project_uid:` and `b2b_org_uid:` tags requested (the index tags rather
    than `data` filters: the same keyword terms the `project_membership`
    catalog recipes use, and the cheapest scope for the read), in whole pages,
-   in organization order: the records are sorted on the record's sortable
-   name, which the member service indexes as the company name lowercased (see
-   the member-service indexer contract), with the record id as tiebreaker, so
-   the records of one organization are read together.
+   in organization order: the records are sorted ascending on `parent_refs`
+   with explicit `mode: min`, with the record id as tiebreaker. The
+   member-service indexer contract gives a membership only `b2b_org:<uid>`
+   and `project:<uid>` refs (each when set). The organization ref sorts first,
+   so its records are read together whatever company name they carry. A record
+   without an organization is read with its project's organization-less
+   records; ref-less records sort last as one run. Output summaries retain
+   their name-based order within each response.
    The route continues from the keyset cursor of the previous page until a
    page carries none. An OpenSearch response with a failed shard or a
    timeout is a `503` (`allow_partial_search_results=false` is sent), never
@@ -369,9 +373,9 @@ normalizes them.
    the same scope and that token starts with it. The boundary is found over
    every record read, visible or not, so a caller who cannot see the last
    organization still resumes at the right place. A run is the records that
-   share one sortable name, so it is usually one organization, but
-   organizations sharing a company name form one run and are cut and resumed
-   together. When the whole read falls inside a single run there is no
+   share the minimum parent ref: one organization regardless of its name,
+   or one project's organization-less records, or all ref-less records.
+   When the whole read falls inside a single run there is no
    boundary to cut at: the read continues page by page until a boundary
    appears or the pages run out. It then applies the same boundary cut, or
    completes with the whole run. No summary is returned for a run cut short
@@ -382,12 +386,11 @@ normalizes them.
    ceiling, the read returns `503` with no summaries. A full page at the
    ceiling that still carries a cursor cannot establish the end of the run
    and fails too. Denied and unconvertible hits count toward the ceiling.
-   An organization whose records carry company names that differ after
-   lowercasing sorts as more than one run and can be split across reads into
-   more than one summary; a record without a sortable name sorts last. A
-   continued read is not a snapshot: like the pages of the plain search, each
-   call queries the live index, so a record re-indexed under another company
-   name between two calls can appear in both or in neither. A caller that
+   Different spellings or names on one organization's records do not split
+   its summaries across reads. A continued read is not a snapshot: like the
+   pages of the plain search, each call queries the live index, so a record
+   re-indexed under another organization reference between two calls can
+   appear in both or in neither. A caller that
    needs an exact roster across such a change re-reads it.
 4. **Fold** — the visible records are grouped and reduced (below). `terms_total`
    counts the records that were folded, not the records that were read.

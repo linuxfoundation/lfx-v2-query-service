@@ -519,6 +519,21 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			unexpectedFields: []string{"\"_score\""},
 		},
 		{
+			name: "summary parent refs sort on their minimum with missing refs last",
+			criteria: model.SearchCriteria{
+				ResourceType: stringPtr("project_membership"),
+				SortBy:       "parent_refs", SortOrder: "asc", SortMode: "min", PageSize: 1000,
+			},
+			expectedFields:   []string{`"sort":[{"parent_refs":{"order":"asc","mode":"min","missing":"_last"}},{"_id":"asc"}]`},
+			unexpectedFields: []string{"sort_name"},
+		},
+		{
+			name:             "plain search has no multi-valued sort mode",
+			criteria:         model.SearchCriteria{SortBy: "sort_name", SortOrder: "asc", PageSize: 1000},
+			expectedFields:   []string{`"sort":[{"sort_name":{"order":"asc","missing":"_last"}},{"_id":"asc"}]`},
+			unexpectedFields: []string{`"mode"`, "parent_refs"},
+		},
+		{
 			// Without an explicit operator, match_bool_prefix defaults to OR, so an extra
 			// word can only add matches, never remove them — the opposite of what someone
 			// typing more of a name expects.

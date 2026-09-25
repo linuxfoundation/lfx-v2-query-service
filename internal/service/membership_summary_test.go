@@ -65,6 +65,8 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, constants.MaxPageSize, criteria[0].PageSize)
 		require.Equal(t, membershipSortField, criteria[0].SortBy)
 		require.Equal(t, "asc", criteria[0].SortOrder)
+		require.Equal(t, "parent_refs", criteria[0].SortBy)
+		require.Equal(t, "min", criteria[0].SortMode)
 		require.False(t, criteria[0].PublicOnly)
 		require.Nil(t, criteria[0].SearchAfter, "the first page starts the keyset")
 		require.Equal(t, `["2023-01-02T00:00:00Z","m-1"]`, *criteria[1].SearchAfter,
@@ -371,7 +373,7 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.Equal(t, 1, searcher.QueryResourceCalls())
 	})
 
-	t.Run("a record renamed into the organization the read stopped inside is left out with it", func(t *testing.T) {
+	t.Run("a record reassigned to the organization the read stopped inside is left out with it", func(t *testing.T) {
 		searcher := mock.NewMockResourceSearcher()
 		searcher.SetQueryResourcePages(
 			membershipPage(cursor(`["b corp","m-2"]`),
@@ -388,12 +390,12 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
 				}),
 			),
-			// The first record was renamed and re-indexed while the read was
+			// The first record was reassigned and re-indexed while the read was
 			// between pages, so it is served again, now inside the last
 			// organization run of the read.
 			membershipPage(cursor(`["c corp","m-3"]`),
 				orderedMembershipRecord("m-1", "c corp", map[string]any{
-					"uid": "m-1", "b2b_org_uid": "org-a", "company_name": "C Corp",
+					"uid": "m-1", "b2b_org_uid": "org-c", "company_name": "C Corp",
 					"project_uid": "proj-1", "project_slug": "example-project",
 					"status": "Active", "tier_name": "Gold",
 					"start_date": "2024-01-01T00:00:00Z", "created_at": "2024-01-02T00:00:00Z",
@@ -420,10 +422,10 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.False(t, result.Complete)
 		require.NotNil(t, result.SearchAfter)
 		require.Equal(t, `["b corp","m-2"]`, *result.SearchAfter)
-		require.Len(t, result.Summaries, 1, "the renamed record belongs to the organization left out")
+		require.Len(t, result.Summaries, 1, "the reassigned record belongs to the organization left out")
 		require.Equal(t, "org-b", result.Summaries[0].B2BOrgUID)
 		require.Equal(t, uint64(1), result.TermsTotal,
-			"the resumed read serves the renamed record again, so this read must not fold it")
+			"the resumed read serves the reassigned record again, so this read must not fold it")
 	})
 
 	t.Run("the boundary is found over records the caller cannot see", func(t *testing.T) {
@@ -690,10 +692,10 @@ func membershipRecord(uid string, data map[string]any) model.Resource {
 
 // orderedMembershipRecord builds one indexed membership record as the
 // searcher returns it for the summary read: with the sort values of the
-// organization order, the sortable name first and the record id second.
-func orderedMembershipRecord(uid, sortName string, data map[string]any) model.Resource {
+// organization order, an opaque run key first and the record id second.
+func orderedMembershipRecord(uid, runKey string, data map[string]any) model.Resource {
 	record := membershipRecord(uid, data)
-	record.SortValues = `["` + sortName + `","` + uid + `"]`
+	record.SortValues = `["` + runKey + `","` + uid + `"]`
 	return record
 }
 

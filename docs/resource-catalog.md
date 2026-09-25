@@ -249,9 +249,11 @@ be aggregated, so the fold has to happen over the records themselves. The
 summaries cover only the records the caller may see. `complete` is `false`
 when the read stopped at an organization boundary after reaching the configured
 record cap; it then carries a `page_token` that resumes at the next run with
-the same scope. If the cap falls inside the first run of records sharing a
-company name, the read continues until a boundary appears or the pages run out,
-returning whole runs rather than partial summaries. If neither a resumable
+the same scope. The read groups an organization's records by its parent ref,
+whatever company name they carry; organization-less records are read with
+those of the same project, and ref-less records form the last run. If the cap
+falls inside the first run, the read continues until a boundary appears or the
+pages run out, returning whole runs rather than partial summaries. If neither a resumable
 boundary nor end-of-results can be established within the hard ceiling of
 50000 raw hits, the read fails with `503` and no summaries.
 

@@ -141,8 +141,9 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 				// served a second time. One record is one term, whichever
 				// page it arrived on, and the copy read last is the one the
 				// re-index wrote. The organization it belongs to comes from
-				// that copy too: a re-index that renamed the company moved
-				// the record into another run, and the row moves with it.
+				// that copy too: a re-index that changed the organization
+				// reference moved the record into another run, and the row
+				// moves with it. A company-name change alone does not.
 				rows[row] = data
 				rowRuns[row] = membershipRunKey(resource.SortValues)
 				continue
@@ -184,7 +185,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			// Leave out the organization the read stopped inside: its
 			// records may continue on the next page, and the resumed
 			// read starts with it. A record re-served under a new
-			// company name sits at the row of its first copy, which may
+			// organization reference sits at the row of its first copy, which may
 			// be anywhere, so the run is dropped wherever it lies rather
 			// than only off the tail.
 			kept := rows[:0]
@@ -247,11 +248,12 @@ func withdrawnRowsRemoved(rows []map[string]any) []map[string]any {
 // membership records carrying the requested scope tags, in whole pages, in
 // organization order. The scope is expressed as the index tags rather than
 // data filters: the same keyword terms the membership catalog recipes use,
-// and the cheapest scope for the read. The order is the record's sortable
-// name, which the member service indexes as the company name lowercased (see
-// its indexer contract), so the records of one organization are read together
-// and a read that stops at the cap can resume at the next organization; the
-// record id breaks ties.
+// and the cheapest scope for the read. The member-service indexer contract
+// gives memberships only b2b_org:<uid> and project:<uid> parent refs. Sorting
+// on the minimum ref puts an organization's records together regardless of
+// company name, because b2b_org: sorts before project:. Without an organization,
+// the project ref groups its organization-less records; ref-less records sort
+// last as one run. The record id breaks ties.
 func membershipSearchCriteria(criteria model.MembershipSummaryCriteria) model.SearchCriteria {
 	resourceType := constants.MembershipResourceType
 
@@ -269,19 +271,18 @@ func membershipSearchCriteria(criteria model.MembershipSummaryCriteria) model.Se
 		PageSize:     constants.MaxPageSize,
 		SortBy:       membershipSortField,
 		SortOrder:    "asc",
+		SortMode:     "min",
 		SearchAfter:  criteria.SearchAfter,
 	}
 }
 
-// membershipSortField is the indexed field the summary read orders on: the
-// record's sortable name, which carries the company name lowercased, as the
-// member service indexes it.
-const membershipSortField = "sort_name"
+// membershipSortField is the multi-valued keyword field the summary orders
+// on, selecting its minimum parent ref rather than the mutable company name.
+const membershipSortField = "parent_refs"
 
-// membershipRunKey returns the organization a hit belongs to for the purpose
-// of the read order: the first of its sort values, which is the sortable
-// name the read orders on. A hit without sort values keys as empty, so hits
-// the searcher did not order all fall in one run.
+// membershipRunKey returns the first sort value: the minimum parent ref, or
+// null for ref-less records. It is independent of company name. A hit without
+// sort values keys as empty, so hits the searcher did not order share a run.
 func membershipRunKey(sortValues string) string {
 	if sortValues == "" {
 		return ""
