@@ -275,7 +275,7 @@ var _ = dsl.Service("query-svc", func() {
 				dsl.Example("org-1")
 				dsl.MinLength(1)
 			})
-			dsl.Attribute("page_token", dsl.String, "Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read at the start of the next organization run", func() {
+			dsl.Attribute("page_token", dsl.String, "Opaque token from a previous summary response with the same project_uid and b2b_org_uid; newly issued tokens resume at the next organization run. Legacy tokens may resume inside a run and do not expire automatically; restart without a token for whole-run results", func() {
 				dsl.Example("****")
 			})
 			dsl.Required("bearer_token", "version")
@@ -287,7 +287,7 @@ var _ = dsl.Service("query-svc", func() {
 		dsl.Result(func() {
 			dsl.Description("Membership term summaries, one per organization and project.")
 
-			dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; every returned summary covers a whole organization run, never a run cut short by the record cap", func() {
+			dsl.Attribute("summaries", dsl.ArrayOf(MembershipTermSummary), "Summaries ordered by organization name, project slug, organization UID and project UID; reads started without a legacy token return whole organization runs, never runs cut short by the record cap. A legacy mid-run token returns only the remainder; restart without a token for whole-run results", func() {
 				// Declared so the schema example agrees with the terms_total example
 				// below; Goa would otherwise synthesize an array of its own length.
 				dsl.Example([]dsl.Val{membershipTermSummaryExample})

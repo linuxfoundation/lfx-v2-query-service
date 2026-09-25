@@ -176,15 +176,18 @@ type QueryMembershipSummaryPayload struct {
 	// on that project
 	B2bOrgUID *string
 	// Opaque token from a previous summary response with the same project_uid and
-	// b2b_org_uid; continues that read at the start of the next organization run
+	// b2b_org_uid; newly issued tokens resume at the next organization run. Legacy
+	// tokens may resume inside a run and do not expire automatically; restart
+	// without a token for whole-run results
 	PageToken *string
 }
 
 // Membership term summaries, one per organization and project.
 type QueryMembershipSummaryResult struct {
 	// Summaries ordered by organization name, project slug, organization UID and
-	// project UID; every returned summary covers a whole organization run, never a
-	// run cut short by the record cap
+	// project UID; reads started without a legacy token return whole organization
+	// runs, never runs cut short by the record cap. A legacy mid-run token returns
+	// only the remainder; restart without a token for whole-run results
 	Summaries []*MembershipTermSummary
 	// Number of membership records folded into the summaries
 	TermsTotal uint64

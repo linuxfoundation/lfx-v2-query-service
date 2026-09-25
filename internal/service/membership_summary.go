@@ -30,6 +30,8 @@ import (
 // within constants.MaxSummaryRunRecords raw hits, the read fails rather than
 // returning a partial run. A failed access check also fails the whole read:
 // a summary is never returned as if whole while part of it is unknown.
+// A legacy cursor issued inside a run still resumes there and returns only
+// that run's remainder; callers must start without it for whole-run results.
 func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria model.MembershipSummaryCriteria) (*model.MembershipSummaryResult, error) {
 
 	started := time.Now()

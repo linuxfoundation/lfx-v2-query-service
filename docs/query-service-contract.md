@@ -243,16 +243,22 @@ callers do not have to drain every page and fold the history themselves.
 | `v` | string (required) | API version, must be `1` |
 | `project_uid` | string | Summarize the memberships on this project |
 | `b2b_org_uid` | string | Summarize the memberships of this organization |
-| `page_token` | string | Continue an earlier read of the same scope at the start of the next organization run (see the record cap below) |
+| `page_token` | string | Continue an earlier read of the same scope; newly issued tokens resume at the next organization run. Legacy tokens may resume mid-run (see compatibility below) |
 
 At least one of `project_uid` and `b2b_org_uid` must be provided; a request with
 neither is a `400 Bad Request` naming both ("at least one summary parameter must
 be provided: project_uid or b2b_org_uid"). Given together they restrict the read
 to the memberships of that organization on that project. There are no other
 filters. A read that stops at the record cap returns a `page_token`, and
-passing it back with the same `project_uid` and `b2b_org_uid` continues at the
-start of the next organization run. A token passed with another scope is a
+passing a newly issued token back with the same `project_uid` and `b2b_org_uid`
+continues at the start of the next organization run. A token passed with another scope is a
 `400 Bad Request`.
+
+**Legacy-token compatibility:** A token issued by the previous implementation
+may point inside a run and returns only that run's remainder. Tokens have no
+automatic expiry, so this exception is not limited to one release. Start again
+without a token for whole-run results; tokens issued by the new implementation
+then resume at run boundaries. No token format or validation changes are made.
 
 **Response**:
 
@@ -300,7 +306,7 @@ start of the next organization run. A token passed with another scope is a
 
 | Field | Present | Meaning |
 | --- | --- | --- |
-| `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Every returned summary covers a whole organization run, never a run cut short by the record cap. Empty when nothing matched or nothing was visible |
+| `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Reads started without a legacy token return whole organization runs, never runs cut short by the record cap; legacy mid-run tokens return the remainder as described above. Empty when nothing matched or nothing was visible |
 | `terms_total` | always | Membership records folded into the summaries |
 | `complete` | always | `true` when every matching record was read; `false` when the read stopped at an organization boundary after reaching the record cap, so more whole runs remain and `page_token` continues them |
 | `page_token` | when the read stopped at the record cap | Opaque token; pass it back with the same scope to continue at the start of the next organization run. Absent when the read is complete |

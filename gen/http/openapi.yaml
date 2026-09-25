@@ -42,7 +42,7 @@ paths:
                   minLength: 1
                 - name: page_token
                   in: query
-                  description: Opaque token from a previous summary response with the same project_uid and b2b_org_uid; continues that read at the start of the next organization run
+                  description: Opaque token from a previous summary response with the same project_uid and b2b_org_uid; newly issued tokens resume at the next organization run. Legacy tokens may resume inside a run and do not expire automatically; restart without a token for whole-run results
                   required: false
                   type: string
                 - name: Authorization
@@ -813,7 +813,7 @@ definitions:
                 type: array
                 items:
                     $ref: '#/definitions/MembershipTermSummary'
-                description: Summaries ordered by organization name, project slug, organization UID and project UID; every returned summary covers a whole organization run, never a run cut short by the record cap
+                description: Summaries ordered by organization name, project slug, organization UID and project UID; reads started without a legacy token return whole organization runs, never runs cut short by the record cap. A legacy mid-run token returns only the remainder; restart without a token for whole-run results
                 example:
                     - b2b_org_uid: org-1
                       company_name: Example Corp
