@@ -177,8 +177,9 @@ type QueryMembershipSummaryPayload struct {
 	B2bOrgUID *string
 	// Opaque token from a previous summary response with the same project_uid and
 	// b2b_org_uid; resumes at the next organization run. A page_token is accepted
-	// only from the same version of the summary read; a token from an earlier
-	// version is rejected with 400 and the read must restart without it
+	// only from the same version of the summary read; a token from any other
+	// version, older or newer, is rejected with 400 and the read must restart
+	// without it
 	PageToken *string
 }
 

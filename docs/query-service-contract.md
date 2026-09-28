@@ -255,8 +255,8 @@ start of the next organization run. A token passed with another scope is a
 `400 Bad Request`.
 
 A `page_token` is accepted only from the same version of the summary read; a
-token from an earlier version is rejected with `400` and the read must restart
-without it.
+token from any other version, older or newer, is rejected with `400` and the
+read must restart without it.
 
 **Response**:
 
