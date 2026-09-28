@@ -32,6 +32,7 @@ import (
 //   - COUNT_MAX_ACCESS_BUCKETS (default 5000) buckets walked before a count reports has_more
 //   - SUMMARY_MAX_RECORDS    (default 5000) membership records read before a summary reports itself incomplete
 //   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page has no visible resource (1..25)
+//   - UNSATISFIABLE_FILTER_REJECTION (default true) reject absent indexed filter dimensions on zero results
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config := service.DefaultConfig()
 
@@ -41,6 +42,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config.MaxAccessBuckets = envInt("COUNT_MAX_ACCESS_BUCKETS", constants.DefaultMaxAccessBuckets)
 	config.MaxSummaryRecords = envInt("SUMMARY_MAX_RECORDS", constants.DefaultMaxSummaryRecords)
 	config.DeniedPageWalk = envInt("SEARCH_DENIED_PAGE_WALK", constants.DefaultDeniedPageWalk)
+	config.DisableUnsatisfiableFilterRejection = !envBool("UNSATISFIABLE_FILTER_REJECTION", !config.DisableUnsatisfiableFilterRejection)
 
 	if err := config.Validate(); err != nil {
 		log.Fatalf("invalid resource search configuration: %v", err)
@@ -53,6 +55,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 		"count_max_access_buckets", config.MaxAccessBuckets,
 		"summary_max_records", config.MaxSummaryRecords,
 		"search_denied_page_walk", config.DeniedPageWalk,
+		"unsatisfiable_filter_rejection", !config.DisableUnsatisfiableFilterRejection,
 	)
 	return config
 }
@@ -79,6 +82,20 @@ func envInt(name string, def int) int {
 		return def
 	}
 	value, err := strconv.Atoi(raw)
+	if err != nil {
+		log.Fatalf("invalid %s value %q: %v", name, raw, err)
+	}
+	return value
+}
+
+// envBool reads a boolean from the environment, falling back to def when
+// unset and fatally rejecting an unparsable value.
+func envBool(name string, def bool) bool {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return def
+	}
+	value, err := strconv.ParseBool(raw)
 	if err != nil {
 		log.Fatalf("invalid %s value %q: %v", name, raw, err)
 	}

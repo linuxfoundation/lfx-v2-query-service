@@ -38,6 +38,9 @@ type ResourceSearcher interface {
 // replaced by the defaults in pkg/constants; the constructor validates the
 // result.
 type Config struct {
+	// DisableUnsatisfiableFilterRejection restores zero results without
+	// type-level carrier probes. False (including Config{}) enables rejection.
+	DisableUnsatisfiableFilterRejection bool
 	// AccessCheckTimeout bounds each batched access check sent to fga-sync.
 	AccessCheckTimeout time.Duration
 	// ReadTuplesTimeout bounds the direct tuple read used by filter_grants=direct.
@@ -229,6 +232,14 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 				"error", err,
 			)
 			return nil, fmt.Errorf("search operation failed: %w", err)
+		}
+
+		// A later empty page cannot invalidate a query that already had raw
+		// matches. Check only the initial page, before CEL or access filtering.
+		if fetched == 1 && len(result.Resources) == 0 {
+			if err := s.checkSatisfiable(ctx, criteria); err != nil {
+				return nil, err
+			}
 		}
 
 		checkedResources, errPage := s.filterAndCheckPage(ctx, principal, pageCriteria, result)
@@ -493,6 +504,12 @@ func (s *ResourceSearch) QueryResourcesCount(
 		result.Count += int(privateCount)
 		result.HasMore = hasMore
 		aggregation.AuthorizedKeys = authorizedKeys
+	}
+
+	if result.Count == 0 && len(aggregation.AuthorizedKeys) == 0 {
+		if err := s.checkSatisfiable(ctx, publicCriteria); err != nil {
+			return nil, err
+		}
 	}
 
 	if !aggregation.HasWork() {
