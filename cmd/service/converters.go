@@ -375,10 +375,12 @@ const errMembershipSummaryScope = "at least one summary parameter must be provid
 // organizations of this scope that sort before its cursor.
 const errMembershipSummaryPageToken = "page_token belongs to a different read: pass the project_uid and b2b_org_uid it was issued with"
 
-// errMembershipSummaryTokenPredatesRead gives the restart instruction for a
-// summary token not issued by the current read version. Only that version
-// can safely be continued, regardless of the mismatched value.
-const errMembershipSummaryTokenPredatesRead = "page_token predates the current summary read; restart the read without it"
+// errMembershipSummaryTokenVersion gives the restart instruction for a
+// summary token whose version is not the one this read mints: older tokens
+// left over from a previous release, or newer ones met during a mixed-version
+// rollout or a rollback. Only the same version can safely be continued, so the
+// wording stays neutral about which side is behind.
+const errMembershipSummaryTokenVersion = "page_token version is not supported by this summary read; restart the read without it"
 
 // membershipSummaryPageToken is the content of a summary page token: the
 // keyset cursor at the next organization, bound to the scope and summary
@@ -419,7 +421,7 @@ func (s *querySvcsrvc) payloadToMembershipSummaryCriteria(ctx context.Context, p
 			return model.MembershipSummaryCriteria{}, errors.NewValidation("invalid page token")
 		}
 		if token.Version != constants.MembershipSummaryTokenVersion {
-			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryTokenPredatesRead)
+			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryTokenVersion)
 		}
 		if token.ProjectUID != criteria.ProjectUID || token.B2BOrgUID != criteria.B2BOrgUID {
 			slog.ErrorContext(ctx, "summary page token scope mismatch")
