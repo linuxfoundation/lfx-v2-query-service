@@ -113,7 +113,11 @@ The checks run in this order, stopping at the first absent dimension:
    or a non-zero metric are never probed.
 
 Each distinct field, parent kind, or tag prefix is probed at most once per
-request, including a prefix named by both a filter and an aggregation. A carried dimension with an unmatched value still returns an ordinary
+request, including a prefix named by both a filter and an aggregation, and a
+probe that failed is remembered for the request rather than sent again. A
+request may send at most 16 distinct probes; a request that would need more
+stops probing there and returns the ordinary result, never a partial `400`.
+A carried dimension with an unmatched value still returns an ordinary
 empty result; these checks do not validate values or whether a combination of
 otherwise carried dimensions can match.
 

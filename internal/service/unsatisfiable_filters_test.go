@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	stderrors "errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -97,11 +99,9 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 					wantProbes := tc.wantProbes
 					if route != "search" && route != "count" && criteria.ResourceType != nil && *criteria.ResourceType != "" && !tc.disabled {
 						switch {
-						case tc.probeError != nil:
-							// The failed type probe is not memoised, so the
-							// aggregation rule asks again.
-							wantProbes = append(wantProbes, anyDoc)
-						case tc.emptyType, tc.message != "":
+						case tc.probeError != nil, tc.emptyType, tc.message != "":
+							// A failed or absent type probe is remembered, so
+							// the aggregation rule sends nothing more.
 						default:
 							if len(wantProbes) == 0 {
 								wantProbes = append(wantProbes, anyDoc)
@@ -357,6 +357,105 @@ func TestUnsatisfiableFiltersCountAggregation(t *testing.T) {
 					assert.Equal(t, mock.CarrierProbeCall{ResourceType: "committee", Probe: probe}, calls[i])
 				}
 			})
+		}
+	}
+}
+
+func TestUnsatisfiableFiltersFailedProbesAreRemembered(t *testing.T) {
+	anyDoc := model.CarrierProbe{Kind: model.AnyDocument}
+	category := model.CarrierProbe{Kind: model.TagPrefix, Name: "category"}
+	for _, tc := range []struct {
+		name       string
+		failing    model.CarrierProbe
+		wantProbes []model.CarrierProbe
+	}{
+		{"type probe fails once", anyDoc, []model.CarrierProbe{anyDoc}},
+		{"shared prefix probe fails once", category, []model.CarrierProbe{anyDoc, category}},
+	} {
+		for _, principal := range []string{"caller", constants.AnonymousPrincipal} {
+			t.Run(tc.name+"/"+principal, func(t *testing.T) {
+				searcher := mock.NewMockResourceSearcher()
+				searcher.SetCountPublicResponse(0)
+				searcher.SetAccessBucketPages(&model.AccessBucketPage{})
+				searcher.SetTypeCarries("committee", anyDoc, true, nil)
+				searcher.SetTypeCarries("committee", tc.failing, false, stderrors.New("unavailable"))
+				logs := captureLogs(t)
+				svc := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+				criteria := model.SearchCriteria{ResourceType: stringPtr("committee"), TagsAll: []string{"category:board"}}
+				ctx := context.WithValue(context.Background(), constants.PrincipalContextID, principal)
+				result, err := svc.QueryResourcesCount(ctx, criteria, criteria, model.CountAggregation{GroupByPrefix: "category"})
+				require.NoError(t, err)
+				assert.Zero(t, result.Count)
+				assert.Empty(t, result.Groups)
+				assert.Equal(t, 1, strings.Count(logs.String(), "indexed filter support probe failed"), "logged once")
+				calls := searcher.CarrierProbeCalls()
+				require.Len(t, calls, len(tc.wantProbes), "%v", calls)
+				for i, probe := range tc.wantProbes {
+					assert.Equal(t, mock.CarrierProbeCall{ResourceType: "committee", Probe: probe}, calls[i])
+				}
+			})
+		}
+	}
+}
+
+func TestUnsatisfiableFiltersProbeCap(t *testing.T) {
+	anyDoc := model.CarrierProbe{Kind: model.AnyDocument}
+	// Distinct prefixed tags_all entries cost one probe each after the type
+	// probe; none is carried, so without the cap the first would be rejected.
+	tags := func(n int) []string {
+		out := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, fmt.Sprintf("prefix%02d:value", i))
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name       string
+		tagCount   int
+		carried    bool
+		wantProbes int
+		message    string
+	}{
+		{name: "just within the cap rejects as before", tagCount: maxCarrierProbesPerRequest - 1, wantProbes: 2, message: `tag prefix "prefix00:" is not carried by any indexed committee document`},
+		{name: "just within the cap passes when carried", tagCount: maxCarrierProbesPerRequest - 1, carried: true, wantProbes: maxCarrierProbesPerRequest},
+		{name: "beyond the cap returns the ordinary result", tagCount: maxCarrierProbesPerRequest + 5, carried: true, wantProbes: maxCarrierProbesPerRequest},
+	} {
+		for _, route := range []string{"search", "count"} {
+			for _, principal := range []string{"caller", constants.AnonymousPrincipal} {
+				t.Run(tc.name+"/"+route+"/"+principal, func(t *testing.T) {
+					searcher := mock.NewMockResourceSearcher()
+					searcher.SetQueryResourcePages(&model.SearchResult{})
+					searcher.SetCountPublicResponse(0)
+					searcher.SetAccessBucketPages(&model.AccessBucketPage{})
+					searcher.SetTypeCarries("committee", anyDoc, true, nil)
+					for i := 0; i < tc.tagCount; i++ {
+						searcher.SetTypeCarries("committee", model.CarrierProbe{Kind: model.TagPrefix, Name: fmt.Sprintf("prefix%02d", i)}, tc.carried, nil)
+					}
+					logs := captureLogs(t)
+					svc := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+					criteria := model.SearchCriteria{ResourceType: stringPtr("committee"), TagsAll: tags(tc.tagCount)}
+					ctx := context.WithValue(context.Background(), constants.PrincipalContextID, principal)
+					var err error
+					if route == "search" {
+						_, err = svc.QueryResources(ctx, criteria)
+					} else {
+						_, err = svc.QueryResourcesCount(ctx, criteria, criteria, model.CountAggregation{})
+					}
+					if tc.message != "" {
+						assert.EqualError(t, err, tc.message)
+					} else {
+						require.NoError(t, err)
+					}
+					calls := searcher.CarrierProbeCalls()
+					assert.Len(t, calls, tc.wantProbes)
+					assert.LessOrEqual(t, len(calls), maxCarrierProbesPerRequest)
+					if tc.tagCount+1 > maxCarrierProbesPerRequest {
+						assert.Contains(t, logs.String(), "probe cap reached")
+					} else {
+						assert.NotContains(t, logs.String(), "probe cap reached")
+					}
+				})
+			}
 		}
 	}
 }

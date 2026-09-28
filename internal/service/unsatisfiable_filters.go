@@ -20,16 +20,36 @@ import (
 // not run. Only a successful probe that finds a dimension absent rejects.
 var errProbeFailed = stderrors.New("indexed filter support probe failed")
 
+// maxCarrierProbesPerRequest caps the distinct probes one request may send.
+// A request names one type probe plus one probe per bounded date field,
+// parent kind, distinct tag prefix, distinct filter field, group_by prefix
+// and metric prefix; realistic requests name a handful, so sixteen covers
+// them with room to spare while bounding what a request with many distinct
+// prefixes or fields can cost the index. Once the cap is reached the check
+// stops and the ordinary result stands, as after a failed probe.
+const maxCarrierProbesPerRequest = 16
+
+// probeOutcome is the remembered answer of one probe.
+type probeOutcome int
+
+const (
+	probeAbsent probeOutcome = iota
+	probeCarried
+	probeFailed
+)
+
 // carrierCheck holds one request's probe state so every rule of a request
 // shares one memo: a prefix named by both a filter and an aggregation is
-// probed once. Each probe is type-wide, without caller values or access
-// restrictions.
+// probed once, and a probe that failed is not sent again. Each probe is
+// type-wide, without caller values or access restrictions.
 type carrierCheck struct {
 	searcher interface {
 		TypeCarries(ctx context.Context, resourceType string, probe model.CarrierProbe) (bool, error)
 	}
 	resourceType string
-	memo         map[model.CarrierProbe]bool
+	memo         map[model.CarrierProbe]probeOutcome
+	// sent counts the probes sent to the searcher, for the cap.
+	sent int
 }
 
 // newCarrierCheck returns the request's check, or nil when the toggle is off
@@ -41,7 +61,7 @@ func (s *ResourceSearch) newCarrierCheck(criteria model.SearchCriteria) *carrier
 	return &carrierCheck{
 		searcher:     s.resourceSearcher,
 		resourceType: *criteria.ResourceType,
-		memo:         make(map[model.CarrierProbe]bool),
+		memo:         make(map[model.CarrierProbe]probeOutcome),
 	}
 }
 
@@ -64,12 +84,25 @@ func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.Se
 }
 
 // carries answers one probe, memoised for the request. A probe the searcher
-// could not answer is logged and reported as errProbeFailed; a caller
-// cancellation passes through.
+// could not answer is logged once, remembered, and reported as errProbeFailed
+// on every ask; a probe that would exceed the per-request cap is not sent and
+// is reported the same way; a caller cancellation passes through.
 func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (bool, error) {
-	if carried, ok := c.memo[probe]; ok {
-		return carried, nil
+	if outcome, ok := c.memo[probe]; ok {
+		if outcome == probeFailed {
+			return false, errProbeFailed
+		}
+		return outcome == probeCarried, nil
 	}
+	if c.sent >= maxCarrierProbesPerRequest {
+		slog.InfoContext(ctx, "indexed filter support probe cap reached; returning the ordinary result",
+			"object_type", c.resourceType,
+			"probes_sent", c.sent,
+			"probe_kind", string(probe.Kind),
+		)
+		return false, errProbeFailed
+	}
+	c.sent++
 	carried, err := c.searcher.TypeCarries(ctx, c.resourceType, probe)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -81,9 +114,14 @@ func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (b
 			"probe_kind", string(probe.Kind),
 			"probe_name", probe.Name,
 		)
+		c.memo[probe] = probeFailed
 		return false, errProbeFailed
 	}
-	c.memo[probe] = carried
+	if carried {
+		c.memo[probe] = probeCarried
+	} else {
+		c.memo[probe] = probeAbsent
+	}
 	return carried, nil
 }
 
@@ -212,7 +250,7 @@ func (c *carrierCheck) aggregation(ctx context.Context, aggregation model.CountA
 		return nil
 	}
 	if result.Count > 0 {
-		c.memo[model.CarrierProbe{Kind: model.AnyDocument}] = true
+		c.memo[model.CarrierProbe{Kind: model.AnyDocument}] = probeCarried
 	}
 	carried, err := c.hasDocuments(ctx)
 	if err != nil || !carried {
