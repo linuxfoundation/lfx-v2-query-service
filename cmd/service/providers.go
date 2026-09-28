@@ -42,7 +42,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config.MaxAccessBuckets = envInt("COUNT_MAX_ACCESS_BUCKETS", constants.DefaultMaxAccessBuckets)
 	config.MaxSummaryRecords = envInt("SUMMARY_MAX_RECORDS", constants.DefaultMaxSummaryRecords)
 	config.DeniedPageWalk = envInt("SEARCH_DENIED_PAGE_WALK", constants.DefaultDeniedPageWalk)
-	config.DisableUnsatisfiableFilterRejection = !envBool("UNSATISFIABLE_FILTER_REJECTION", !config.DisableUnsatisfiableFilterRejection)
+	config.DisableUnsatisfiableFilterRejection = !envBool("UNSATISFIABLE_FILTER_REJECTION", true)
 
 	if err := config.Validate(); err != nil {
 		log.Fatalf("invalid resource search configuration: %v", err)
