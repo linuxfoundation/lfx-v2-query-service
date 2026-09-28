@@ -99,9 +99,10 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 					wantProbes := tc.wantProbes
 					if route != "search" && route != "count" && criteria.ResourceType != nil && *criteria.ResourceType != "" && !tc.disabled {
 						switch {
-						case tc.probeError != nil, tc.emptyType, tc.message != "":
-							// A failed or absent type probe is remembered, so
-							// the aggregation rule sends nothing more.
+						case tc.probeError != nil, tc.dimensionError != nil, tc.emptyType, tc.message != "":
+							// A failed probe aborts the request's check and an
+							// absent type is remembered, so the aggregation
+							// rule sends nothing more.
 						default:
 							if len(wantProbes) == 0 {
 								wantProbes = append(wantProbes, anyDoc)
@@ -456,6 +457,61 @@ func TestUnsatisfiableFiltersProbeCap(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+func TestUnsatisfiableFiltersAbortedCheckNeverRejectsLater(t *testing.T) {
+	anyDoc := model.CarrierProbe{Kind: model.AnyDocument}
+	category := model.CarrierProbe{Kind: model.TagPrefix, Name: "category"}
+	// group_by names a different, uncarried prefix: without the abort the
+	// aggregation rule would probe it, find it absent, and answer 400.
+	groupBy := model.CarrierProbe{Kind: model.TagPrefix, Name: "project_uid"}
+	prefixes := func(n int) []string {
+		out := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, fmt.Sprintf("prefix%02d:value", i))
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name       string
+		tagsAll    []string
+		failing    bool
+		wantProbes int
+		logLine    string
+	}{
+		{name: "a failed filter probe", tagsAll: []string{"category:board"}, failing: true, wantProbes: 2, logLine: "probe failed"},
+		{name: "the cap reached under the filter rule", tagsAll: prefixes(maxCarrierProbesPerRequest + 3), wantProbes: maxCarrierProbesPerRequest, logLine: "probe cap reached"},
+	} {
+		for _, principal := range []string{"caller", constants.AnonymousPrincipal} {
+			t.Run(tc.name+"/"+principal, func(t *testing.T) {
+				searcher := mock.NewMockResourceSearcher()
+				searcher.SetCountPublicResponse(0)
+				searcher.SetAccessBucketPages(&model.AccessBucketPage{})
+				searcher.SetTypeCarries("committee", anyDoc, true, nil)
+				searcher.SetTypeCarries("committee", groupBy, false, nil)
+				if tc.failing {
+					searcher.SetTypeCarries("committee", category, false, stderrors.New("unavailable"))
+				}
+				for i := range tc.tagsAll {
+					searcher.SetTypeCarries("committee", model.CarrierProbe{Kind: model.TagPrefix, Name: fmt.Sprintf("prefix%02d", i)}, true, nil)
+				}
+				logs := captureLogs(t)
+				svc := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+				criteria := model.SearchCriteria{ResourceType: stringPtr("committee"), TagsAll: tc.tagsAll}
+				ctx := context.WithValue(context.Background(), constants.PrincipalContextID, principal)
+				result, err := svc.QueryResourcesCount(ctx, criteria, criteria, model.CountAggregation{GroupByPrefix: "project_uid"})
+				require.NoError(t, err, "an aborted check never rejects")
+				assert.Zero(t, result.Count)
+				assert.Empty(t, result.Groups)
+				assert.Contains(t, logs.String(), tc.logLine)
+				calls := searcher.CarrierProbeCalls()
+				assert.Len(t, calls, tc.wantProbes, "%v", calls)
+				for _, call := range calls {
+					assert.NotEqual(t, groupBy, call.Probe, "the group_by prefix is never probed after the abort")
+				}
+			})
 		}
 	}
 }

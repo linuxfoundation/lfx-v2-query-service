@@ -50,6 +50,10 @@ type carrierCheck struct {
 	memo         map[model.CarrierProbe]probeOutcome
 	// sent counts the probes sent to the searcher, for the cap.
 	sent int
+	// aborted is set once a probe failed or the cap was reached: from then
+	// on no probe is sent and no rule of the request can reject, so the
+	// ordinary result stands whole.
+	aborted bool
 }
 
 // newCarrierCheck returns the request's check, or nil when the toggle is off
@@ -84,10 +88,14 @@ func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.Se
 }
 
 // carries answers one probe, memoised for the request. A probe the searcher
-// could not answer is logged once, remembered, and reported as errProbeFailed
-// on every ask; a probe that would exceed the per-request cap is not sent and
-// is reported the same way; a caller cancellation passes through.
+// could not answer is logged once, remembered, and aborts the check: every
+// later ask of the request reports errProbeFailed without sending anything.
+// A probe that would exceed the per-request cap aborts the same way. A caller
+// cancellation passes through.
 func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (bool, error) {
+	if c.aborted {
+		return false, errProbeFailed
+	}
 	if outcome, ok := c.memo[probe]; ok {
 		if outcome == probeFailed {
 			return false, errProbeFailed
@@ -100,6 +108,7 @@ func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (b
 			"probes_sent", c.sent,
 			"probe_kind", string(probe.Kind),
 		)
+		c.aborted = true
 		return false, errProbeFailed
 	}
 	c.sent++
@@ -115,6 +124,7 @@ func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (b
 			"probe_name", probe.Name,
 		)
 		c.memo[probe] = probeFailed
+		c.aborted = true
 		return false, errProbeFailed
 	}
 	if carried {
