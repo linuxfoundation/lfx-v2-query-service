@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -30,6 +31,9 @@ type MockResourceSearcher struct {
 	authorizedAggregationResponse *model.CountAggregationResult
 	authorizedAggregationError    error
 	isReadyError                  error
+	carrierMu                     sync.Mutex
+	carrierAnswers                map[CarrierProbeCall]carrierAnswer
+	carrierCalls                  []CarrierProbeCall
 }
 
 // NewMockResourceSearcher creates a new mock searcher with some sample data
