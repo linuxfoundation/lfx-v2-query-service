@@ -106,9 +106,14 @@ The checks run in this order, stopping at the first absent dimension:
    tag alternative. Bare tags are not probed.
 6. Check fields in `filters` and `filters_all`: every field must be carried.
    For `filters_or`, reject only if none of its fields is carried.
+7. Count route only, after the aggregation: when `group_by` returned no group,
+   check the `group_by` prefix; when `metric=cardinality:<prefix>` returned a
+   distinct count of zero, check the metric prefix. A non-zero count already
+   proves the type has documents, so step 2 is skipped there. Groups present
+   or a non-zero metric are never probed.
 
 Each distinct field, parent kind, or tag prefix is probed at most once per
-request. A carried dimension with an unmatched value still returns an ordinary
+request, including a prefix named by both a filter and an aggregation. A carried dimension with an unmatched value still returns an ordinary
 empty result; these checks do not validate values or whether a combination of
 otherwise carried dimensions can match.
 
@@ -119,6 +124,8 @@ date_field "<field>" is not carried by any indexed <type> document
 parent kind "<kind>:" is not carried by any indexed <type> document
 tag prefix "<prefix>:" is not carried by any indexed <type> document
 filter field "<field>" is not carried by any indexed <type> document
+group_by prefix "<prefix>:" is not carried by any indexed <type> document
+metric prefix "<prefix>:" is not carried by any indexed <type> document
 ```
 
 The probe is type-wide: it never applies access filtering, never returns a
@@ -152,7 +159,8 @@ Same parameters as `GET /query/resources` except `cel_filter`,
 | `metric` | string | `cardinality:<tag_prefix>` (max 80). Number of distinct `<tag_prefix>:…` tag values across the authorized documents, e.g. `metric=cardinality:email`. Any other shape, including `sum:…`, is a `400` |
 
 The shared [unsatisfiable-filter checks](#unsatisfiable-filters) also apply to
-zero counts, including anonymous counts and requests for groups or metrics.
+zero counts, including anonymous counts, and to the `group_by` and `metric`
+prefixes when the aggregation returns no group or a zero distinct count.
 
 `group_by` and `metric` cannot be combined (`400`: "metric per group is not
 supported; group first, then count each group with tags"). To get a metric per

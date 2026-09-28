@@ -89,6 +89,26 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 					for _, probe := range tc.carried {
 						searcher.SetTypeCarries("committee", probe, true, nil)
 					}
+					// Grouped and metric counts aggregate on a carried prefix so
+					// these rows exercise the filter rules only; the aggregation
+					// rule has its own matrix below.
+					aggProbe := model.CarrierProbe{Kind: model.TagPrefix, Name: "project_uid"}
+					searcher.SetTypeCarries("committee", aggProbe, true, nil)
+					wantProbes := tc.wantProbes
+					if route != "search" && route != "count" && criteria.ResourceType != nil && *criteria.ResourceType != "" && !tc.disabled {
+						switch {
+						case tc.probeError != nil:
+							// The failed type probe is not memoised, so the
+							// aggregation rule asks again.
+							wantProbes = append(wantProbes, anyDoc)
+						case tc.emptyType, tc.message != "":
+						default:
+							if len(wantProbes) == 0 {
+								wantProbes = append(wantProbes, anyDoc)
+							}
+							wantProbes = append(wantProbes, aggProbe)
+						}
+					}
 					config := Config{DisableUnsatisfiableFilterRejection: tc.disabled}
 					svc := newTestResourceSearchWithConfig(t, searcher, mock.NewMockAccessControlChecker(), config)
 					ctx := context.WithValue(context.Background(), constants.PrincipalContextID, principal)
@@ -103,10 +123,10 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 					} else {
 						agg := model.CountAggregation{}
 						if route == "grouped count" {
-							agg.GroupByPrefix = "category"
+							agg.GroupByPrefix = "project_uid"
 						}
 						if route == "metric count" {
-							agg.CardinalityPrefix = "category"
+							agg.CardinalityPrefix = "project_uid"
 						}
 						var result *model.CountResult
 						result, err = svc.QueryResourcesCount(ctx, criteria, criteria, agg)
@@ -139,8 +159,8 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 						require.NoError(t, err)
 					}
 					calls := searcher.CarrierProbeCalls()
-					require.Len(t, calls, len(tc.wantProbes))
-					for i, probe := range tc.wantProbes {
+					require.Len(t, calls, len(wantProbes), "%v", calls)
+					for i, probe := range wantProbes {
 						assert.Equal(t, mock.CarrierProbeCall{ResourceType: "committee", Probe: probe}, calls[i])
 					}
 				})
@@ -255,4 +275,88 @@ func TestUnsatisfiableFiltersCancelledProbeIsNotUnavailable(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	var unavailable errors.ServiceUnavailable
 	assert.False(t, stderrors.As(err, &unavailable))
+}
+
+func TestUnsatisfiableFiltersCountAggregation(t *testing.T) {
+	anyDoc := model.CarrierProbe{Kind: model.AnyDocument}
+	category := model.CarrierProbe{Kind: model.TagPrefix, Name: "category"}
+	one := uint64(1)
+	for _, tc := range []struct {
+		name          string
+		aggregation   model.CountAggregation
+		criteria      model.SearchCriteria
+		publicCount   int
+		response      *model.CountAggregationResult
+		carried       bool
+		probeError    error
+		disabled      bool
+		wantProbes    []model.CarrierProbe
+		message       string
+		wantMetric    *uint64
+		wantGroupsLen int
+	}{
+		{name: "empty groups and prefix absent", aggregation: model.CountAggregation{GroupByPrefix: "category"}, wantProbes: []model.CarrierProbe{anyDoc, category}, message: `group_by prefix "category:" is not carried by any indexed committee document`},
+		{name: "empty groups and prefix carried", aggregation: model.CountAggregation{GroupByPrefix: "category"}, carried: true, wantProbes: []model.CarrierProbe{anyDoc, category}},
+		{name: "empty groups with a non-zero count skip the type probe", aggregation: model.CountAggregation{GroupByPrefix: "category"}, publicCount: 1, response: &model.CountAggregationResult{GroupsComplete: true}, wantProbes: []model.CarrierProbe{category}, message: `group_by prefix "category:" is not carried by any indexed committee document`},
+		{name: "groups present", aggregation: model.CountAggregation{GroupByPrefix: "category"}, publicCount: 1, response: &model.CountAggregationResult{Groups: []model.CountGroup{{Key: "board", Count: 1}}, GroupsComplete: true}, wantGroupsLen: 1},
+		{name: "zero metric and prefix absent", aggregation: model.CountAggregation{CardinalityPrefix: "category"}, wantProbes: []model.CarrierProbe{anyDoc, category}, message: `metric prefix "category:" is not carried by any indexed committee document`},
+		{name: "zero metric and prefix carried", aggregation: model.CountAggregation{CardinalityPrefix: "category"}, carried: true, wantProbes: []model.CarrierProbe{anyDoc, category}},
+		{name: "zero metric with a non-zero count and prefix absent", aggregation: model.CountAggregation{CardinalityPrefix: "category"}, publicCount: 1, response: &model.CountAggregationResult{MetricComplete: true}, wantProbes: []model.CarrierProbe{category}, message: `metric prefix "category:" is not carried by any indexed committee document`},
+		{name: "non-zero metric", aggregation: model.CountAggregation{CardinalityPrefix: "category"}, publicCount: 1, response: &model.CountAggregationResult{MetricValue: 1, MetricComplete: true}, wantMetric: &one},
+		{name: "empty type is not a caller error", aggregation: model.CountAggregation{GroupByPrefix: "category"}, wantProbes: []model.CarrierProbe{anyDoc}},
+		{name: "probe failure keeps the ordinary result", aggregation: model.CountAggregation{GroupByPrefix: "category"}, probeError: stderrors.New("unavailable"), wantProbes: []model.CarrierProbe{anyDoc, category}},
+		{name: "toggle off", aggregation: model.CountAggregation{GroupByPrefix: "category"}, disabled: true},
+		{name: "shared memo with a tags_all prefix", aggregation: model.CountAggregation{GroupByPrefix: "category"}, criteria: model.SearchCriteria{TagsAll: []string{"category:board"}}, carried: true, wantProbes: []model.CarrierProbe{anyDoc, category}},
+		{name: "shared memo rejects on the filter first", aggregation: model.CountAggregation{GroupByPrefix: "category"}, criteria: model.SearchCriteria{TagsAll: []string{"category:board"}}, wantProbes: []model.CarrierProbe{anyDoc, category}, message: `tag prefix "category:" is not carried by any indexed committee document`},
+	} {
+		for _, principal := range []string{"caller", constants.AnonymousPrincipal} {
+			t.Run(tc.name+"/"+principal, func(t *testing.T) {
+				searcher := mock.NewMockResourceSearcher()
+				searcher.SetCountPublicResponse(tc.publicCount)
+				searcher.SetAccessBucketPages(&model.AccessBucketPage{})
+				if tc.response != nil {
+					searcher.SetAuthorizedAggregationResponse(tc.response)
+				}
+				emptyType := tc.name == "empty type is not a caller error"
+				searcher.SetTypeCarries("committee", anyDoc, !emptyType, nil)
+				searcher.SetTypeCarries("committee", category, tc.carried, tc.probeError)
+				logs := captureLogs(t)
+				svc := newTestResourceSearchWithConfig(t, searcher, mock.NewMockAccessControlChecker(), Config{DisableUnsatisfiableFilterRejection: tc.disabled})
+				criteria := tc.criteria
+				criteria.ResourceType = stringPtr("committee")
+				ctx := context.WithValue(context.Background(), constants.PrincipalContextID, principal)
+				result, err := svc.QueryResourcesCount(ctx, criteria, criteria, tc.aggregation)
+				if tc.message != "" {
+					var validation errors.Validation
+					require.ErrorAs(t, err, &validation)
+					assert.EqualError(t, err, tc.message)
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, result)
+					assert.Equal(t, tc.publicCount, result.Count)
+					if tc.aggregation.GroupByPrefix != "" {
+						assert.Len(t, result.Groups, tc.wantGroupsLen)
+						require.NotNil(t, result.GroupsComplete)
+					}
+					if tc.aggregation.CardinalityPrefix != "" {
+						require.NotNil(t, result.MetricValue)
+						if tc.wantMetric != nil {
+							assert.Equal(t, *tc.wantMetric, *result.MetricValue)
+						} else {
+							assert.Zero(t, *result.MetricValue)
+						}
+					}
+				}
+				if tc.probeError != nil {
+					assert.Contains(t, logs.String(), "indexed filter support probe failed")
+					assert.Contains(t, logs.String(), `"probe_name":"category"`)
+				}
+				calls := searcher.CarrierProbeCalls()
+				require.Len(t, calls, len(tc.wantProbes), "%v", calls)
+				for i, probe := range tc.wantProbes {
+					assert.Equal(t, mock.CarrierProbeCall{ResourceType: "committee", Probe: probe}, calls[i])
+				}
+			})
+		}
+	}
 }

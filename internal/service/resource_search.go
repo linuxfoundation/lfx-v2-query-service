@@ -507,8 +507,11 @@ func (s *ResourceSearch) QueryResourcesCount(
 		aggregation.AuthorizedKeys = authorizedKeys
 	}
 
-	if result.Count == 0 && len(aggregation.AuthorizedKeys) == 0 {
-		if err := s.checkSatisfiable(ctx, publicCriteria); err != nil {
+	// One check per request so a prefix named by both a filter and an
+	// aggregation is probed once; a failed probe keeps the ordinary result.
+	check := s.newCarrierCheck(publicCriteria)
+	if check != nil && result.Count == 0 && len(aggregation.AuthorizedKeys) == 0 {
+		if err := advisory(check.criteria(ctx, publicCriteria)); err != nil {
 			return nil, err
 		}
 	}
@@ -534,7 +537,7 @@ func (s *ResourceSearch) QueryResourcesCount(
 			result.MetricValue = &zero
 			result.MetricComplete = &metricComplete
 		}
-		return result, nil
+		return s.checkedCount(ctx, check, aggregation, result)
 	}
 
 	// The authorized set is public documents plus private documents carrying
@@ -571,6 +574,19 @@ func (s *ResourceSearch) QueryResourcesCount(
 		result.MetricComplete = &metricComplete
 	}
 
+	return s.checkedCount(ctx, check, aggregation, result)
+}
+
+// checkedCount applies the aggregation rule of the unsatisfiable-filter check
+// to a finished count: an empty grouping or a zero metric on a prefix the
+// type never carries is a 400; anything else returns the result as is.
+func (s *ResourceSearch) checkedCount(ctx context.Context, check *carrierCheck, aggregation model.CountAggregation, result *model.CountResult) (*model.CountResult, error) {
+	if check == nil {
+		return result, nil
+	}
+	if err := advisory(check.aggregation(ctx, aggregation, result)); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 
