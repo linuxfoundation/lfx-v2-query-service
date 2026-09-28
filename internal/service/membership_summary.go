@@ -118,7 +118,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		// unconvertible pages cannot make the whole-run extension unbounded.
 		if !canResume && (recordsRead > constants.MaxSummaryRunRecords ||
 			(recordsRead >= constants.MaxSummaryRunRecords && page.NextSearchAfter != nil)) {
-			return nil, errors.NewServiceUnavailable("membership summary run did not end within the record ceiling")
+			return nil, errors.NewServiceUnavailable("membership summary cannot be read whole within the record ceiling; retrying will not help")
 		}
 		anyVisible = anyVisible || len(visible) > 0
 		for _, resource := range visible {

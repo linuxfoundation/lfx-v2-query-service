@@ -918,7 +918,7 @@ func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
 			result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{B2BOrgUID: "org-1"})
 			var unavailable pkgerrors.ServiceUnavailable
 			require.ErrorAs(t, err, &unavailable)
-			require.ErrorContains(t, err, "record ceiling")
+			require.ErrorContains(t, err, "membership summary cannot be read whole within the record ceiling; retrying will not help")
 			require.Nil(t, result, "no partial summaries escape the hard ceiling")
 			require.Len(t, searcher.cursors, constants.MaxSummaryRunRecords/constants.MaxPageSize)
 		})
