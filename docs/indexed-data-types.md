@@ -49,7 +49,7 @@ Indexer contract: [docs/indexer-contract.md](https://github.com/linuxfoundation/
 |--------|-------------|-------------|
 | `committee` | `lfx.index.committee` | `pkg/constants/subjects.go` |
 | `committee_settings` | `lfx.index.committee_settings` | `pkg/constants/subjects.go` |
-| `committee_member` | `lfx.index.committee_member` | `pkg/constants/subjects.go` |
+| `committee_member` | `lfx.index.committee_member` | `pkg/constants/subjects.go`; parent refs include the committee. A project parent requires the committee to have a project and the member document to be indexed with that reference; older documents may require reindexing. |
 | `committee_invite` | `lfx.index.committee_invite` | `pkg/constants/subjects.go` |
 | `committee_application` | `lfx.index.committee_application` | `pkg/constants/subjects.go` |
 | `committee_document` | `lfx.index.committee_document` | `pkg/constants/subjects.go` |

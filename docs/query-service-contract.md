@@ -77,10 +77,71 @@ must be provided: name, parent, type, tags, or filter_grants"). In addition,
 `filter_grants` requires `type` (otherwise a `400` is returned). Validation
 lives in `validateSearchCriteria` in `internal/service/resource_search.go`.
 
+#### Unsatisfiable filters
+
+On an initially empty raw search page, before CEL and access filtering, the
+service checks whether the requested `type` carries the indexed dimensions
+named by the filters. It does not probe a non-empty raw page, an empty tail
+reached by the denied-page walk, or the early return when `filter_grants=direct`
+finds no grants. Count requests use the same rule when the public and authorized
+private counts are both zero and no authorized-key aggregation would add work.
+
+The checks run in this order, stopping at the first absent dimension:
+
+1. Without a `type`, or with `UNSATISFIABLE_FILTER_REJECTION=false`, return the
+   ordinary empty result without probing.
+2. If the type has no indexed documents, return the ordinary empty result.
+   A new or unpopulated type is not a caller error.
+3. Check `date_field` for an indexed field within `data`.
+4. Check the `parent` kind (the text before the first colon). The HTTP decoder
+   treats `parent=` as absent, so an empty parent is not a filter and is not
+   probed. Malformed non-empty parents are rejected by the existing decoder
+   validation before these checks.
+5. Check tag prefixes: every prefixed `tags_all` entry must be carried.
+   For `tags` (OR), reject only if no prefix is carried and there is no bare
+   tag alternative. Bare tags are not probed.
+6. Check fields in `filters` and `filters_all`: every field must be carried.
+   For `filters_or`, reject only if none of its fields is carried.
+
+Each distinct field, parent kind, or tag prefix is probed at most once per
+request. A carried dimension with an unmatched value still returns an ordinary
+empty result; these checks do not validate values or whether a combination of
+otherwise carried dimensions can match.
+
+An absent dimension returns `400` with one of these exact message formats:
+
+```text
+date_field "<field>" is not carried by any indexed <type> document
+parent kind "<kind>:" is not carried by any indexed <type> document
+tag prefix "<prefix>:" is not carried by any indexed <type> document
+filter field "<field>" is not carried by any indexed <type> document
+```
+
+The probe is type-wide: it never applies access filtering, never returns a
+record, and never includes parent or tag values in the error. It checks any
+indexed document of the type, not the caller's scoped or visible result set.
+Anonymous callers receive the same dimension checks. Probe failures return
+`503`, never a silent zero or an absent-dimension `400`.
+
+`UNSATISFIABLE_FILTER_REJECTION` defaults to `true`. It is a rollout-safety
+switch: setting it to `false` disables all probes and restores the previous
+silent-zero behavior on both routes. Availability follows the indexed data, so
+a newly added field or parent kind may remain rejected until it is indexed.
+
+**Release verification:** unit tests check request bodies and response handling,
+but do not prove `exists` queries on `data.<field>` against a real `flat_object`
+index. After merge and before release, verify on the development index that a
+carried field preserves a valid query and an absent field returns the documented
+`400`. If subfield existence queries fail, stop release rather than silently
+substituting another probe.
+
 ### GET /query/resources/count
 
 Same parameters as `GET /query/resources` except `cel_filter`,
 `filter_grants`, `sort`, `page_size`, and `page_token`, plus:
+
+The shared [unsatisfiable-filter checks](#unsatisfiable-filters) also apply to
+zero counts, including anonymous counts and requests for groups or metrics.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
@@ -529,6 +590,10 @@ Two consequences are worth knowing before you build on this:
 
 ## tags vs filters vs cel_filter
 
+On empty results, indexed tag prefixes and filter fields are checked as
+specified in [Unsatisfiable filters](#unsatisfiable-filters). CEL expressions
+are not carrier-probed.
+
 | Mechanism | Use for | How it works |
 | --- | --- | --- |
 | `tags` / `tags_all` | Values in the `tags` field (exact match) | OpenSearch `term` query |
@@ -579,7 +644,8 @@ see.
 ## Date Range Filtering
 
 The query service supports filtering resources by date ranges on fields within
-the `data` object.
+the `data` object. On empty results, `date_field` is checked for an indexed
+carrier as described in [Unsatisfiable filters](#unsatisfiable-filters).
 
 - `date_field` (string, optional): date field to filter on (automatically
   prefixed with `"data."`)

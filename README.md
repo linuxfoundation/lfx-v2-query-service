@@ -204,6 +204,8 @@ go run ./cmd
 - `SUMMARY_MAX_RECORDS`: Membership records `GET /query/memberships/summary` reads before it folds what it has and reports `complete: false` with a `page_token` (1–50000, default: "5000"). The cap is checked after a whole page, so it can be overshot by up to one page; while the caller has seen nothing it yields to the denied-page walk, so the worst case for such a read is the larger of the cap rounded up to whole pages and one full page more than `SEARCH_DENIED_PAGE_WALK`.
 - `SEARCH_DENIED_PAGE_WALK`: Extra raw OpenSearch pages `/query/resources` fetches when a page leaves the caller no visible resource after `cel_filter` and the access check (1–25, default: "10"). A result set the caller may not see that exhausts within the walk therefore returns `[]` with no `page_token`, exactly like a miss — closing the exact-tag existence oracle for unique lookups; past the limit an empty page keeps its token so paging can continue (revealing only that further raw matches exist). Worst case `1 + SEARCH_DENIED_PAGE_WALK` sequential OpenSearch + access-check round trips.
 
+- `UNSATISFIABLE_FILTER_REJECTION`: Reject absent indexed filter dimensions on zero search results or counts (`true`/`false`, default: "true"). Rollout-safety switch: setting it to `false` disables the probes and restores silent zeros. See [Unsatisfiable filters](docs/query-service-contract.md#unsatisfiable-filters).
+
 The count route reads the index mapping on first use to pick the access-check
 field in every backing index. Failed reads, unsupported shapes, or disagreeing
 alias mappings return `503` for authenticated counts until resolution is retried
