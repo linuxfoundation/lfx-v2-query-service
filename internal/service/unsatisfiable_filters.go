@@ -5,6 +5,7 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,9 +14,25 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 )
 
+// errProbeFailed marks a probe the searcher could not answer. The check is
+// advisory: a failure is logged and the ordinary empty result stands, so a
+// request that succeeds today cannot start failing because the check could
+// not run. Only a successful probe that finds a dimension absent rejects.
+var errProbeFailed = stderrors.New("indexed filter support probe failed")
+
 // checkSatisfiable distinguishes absent indexed dimensions from ordinary empty
 // results. Each probe is type-wide, without caller values or access restrictions.
 func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.SearchCriteria) error {
+	err := s.checkSatisfiableStrict(ctx, criteria)
+	if stderrors.Is(err, errProbeFailed) {
+		return nil
+	}
+	return err
+}
+
+// checkSatisfiableStrict runs the checks and reports a failed probe as
+// errProbeFailed; checkSatisfiable turns that into the ordinary empty result.
+func (s *ResourceSearch) checkSatisfiableStrict(ctx context.Context, criteria model.SearchCriteria) error {
 	if s.config.DisableUnsatisfiableFilterRejection || criteria.ResourceType == nil || *criteria.ResourceType == "" {
 		return nil
 	}
@@ -72,8 +89,13 @@ func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.Se
 			if ctx.Err() != nil {
 				return false, fmt.Errorf("indexed filter support check cancelled: %w", err)
 			}
-			slog.ErrorContext(ctx, "indexed filter support check failed", "error", err, "object_type", resourceType)
-			return false, errors.NewServiceUnavailable("failed to check indexed filter support")
+			slog.ErrorContext(ctx, "indexed filter support probe failed; returning the ordinary empty result",
+				"error", err,
+				"object_type", resourceType,
+				"probe_kind", string(probe.Kind),
+				"probe_name", probe.Name,
+			)
+			return false, errProbeFailed
 		}
 		memo[probe] = carried
 		return carried, nil

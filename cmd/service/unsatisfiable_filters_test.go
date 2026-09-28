@@ -62,14 +62,21 @@ func TestUnsatisfiableFiltersAPIErrorMapping(t *testing.T) {
 				ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "caller")
 				var err error
 				if route == "search" {
-					_, err = svc.QueryResources(ctx, &querysvc.QueryResourcesPayload{Version: "1", Type: stringPtr("committee"), DateField: stringPtr("start_time"), DateFrom: stringPtr("2025-01-01"), Sort: "name_asc", PageSize: 50})
+					var result *querysvc.QueryResourcesResult
+					result, err = svc.QueryResources(ctx, &querysvc.QueryResourcesPayload{Version: "1", Type: stringPtr("committee"), DateField: stringPtr("start_time"), DateFrom: stringPtr("2025-01-01"), Sort: "name_asc", PageSize: 50})
+					if outage {
+						require.NoError(t, err)
+						assert.Empty(t, result.Resources)
+					}
 				} else {
-					_, err = svc.QueryResourcesCount(ctx, &querysvc.QueryResourcesCountPayload{Version: "1", Type: stringPtr("committee"), DateField: stringPtr("start_time"), DateFrom: stringPtr("2025-01-01")})
+					var result *querysvc.QueryResourcesCountResult
+					result, err = svc.QueryResourcesCount(ctx, &querysvc.QueryResourcesCountPayload{Version: "1", Type: stringPtr("committee"), DateField: stringPtr("start_time"), DateFrom: stringPtr("2025-01-01")})
+					if outage {
+						require.NoError(t, err)
+						assert.Zero(t, result.Count)
+					}
 				}
-				if outage {
-					var unavailable *querysvc.ServiceUnavailableError
-					require.ErrorAs(t, err, &unavailable)
-				} else {
+				if !outage {
 					var badRequest *querysvc.BadRequestError
 					require.ErrorAs(t, err, &badRequest)
 					assert.Equal(t, `date_field "start_time" is not carried by any indexed committee document`, badRequest.Message)

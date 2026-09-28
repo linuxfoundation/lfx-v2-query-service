@@ -124,8 +124,9 @@ filter field "<field>" is not carried by any indexed <type> document
 The probe is type-wide: it never applies access filtering, never returns a
 record, and never includes parent or tag values in the error. It checks any
 indexed document of the type, not the caller's scoped or visible result set.
-Anonymous callers receive the same dimension checks. Probe failures return
-`503`, never a silent zero or an absent-dimension `400`.
+Anonymous callers receive the same dimension checks. If a probe itself fails,
+the service logs the failure and returns the ordinary empty result; only a
+successful probe that finds a dimension absent produces the `400`.
 
 `UNSATISFIABLE_FILTER_REJECTION` defaults to `true`. It is a rollout-safety
 switch: setting it to `false` disables all probes and restores the previous

@@ -4,8 +4,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	stderrors "errors"
+	"log/slog"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -32,6 +34,7 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 		wantProbes          []model.CarrierProbe
 		emptyType, disabled bool
 		probeError          error
+		dimensionError      error
 		message             string
 	}{
 		{name: "no type", criteria: model.SearchCriteria{Name: stringPtr("empty")}},
@@ -63,8 +66,9 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 		{name: "memoized field across date and filters", criteria: model.SearchCriteria{DateField: stringPtr("data.start_time"), DateFrom: since, Filters: []model.FieldFilter{{Field: "data.start_time"}}, FiltersAll: []model.FieldFilter{{Field: "data.start_time"}}, FiltersOr: []model.FieldFilter{{Field: "data.start_time"}}}, carried: []model.CarrierProbe{date}, wantProbes: []model.CarrierProbe{anyDoc, date}},
 		{name: "first failure is date", criteria: model.SearchCriteria{DateField: stringPtr("data.start_time"), DateFrom: since, Parent: stringPtr("project:value"), TagsAll: []string{"missing:value"}, Filters: []model.FieldFilter{{Field: "data.status"}}}, wantProbes: []model.CarrierProbe{anyDoc, date}, message: `date_field "start_time" is not carried by any indexed committee document`},
 		{name: "disabled", disabled: true, criteria: model.SearchCriteria{DateField: stringPtr("data.start_time"), DateFrom: stringPtr("2025-01-01")}},
-		{name: "probe outage", criteria: model.SearchCriteria{Parent: stringPtr("project:value")}, probeError: stderrors.New("unavailable"), wantProbes: []model.CarrierProbe{anyDoc}},
-		{name: "probe validation is server error", criteria: model.SearchCriteria{Parent: stringPtr("project:value")}, probeError: errors.NewValidation("upstream query rejected"), wantProbes: []model.CarrierProbe{anyDoc}},
+		{name: "probe outage returns the ordinary zero", criteria: model.SearchCriteria{Parent: stringPtr("project:value")}, probeError: stderrors.New("unavailable"), wantProbes: []model.CarrierProbe{anyDoc}},
+		{name: "probe validation error returns the ordinary zero", criteria: model.SearchCriteria{Parent: stringPtr("project:value")}, probeError: errors.NewValidation("upstream query rejected"), wantProbes: []model.CarrierProbe{anyDoc}},
+		{name: "dimension probe outage returns the ordinary zero", criteria: model.SearchCriteria{Parent: stringPtr("project:value")}, dimensionError: stderrors.New("unavailable"), wantProbes: []model.CarrierProbe{anyDoc, parent}},
 	} {
 		for _, route := range []string{"search", "count", "grouped count", "metric count"} {
 			for _, principal := range []string{"caller", constants.AnonymousPrincipal} {
@@ -78,6 +82,10 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 					searcher.SetCountPublicResponse(0)
 					searcher.SetAccessBucketPages(&model.AccessBucketPage{})
 					searcher.SetTypeCarries("committee", anyDoc, !tc.emptyType, tc.probeError)
+					if tc.dimensionError != nil {
+						searcher.SetTypeCarries("committee", parent, false, tc.dimensionError)
+					}
+					logs := captureLogs(t)
 					for _, probe := range tc.carried {
 						searcher.SetTypeCarries("committee", probe, true, nil)
 					}
@@ -118,9 +126,11 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 							assert.Zero(t, searcher.AccessBucketCalls())
 						}
 					}
-					if tc.probeError != nil {
-						var unavailable errors.ServiceUnavailable
-						require.ErrorAs(t, err, &unavailable)
+					if tc.probeError != nil || tc.dimensionError != nil {
+						require.NoError(t, err, "a failed probe keeps today's empty result")
+						assert.Contains(t, logs.String(), `"level":"ERROR"`)
+						assert.Contains(t, logs.String(), "indexed filter support probe failed")
+						assert.Contains(t, logs.String(), `"object_type":"committee"`)
 					} else if tc.message != "" {
 						var validation errors.Validation
 						require.ErrorAs(t, err, &validation)
@@ -222,6 +232,16 @@ func TestUnsatisfiableFiltersSkipContinuationPages(t *testing.T) {
 			assert.Empty(t, searcher.CarrierProbeCalls())
 		})
 	}
+}
+
+// captureLogs redirects the default logger to a buffer for the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &buf
 }
 
 func TestUnsatisfiableFiltersCancelledProbeIsNotUnavailable(t *testing.T) {
