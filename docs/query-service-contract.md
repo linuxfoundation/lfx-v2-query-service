@@ -91,9 +91,9 @@ The checks run in this order, stopping at the first absent dimension:
 
 1. Without a `type`, with `UNSATISFIABLE_FILTER_REJECTION=false`, or when the
    request names no probeable dimension (no bounded date field, parent,
-   prefixed tag, or field filter), return the ordinary empty result without
+   prefixed tag, or field filter), return the ordinary result without
    probing.
-2. If the type has no indexed documents, return the ordinary empty result.
+2. If the type has no indexed documents, return the ordinary result.
    A new or unpopulated type is not a caller error.
 3. Check `date_field` for an indexed field within `data`, only when a
    `date_from` or `date_to` bound makes it part of the query.
@@ -136,9 +136,9 @@ The probe is type-wide: it never applies access filtering, never returns a
 record, and never includes parent or tag values in the error. It checks any
 indexed document of the type, not the caller's scoped or visible result set.
 Anonymous callers receive the same dimension checks. If a probe itself fails,
-the service logs the failure and returns the ordinary empty result, and no
-later check of that request rejects; only a successful probe that finds a
-dimension absent produces the `400`.
+the service logs the failure and returns the ordinary result (the empty page,
+or the count as computed), and no later check of that request rejects; only a
+successful probe that finds a dimension absent produces the `400`.
 
 `UNSATISFIABLE_FILTER_REJECTION` defaults to `true`. It is a rollout-safety
 switch: setting it to `false` disables all probes and restores the previous

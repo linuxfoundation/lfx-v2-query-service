@@ -15,7 +15,7 @@ import (
 )
 
 // errProbeFailed marks a probe the searcher could not answer. The check is
-// advisory: a failure is logged and the ordinary empty result stands, so a
+// advisory: a failure is logged and the ordinary result stands, so a
 // request that succeeds today cannot start failing because the check could
 // not run. Only a successful probe that finds a dimension absent rejects.
 var errProbeFailed = stderrors.New("indexed filter support probe failed")
@@ -119,7 +119,7 @@ func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (b
 			// the transport error the searcher saw travels with it.
 			return false, fmt.Errorf("indexed filter support check cancelled: %w (%w)", cause, err)
 		}
-		slog.ErrorContext(ctx, "indexed filter support probe failed; returning the ordinary empty result",
+		slog.ErrorContext(ctx, "indexed filter support probe failed; returning the ordinary result",
 			"error", err,
 			"object_type", c.resourceType,
 			"probe_kind", string(probe.Kind),
