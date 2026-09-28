@@ -49,12 +49,18 @@ Indexer contract: [docs/indexer-contract.md](https://github.com/linuxfoundation/
 |--------|-------------|-------------|
 | `committee` | `lfx.index.committee` | `pkg/constants/subjects.go` |
 | `committee_settings` | `lfx.index.committee_settings` | `pkg/constants/subjects.go` |
-| `committee_member` | `lfx.index.committee_member` | `pkg/constants/subjects.go`; parent refs include the committee. A project parent requires the committee to have a project and the member document to be indexed with that reference; older documents may require reindexing. |
+| `committee_member` | `lfx.index.committee_member` | `pkg/constants/subjects.go` |
 | `committee_invite` | `lfx.index.committee_invite` | `pkg/constants/subjects.go` |
 | `committee_application` | `lfx.index.committee_application` | `pkg/constants/subjects.go` |
 | `committee_document` | `lfx.index.committee_document` | `pkg/constants/subjects.go` |
 | `committee_link` | `lfx.index.committee_link` | `pkg/constants/subjects.go` |
 | `committee_link_folder` | `lfx.index.committee_link_folder` | `pkg/constants/subjects.go` |
+
+> `committee_member` parent references include the committee and, when the
+> committee belongs to a project, that project. A `parent=project:` query
+> matches only member documents indexed with the project reference; documents
+> indexed before it was emitted match once they are reindexed. See the
+> committee-service indexer contract above.
 
 ### Meetings (`lfx-v2-meeting-service`)
 

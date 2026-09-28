@@ -31,6 +31,9 @@ func TestResourceSearchConfigImplUnsatisfiableFilters(t *testing.T) {
 	}
 	t.Run("invalid value fails startup", func(t *testing.T) {
 		if os.Getenv("TEST_INVALID_FILTER_TOGGLE") == "1" {
+			if os.Getenv("UNSATISFIABLE_FILTER_REJECTION") != "invalid" {
+				t.Fatal("child process expected an invalid toggle value")
+			}
 			ResourceSearchConfigImpl(context.Background())
 			return
 		}

@@ -235,8 +235,9 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		}
 
 		// A later empty page cannot invalidate a query that already had raw
-		// matches. Check only the initial page, before CEL or access filtering.
-		if fetched == 1 && len(result.Resources) == 0 {
+		// matches, and neither can a continuation of one: check only the first
+		// page of a fresh query, before CEL or access filtering.
+		if fetched == 1 && len(result.Resources) == 0 && criteria.PageToken == nil && criteria.SearchAfter == nil {
 			if err := s.checkSatisfiable(ctx, criteria); err != nil {
 				return nil, err
 			}

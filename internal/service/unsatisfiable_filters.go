@@ -20,6 +20,48 @@ func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.Se
 		return nil
 	}
 	resourceType := *criteria.ResourceType
+
+	// Only dimensions the query actually applies are checked. A date field
+	// without a bound renders no range clause, so it is not a filter here.
+	var dateField string
+	if criteria.DateField != nil && (criteria.DateFrom != nil || criteria.DateTo != nil) {
+		dateField = strings.TrimPrefix(*criteria.DateField, "data.")
+	}
+	var parentKind string
+	if criteria.Parent != nil && *criteria.Parent != "" {
+		parentKind, _, _ = strings.Cut(*criteria.Parent, ":")
+	}
+	var allPrefixes []string
+	for _, tag := range criteria.TagsAll {
+		if prefix, _, prefixed := strings.Cut(tag, ":"); prefixed {
+			allPrefixes = append(allPrefixes, prefix)
+		}
+	}
+	// A bare OR tag is an unprobed alternative, so absent prefixes cannot
+	// establish that the entire OR clause is unsatisfiable.
+	var anyPrefixes []string
+	for _, tag := range criteria.Tags {
+		prefix, _, prefixed := strings.Cut(tag, ":")
+		if !prefixed {
+			anyPrefixes = nil
+			break
+		}
+		anyPrefixes = append(anyPrefixes, prefix)
+	}
+	var allFields []string
+	for _, filters := range [][]model.FieldFilter{criteria.Filters, criteria.FiltersAll} {
+		for _, filter := range filters {
+			allFields = append(allFields, strings.TrimPrefix(filter.Field, "data."))
+		}
+	}
+	anyFields := make([]string, 0, len(criteria.FiltersOr))
+	for _, filter := range criteria.FiltersOr {
+		anyFields = append(anyFields, strings.TrimPrefix(filter.Field, "data."))
+	}
+	if dateField == "" && parentKind == "" && len(allPrefixes)+len(anyPrefixes)+len(allFields)+len(anyFields) == 0 {
+		return nil
+	}
+
 	memo := make(map[model.CarrierProbe]bool)
 	carries := func(probe model.CarrierProbe) (bool, error) {
 		if carried, ok := memo[probe]; ok {
@@ -27,7 +69,11 @@ func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.Se
 		}
 		carried, err := s.resourceSearcher.TypeCarries(ctx, resourceType, probe)
 		if err != nil {
-			return false, errors.NewServiceUnavailable("failed to check indexed filter support", err)
+			if ctx.Err() != nil {
+				return false, fmt.Errorf("indexed filter support check cancelled: %w", err)
+			}
+			slog.ErrorContext(ctx, "indexed filter support check failed", "error", err, "object_type", resourceType)
+			return false, errors.NewServiceUnavailable("failed to check indexed filter support")
 		}
 		memo[probe] = carried
 		return carried, nil
@@ -38,51 +84,20 @@ func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.Se
 	}
 
 	reject := func(dimension, name string) error {
-		slog.InfoContext(ctx, "filter dimension not carried by indexed type", "object_type", resourceType, "dimension", dimension, "name", name)
+		slog.DebugContext(ctx, "filter dimension not carried by indexed type", "object_type", resourceType, "dimension", dimension, "name", name)
 		return errors.NewValidation(fmt.Sprintf("%s %q is not carried by any indexed %s document", dimension, name, resourceType))
 	}
-	check := func(probe model.CarrierProbe, dimension, name string) error {
-		carried, err := carries(probe)
-		if err != nil {
-			return err
-		}
-		if !carried {
-			return reject(dimension, name)
-		}
-		return nil
-	}
-	if criteria.DateField != nil {
-		field := strings.TrimPrefix(*criteria.DateField, "data.")
-		if err := check(model.CarrierProbe{Kind: model.DataField, Name: field}, "date_field", field); err != nil {
-			return err
-		}
-	}
-	if criteria.Parent != nil && *criteria.Parent != "" {
-		kind, _, _ := strings.Cut(*criteria.Parent, ":")
-		if err := check(model.CarrierProbe{Kind: model.ParentKind, Name: kind}, "parent kind", kind+":"); err != nil {
-			return err
-		}
-	}
-	for _, tag := range criteria.TagsAll {
-		prefix, _, prefixed := strings.Cut(tag, ":")
-		if prefixed {
-			if err := check(model.CarrierProbe{Kind: model.TagPrefix, Name: prefix}, "tag prefix", prefix+":"); err != nil {
+	checkAll := func(names []string, kind model.CarrierProbeKind, dimension, suffix string) error {
+		for _, name := range names {
+			carried, err := carries(model.CarrierProbe{Kind: kind, Name: name})
+			if err != nil {
 				return err
 			}
+			if !carried {
+				return reject(dimension, name+suffix)
+			}
 		}
-	}
-
-	// A bare OR tag is an unprobed alternative, so absent prefixes cannot
-	// establish that the entire OR clause is unsatisfiable.
-	var tagPrefixes []string
-	bareTag := false
-	for _, tag := range criteria.Tags {
-		prefix, _, prefixed := strings.Cut(tag, ":")
-		if !prefixed {
-			bareTag = true
-			break
-		}
-		tagPrefixes = append(tagPrefixes, prefix)
+		return nil
 	}
 	checkAny := func(names []string, kind model.CarrierProbeKind, dimension, suffix string) error {
 		for _, name := range names {
@@ -99,22 +114,25 @@ func (s *ResourceSearch) checkSatisfiable(ctx context.Context, criteria model.Se
 		}
 		return nil
 	}
-	if !bareTag {
-		if err := checkAny(tagPrefixes, model.TagPrefix, "tag prefix", ":"); err != nil {
+
+	if dateField != "" {
+		if err := checkAll([]string{dateField}, model.DataField, "date_field", ""); err != nil {
 			return err
 		}
 	}
-	for _, filters := range [][]model.FieldFilter{criteria.Filters, criteria.FiltersAll} {
-		for _, filter := range filters {
-			field := strings.TrimPrefix(filter.Field, "data.")
-			if err := check(model.CarrierProbe{Kind: model.DataField, Name: field}, "filter field", field); err != nil {
-				return err
-			}
+	if parentKind != "" {
+		if err := checkAll([]string{parentKind}, model.ParentKind, "parent kind", ":"); err != nil {
+			return err
 		}
 	}
-	fields := make([]string, 0, len(criteria.FiltersOr))
-	for _, filter := range criteria.FiltersOr {
-		fields = append(fields, strings.TrimPrefix(filter.Field, "data."))
+	if err := checkAll(allPrefixes, model.TagPrefix, "tag prefix", ":"); err != nil {
+		return err
 	}
-	return checkAny(fields, model.DataField, "filter field", "")
+	if err := checkAny(anyPrefixes, model.TagPrefix, "tag prefix", ":"); err != nil {
+		return err
+	}
+	if err := checkAll(allFields, model.DataField, "filter field", ""); err != nil {
+		return err
+	}
+	return checkAny(anyFields, model.DataField, "filter field", "")
 }

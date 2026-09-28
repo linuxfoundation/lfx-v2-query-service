@@ -79,20 +79,24 @@ lives in `validateSearchCriteria` in `internal/service/resource_search.go`.
 
 #### Unsatisfiable filters
 
-On an initially empty raw search page, before CEL and access filtering, the
-service checks whether the requested `type` carries the indexed dimensions
-named by the filters. It does not probe a non-empty raw page, an empty tail
-reached by the denied-page walk, or the early return when `filter_grants=direct`
-finds no grants. Count requests use the same rule when the public and authorized
-private counts are both zero and no authorized-key aggregation would add work.
+On an empty first raw page of a fresh query (no `page_token`), before CEL and
+access filtering, the service checks whether the requested `type` carries the
+indexed dimensions named by the filters. It does not probe a non-empty raw
+page, a continuation page, an empty tail reached by the denied-page walk, or
+the early return when `filter_grants=direct` finds no grants. Count requests
+use the same rule when the public and authorized private counts are both zero
+and no authorized-key aggregation would add work.
 
 The checks run in this order, stopping at the first absent dimension:
 
-1. Without a `type`, or with `UNSATISFIABLE_FILTER_REJECTION=false`, return the
-   ordinary empty result without probing.
+1. Without a `type`, with `UNSATISFIABLE_FILTER_REJECTION=false`, or when the
+   request names no probeable dimension (no bounded date field, parent,
+   prefixed tag, or field filter), return the ordinary empty result without
+   probing.
 2. If the type has no indexed documents, return the ordinary empty result.
    A new or unpopulated type is not a caller error.
-3. Check `date_field` for an indexed field within `data`.
+3. Check `date_field` for an indexed field within `data`, only when a
+   `date_from` or `date_to` bound makes it part of the query.
 4. Check the `parent` kind (the text before the first colon). The HTTP decoder
    treats `parent=` as absent, so an empty parent is not a filter and is not
    probed. Malformed non-empty parents are rejected by the existing decoder
@@ -140,14 +144,14 @@ substituting another probe.
 Same parameters as `GET /query/resources` except `cel_filter`,
 `filter_grants`, `sort`, `page_size`, and `page_token`, plus:
 
-The shared [unsatisfiable-filter checks](#unsatisfiable-filters) also apply to
-zero counts, including anonymous counts and requests for groups or metrics.
-
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `group_by` | string | Tag prefix (`^[a-z][a-z0-9_]*$`, max 64). Groups the count by the value after `<prefix>:` in each document's `tags`, e.g. `group_by=project_uid` |
 | `group_by_size` | int | 1–1000, default 100. Maximum number of groups returned; requires `group_by` (otherwise `400`, including with `metric`) |
 | `metric` | string | `cardinality:<tag_prefix>` (max 80). Number of distinct `<tag_prefix>:…` tag values across the authorized documents, e.g. `metric=cardinality:email`. Any other shape, including `sum:…`, is a `400` |
+
+The shared [unsatisfiable-filter checks](#unsatisfiable-filters) also apply to
+zero counts, including anonymous counts and requests for groups or metrics.
 
 `group_by` and `metric` cannot be combined (`400`: "metric per group is not
 supported; group first, then count each group with tags"). To get a metric per
