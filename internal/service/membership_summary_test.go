@@ -916,13 +916,86 @@ func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
 			service, err := NewResourceSearch(searcher, checker, mock.NewMockResourceFilter(), config)
 			require.NoError(t, err)
 			result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{B2BOrgUID: "org-1"})
+			require.Len(t, searcher.cursors, constants.MaxSummaryRunRecords/constants.MaxPageSize)
+			if mode == "denied" {
+				// Every hit was withheld: a huge scope the caller cannot see
+				// must look exactly like a scope that does not exist.
+				require.NoError(t, err)
+				require.True(t, result.Complete)
+				require.Nil(t, result.SearchAfter)
+				require.Empty(t, result.Summaries)
+				require.Zero(t, result.TermsTotal)
+				return
+			}
+			// The caller saw records it may read (converted and visible, or
+			// hits the searcher could not convert), so a run that cannot be
+			// finished is an error, never a partial summary.
 			var unavailable pkgerrors.ServiceUnavailable
 			require.ErrorAs(t, err, &unavailable)
 			require.ErrorContains(t, err, "membership summary cannot be read whole within the record ceiling; retrying will not help")
 			require.Nil(t, result, "no partial summaries escape the hard ceiling")
-			require.Len(t, searcher.cursors, constants.MaxSummaryRunRecords/constants.MaxPageSize)
 		})
 	}
+}
+
+// TestResourceSearchMembershipSummaryCeilingYieldsToBoundary pins that the
+// ceiling applies only while the read has no boundary to cut at: runs are
+// observed before the ceiling is checked, and a boundary found on the page
+// that reaches the ceiling, or long before it, turns the read into a normal
+// capped read that resumes at the boundary.
+func TestResourceSearchMembershipSummaryCeilingYieldsToBoundary(t *testing.T) {
+	build := func(runA, runB int) []model.Resource {
+		records := make([]model.Resource, 0, runA+runB)
+		for i := 0; i < runA+runB; i++ {
+			uid := fmt.Sprintf("m-%06d", i)
+			run, org := "b2b_org:org-a", "org-a"
+			if i >= runA {
+				run, org = "b2b_org:org-b", "org-b"
+			}
+			records = append(records, orderedMembershipRecord(uid, run, map[string]any{
+				"uid": uid, "b2b_org_uid": org, "project_uid": "proj-1",
+			}))
+		}
+		return records
+	}
+
+	t.Run("a boundary on the page that reaches the ceiling resumes there", func(t *testing.T) {
+		records := build(49500, 1000)
+		searcher := membershipFixtureSearcher(records)
+		config := DefaultConfig()
+		config.MaxSummaryRecords = 1
+		service, err := NewResourceSearch(searcher, mock.NewMockAccessControlChecker(), mock.NewMockResourceFilter(), config)
+		require.NoError(t, err)
+
+		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{ProjectUID: "proj-1"})
+
+		require.NoError(t, err, "the boundary seen on the fiftieth page stops the read at the cap, not at the ceiling")
+		require.False(t, result.Complete)
+		require.Len(t, result.Summaries, 1)
+		require.Equal(t, "org-a", result.Summaries[0].B2BOrgUID)
+		require.Equal(t, uint64(49500), result.Summaries[0].TermCount)
+		require.Equal(t, cursor(records[49499].SortValues), result.SearchAfter, "resume at the last hit of the first run")
+		require.Len(t, searcher.cursors, 50)
+	})
+
+	t.Run("a long second run is cut at the boundary before it, not failed at the ceiling", func(t *testing.T) {
+		records := build(10, 51*constants.MaxPageSize)
+		searcher := membershipFixtureSearcher(records)
+		config := DefaultConfig()
+		config.MaxSummaryRecords = constants.MaxSummaryRecordCap
+		service, err := NewResourceSearch(searcher, mock.NewMockAccessControlChecker(), mock.NewMockResourceFilter(), config)
+		require.NoError(t, err)
+
+		result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{ProjectUID: "proj-1"})
+
+		require.NoError(t, err, "a boundary found on the first page makes the ceiling irrelevant")
+		require.False(t, result.Complete)
+		require.Len(t, result.Summaries, 1)
+		require.Equal(t, "org-a", result.Summaries[0].B2BOrgUID)
+		require.Equal(t, uint64(10), result.TermsTotal)
+		require.Equal(t, cursor(records[9].SortValues), result.SearchAfter)
+		require.Len(t, searcher.cursors, constants.MaxSummaryRecordCap/constants.MaxPageSize, "the read stops at the cap, whole pages")
+	})
 }
 
 // TestResourceSearchMembershipSummarySearcherFailure pins that a searcher

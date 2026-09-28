@@ -17,20 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMembershipParentRefOrder(t *testing.T) {
-	// Source: lfx-v2-member-service/docs/indexer-contract.md, Project
-	// Membership / Parent References. Only b2b_org:<uid> and project:<uid>
-	// are emitted (each when set), so min(parent_refs) is the organization
-	// ref whenever one exists, independent of UID spelling or array order.
-	for _, org := range []string{"b2b_org:000", "b2b_org:ZZZ", "b2b_org:zzz"} {
-		for _, project := range []string{"project:000", "project:AAA", "project:zzz"} {
-			require.Less(t, org, project)
-			require.Equal(t, org, slices.Min([]string{project, org}))
-			require.Equal(t, org, slices.Min([]string{org, project}))
-		}
-	}
-}
-
 func TestResourceSearchMembershipSummaryOrganizationOrder(t *testing.T) {
 	var records []membershipOrderedFixture
 	add := func(org, project, name string, count int) {

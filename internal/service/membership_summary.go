@@ -73,6 +73,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		resume      *string
 		runs        membershipRunTracker
 		anyVisible  bool
+		anyReadable bool
 	)
 
 	for {
@@ -96,31 +97,50 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			return nil, errors.NewServiceUnavailable("access control check failed", errCheckAccess)
 		}
 
+		pageHits := len(page.Resources)
 		if page.NextSearchAfter != nil {
 			// A page that carries a cursor was full: the searcher hands a
 			// cursor back only when the page held as many hits as asked.
 			// Counting the page size rather than the converted records keeps
 			// the cap a bound on the hits read, even when the searcher
 			// dropped a document it could not convert.
-			recordsRead += searchCriteria.PageSize
-		} else {
-			recordsRead += len(page.Resources)
+			pageHits = searchCriteria.PageSize
 		}
+		recordsRead += pageHits
 		// The organization runs are tracked over every hit, visible or not:
 		// where one organization ends and the next begins is a property of
 		// the index order, not of the caller's visibility.
 		for _, hit := range page.Resources {
 			runs.observe(hit.SortValues)
 		}
+		// The page's raw hits are readable when the caller may see one of
+		// them, or when the searcher dropped hits it could not convert: those
+		// were records the caller may have been allowed to read. A page whose
+		// every hit was withheld by the access check is not.
+		anyVisible = anyVisible || len(visible) > 0
+		anyReadable = anyReadable || len(visible) > 0 || len(page.Resources) < pageHits
 		boundary, canResume := runs.boundary()
 		// Without a boundary, no part of this read can be safely returned.
 		// Count raw hits, not just visible/converted records, so denied or
 		// unconvertible pages cannot make the whole-run extension unbounded.
 		if !canResume && (recordsRead > constants.MaxSummaryRunRecords ||
 			(recordsRead >= constants.MaxSummaryRunRecords && page.NextSearchAfter != nil)) {
+			slog.WarnContext(ctx, "membership summary run did not end within the record ceiling",
+				"scope_tags", searchCriteria.TagsAll,
+				"pages", pages,
+				"records_read", recordsRead,
+				"any_readable", anyReadable,
+			)
+			if !anyReadable {
+				// Every hit so far was withheld from the caller: a scope the
+				// caller cannot see must look exactly like a scope that does
+				// not exist, however large it is, so the read answers as a
+				// miss does: nothing, complete, no continuation.
+				complete = true
+				break
+			}
 			return nil, errors.NewServiceUnavailable("membership summary cannot be read whole within the record ceiling; retrying will not help")
 		}
-		anyVisible = anyVisible || len(visible) > 0
 		for _, resource := range visible {
 			identity := resource.ObjectRef
 			if identity == "" {
@@ -173,7 +193,9 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		}
 		if recordsRead >= s.config.MaxSummaryRecords && canResume && (anyVisible || pages > s.config.DeniedPageWalk) {
 			// The cap is checked after a whole page, so pages are never
-			// split and the cap may be overshot by up to one page. While the
+			// split and the cap may be overshot by up to one page, or by up
+			// to MaxSummaryRunRecords while the first run has no boundary.
+			// While the
 			// caller has seen nothing, the cap yields to the denied-page
 			// walk: the read keeps going as far as the plain search walks
 			// denied pages before it exposes a continuation, so a scope the
@@ -200,7 +222,6 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 				"pages", pages,
 				"records_read", recordsRead,
 				"record_cap", s.config.MaxSummaryRecords,
-				"at_run_boundary", canResume,
 			)
 			break
 		}

@@ -36,7 +36,8 @@ const (
 	// MaxCountAccessPages bounds the configured number of count-walk pages.
 	MaxCountAccessPages = 100
 	// DefaultMaxSummaryRecords is the default cap on membership records read
-	// before a membership summary stops and reports itself incomplete
+	// before the read stops at the next organization boundary and reports
+	// complete: false
 	DefaultMaxSummaryRecords = 5000
 	// MaxSummaryRecordCap is the maximum configurable membership record cap.
 	// Whole-page reads and completion of the first organization run can
@@ -47,15 +48,15 @@ const (
 	// if the run's end cannot be established within this many raw hits,
 	// fail the read rather than return a partial summary.
 	MaxSummaryRunRecords = MaxSummaryRecordCap
+	// MembershipSummaryTokenVersion identifies the whole-run summary read.
+	// Tokens from the unversioned read may point inside a run and must not
+	// be accepted by this version. This does not version other query tokens.
+	MembershipSummaryTokenVersion = 1
 )
 
 // Membership summary scope: the indexed resource type the read covers and the
 // tag prefixes it scopes the read with.
 const (
-	// MembershipSummaryTokenVersion identifies the whole-run summary read.
-	// Tokens from the unversioned read may point inside a run and must not
-	// be accepted by this version. This does not version other query tokens.
-	MembershipSummaryTokenVersion = 1
 	// MembershipResourceType is the indexed type of a membership record
 	MembershipResourceType = "project_membership"
 	// MembershipProjectTagPrefix prefixes the tag carrying a membership record's project UID
