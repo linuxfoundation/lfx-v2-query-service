@@ -55,11 +55,14 @@ type QueryMembershipSummaryResponseBody struct {
 	// Number of membership records folded into the summaries
 	TermsTotal *uint64 `form:"terms_total,omitempty" json:"terms_total,omitempty" xml:"terms_total,omitempty"`
 	// True when every matching membership record was read; false when the read
-	// stopped at the record cap and returned a page_token to continue
+	// stopped early: at an organization boundary after the record cap (then
+	// page_token continues it) or at the hard ceiling with nothing visible (then
+	// no page_token; the read cannot be continued)
 	Complete *bool `form:"complete,omitempty" json:"complete,omitempty" xml:"complete,omitempty"`
-	// Opaque token present when the read stopped at the record cap; pass it back
-	// with the same project_uid and b2b_org_uid to continue at the start of the
-	// next organization run
+	// Opaque token present only when the read stopped at an organization boundary
+	// after the record cap; pass it back with the same project_uid and b2b_org_uid
+	// to continue at the start of the next organization run; absent when the read
+	// is complete or stopped at the ceiling
 	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
 }
 

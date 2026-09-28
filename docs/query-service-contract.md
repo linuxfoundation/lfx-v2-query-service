@@ -306,8 +306,8 @@ read must restart without it.
 | --- | --- | --- |
 | `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Every returned summary covers a whole organization run, never a run cut short by the record cap. Empty when nothing matched or nothing was visible |
 | `terms_total` | always | Membership records folded into the summaries |
-| `complete` | always | `true` when every matching record was read; `false` when the read stopped at an organization boundary after reaching the record cap, so more whole runs remain and `page_token` continues them |
-| `page_token` | when the read stopped at the record cap | Opaque token; pass it back with the same scope to continue at the start of the next organization run. Absent when the read is complete |
+| `complete` | always | `true` when every matching record was read; `false` when the read stopped early: at an organization boundary after reaching the record cap, so more whole runs remain and `page_token` continues them, or at the hard ceiling with nothing visible, when no `page_token` is returned and the read cannot be continued |
+| `page_token` | when the read stopped at an organization boundary after the record cap | Opaque token; pass it back with the same scope to continue at the start of the next organization run. Absent when the read is complete or stopped at the ceiling with nothing visible (see the ceiling paragraph below) |
 | `cache_control` | anonymous callers | Response header, as on the other reads (see [Anonymous vs Authenticated Requests](#anonymous-vs-authenticated-requests)) |
 
 Fields of one summary:

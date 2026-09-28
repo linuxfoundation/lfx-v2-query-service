@@ -296,8 +296,8 @@ var _ = dsl.Service("query-svc", func() {
 			dsl.Attribute("terms_total", dsl.UInt64, "Number of membership records folded into the summaries", func() {
 				dsl.Example(2)
 			})
-			dsl.Attribute("complete", dsl.Boolean, "True when every matching membership record was read; false when the read stopped at the record cap and returned a page_token to continue")
-			dsl.Attribute("page_token", dsl.String, "Opaque token present when the read stopped at the record cap; pass it back with the same project_uid and b2b_org_uid to continue at the start of the next organization run", func() {
+			dsl.Attribute("complete", dsl.Boolean, "True when every matching membership record was read; false when the read stopped early: at an organization boundary after the record cap (then page_token continues it) or at the hard ceiling with nothing visible (then no page_token; the read cannot be continued)")
+			dsl.Attribute("page_token", dsl.String, "Opaque token present only when the read stopped at an organization boundary after the record cap; pass it back with the same project_uid and b2b_org_uid to continue at the start of the next organization run; absent when the read is complete or stopped at the ceiling", func() {
 				dsl.Example("****")
 			})
 			dsl.Attribute("cache_control", dsl.String, "Cache control header", func() {

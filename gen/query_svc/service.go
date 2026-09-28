@@ -192,11 +192,14 @@ type QueryMembershipSummaryResult struct {
 	// Number of membership records folded into the summaries
 	TermsTotal uint64
 	// True when every matching membership record was read; false when the read
-	// stopped at the record cap and returned a page_token to continue
+	// stopped early: at an organization boundary after the record cap (then
+	// page_token continues it) or at the hard ceiling with nothing visible (then
+	// no page_token; the read cannot be continued)
 	Complete bool
-	// Opaque token present when the read stopped at the record cap; pass it back
-	// with the same project_uid and b2b_org_uid to continue at the start of the
-	// next organization run
+	// Opaque token present only when the read stopped at an organization boundary
+	// after the record cap; pass it back with the same project_uid and b2b_org_uid
+	// to continue at the start of the next organization run; absent when the read
+	// is complete or stopped at the ceiling
 	PageToken *string
 	// Cache control header
 	CacheControl *string
