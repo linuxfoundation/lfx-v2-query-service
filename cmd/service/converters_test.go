@@ -1572,6 +1572,28 @@ func TestQuerySvcsrvc_MembershipSummaryPageToken(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(decoded), &issuedPayload))
 	require.Equal(t, float64(constants.MembershipSummaryTokenVersion), issuedPayload["version"],
 		"newly minted tokens carry the current summary read version")
+	issuedCursor, err := json.Marshal(issuedPayload["cursor"])
+	require.NoError(t, err)
+	require.JSONEq(t, after, string(issuedCursor), "the cursor travels under the new key")
+	require.NotContains(t, issuedPayload, "after", "the previous release's cursor key is not emitted")
+
+	t.Run("the previous release's decoder rejects a newly minted token", func(t *testing.T) {
+		// The previous release's payload shape, declared here so it cannot
+		// drift with the current one. Its decoder unmarshals into this
+		// struct, ignores unknown fields such as version, and accepts the
+		// token only when after is non-empty; a new token must therefore
+		// leave after empty so that instance rejects it during a rolling
+		// deployment or a rollback instead of applying the cursor to its
+		// company-name ordering.
+		var previous struct {
+			ProjectUID string          `json:"project_uid,omitempty"`
+			B2BOrgUID  string          `json:"b2b_org_uid,omitempty"`
+			After      json.RawMessage `json:"after"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(decoded), &previous))
+		require.Empty(t, previous.After, "the old decoder sees no cursor and answers its invalid-token 400")
+		require.Equal(t, "proj-1", previous.ProjectUID)
+	})
 
 	whole, err := svc.domainMembershipSummaryToResponse(ctx, &model.MembershipSummaryResult{
 		Summaries: []model.MembershipTermSummary{},
@@ -1639,8 +1661,9 @@ func TestQuerySvcsrvc_MembershipSummaryPageToken(t *testing.T) {
 			message string
 		}{
 			{"previous layout without version", previous, "page_token version is not supported by this summary read; restart the read without it"},
-			{"older version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion - 1, ProjectUID: "proj-1", After: json.RawMessage(after)}, "page_token version is not supported by this summary read; restart the read without it"},
-			{"newer version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion + 1, ProjectUID: "proj-1", After: json.RawMessage(after)}, "page_token version is not supported by this summary read; restart the read without it"},
+			{"older version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion - 1, ProjectUID: "proj-1", Cursor: json.RawMessage(after)}, "page_token version is not supported by this summary read; restart the read without it"},
+			{"newer version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion + 1, ProjectUID: "proj-1", Cursor: json.RawMessage(after)}, "page_token version is not supported by this summary read; restart the read without it"},
+			{"current version without a cursor", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion, ProjectUID: "proj-1"}, "invalid page token"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				token, err := paging.EncodePageToken(tc.payload, global.PageTokenSecret(ctx))

@@ -384,12 +384,17 @@ const errMembershipSummaryTokenVersion = "page_token version is not supported by
 
 // membershipSummaryPageToken is the content of a summary page token: the
 // keyset cursor at the next organization, bound to the scope and summary
-// read version it was issued for.
+// read version it was issued for. The cursor travels under "cursor", not the
+// "after" key the previous release used: that decoder ignores unknown fields
+// and checks only that "after" is present, so during a rolling deployment or
+// a rollback it would otherwise accept a token minted here and apply a
+// parent-ref cursor to its company-name ordering. With "after" absent it
+// rejects the token as carrying no cursor and the read restarts.
 type membershipSummaryPageToken struct {
 	Version    int             `json:"version"`
 	ProjectUID string          `json:"project_uid,omitempty"`
 	B2BOrgUID  string          `json:"b2b_org_uid,omitempty"`
-	After      json.RawMessage `json:"after"`
+	Cursor     json.RawMessage `json:"cursor"`
 }
 
 // payloadToMembershipSummaryCriteria builds the scope of a membership summary
@@ -416,18 +421,26 @@ func (s *querySvcsrvc) payloadToMembershipSummaryCriteria(ctx context.Context, p
 			return model.MembershipSummaryCriteria{}, errPageToken
 		}
 		var token membershipSummaryPageToken
-		if errToken := json.Unmarshal([]byte(decoded), &token); errToken != nil || len(token.After) == 0 {
-			slog.ErrorContext(ctx, "summary page token carries no cursor", "error", errToken)
+		if errToken := json.Unmarshal([]byte(decoded), &token); errToken != nil {
+			slog.ErrorContext(ctx, "summary page token is not a summary token", "error", errToken)
 			return model.MembershipSummaryCriteria{}, errors.NewValidation("invalid page token")
 		}
+		// The version is checked before the cursor: a token from another
+		// release carries its cursor under another key, or none, and the
+		// caller should hear that its version is not supported, not that the
+		// token is malformed.
 		if token.Version != constants.MembershipSummaryTokenVersion {
 			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryTokenVersion)
+		}
+		if len(token.Cursor) == 0 || string(token.Cursor) == "null" {
+			slog.ErrorContext(ctx, "summary page token carries no cursor")
+			return model.MembershipSummaryCriteria{}, errors.NewValidation("invalid page token")
 		}
 		if token.ProjectUID != criteria.ProjectUID || token.B2BOrgUID != criteria.B2BOrgUID {
 			slog.ErrorContext(ctx, "summary page token scope mismatch")
 			return model.MembershipSummaryCriteria{}, errors.NewValidation(errMembershipSummaryPageToken)
 		}
-		after := string(token.After)
+		after := string(token.Cursor)
 		criteria.SearchAfter = &after
 	}
 	return criteria, nil
@@ -452,7 +465,7 @@ func (s *querySvcsrvc) domainMembershipSummaryToResponse(ctx context.Context, re
 			Version:    constants.MembershipSummaryTokenVersion,
 			ProjectUID: criteria.ProjectUID,
 			B2BOrgUID:  criteria.B2BOrgUID,
-			After:      json.RawMessage(*result.SearchAfter),
+			Cursor:     json.RawMessage(*result.SearchAfter),
 		}, global.PageTokenSecret(ctx))
 		if errPageToken != nil {
 			slog.ErrorContext(ctx, "failed to encode summary page token", "error", errPageToken)
