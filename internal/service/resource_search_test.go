@@ -837,6 +837,7 @@ func TestSplitAccessCheckMessage(t *testing.T) {
 		message    string
 		chunkBytes int
 		want       []string
+		wantErr    bool
 	}{
 		{
 			name:       "empty message",
@@ -874,12 +875,30 @@ func TestSplitAccessCheckMessage(t *testing.T) {
 			chunkBytes: 10,
 			want:       []string{"short\n", "this-line-is-longer-than-the-limit-and-unterminated"},
 		},
+		{
+			name:       "a line beyond the hard payload bound is rejected, not sent oversized",
+			message:    "short\n" + strings.Repeat("a", constants.MaxAccessCheckChunkBytes+1) + "\n",
+			chunkBytes: 10,
+			wantErr:    true,
+		},
+		{
+			name:       "an unsplit message beyond the hard payload bound is rejected",
+			message:    strings.Repeat("a", constants.MaxAccessCheckChunkBytes+1),
+			chunkBytes: constants.MaxAccessCheckChunkBytes + 10,
+			wantErr:    true,
+		},
 	}
 
 	assertion := assert.New(t)
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := splitAccessCheckMessage([]byte(tc.message), tc.chunkBytes)
+			got, err := splitAccessCheckMessage([]byte(tc.message), tc.chunkBytes)
+			if tc.wantErr {
+				assertion.Error(err)
+				assertion.Nil(got)
+				return
+			}
+			assertion.NoError(err)
 			gotStrings := make([]string, len(got))
 			for i, chunk := range got {
 				gotStrings[i] = string(chunk)
@@ -984,6 +1003,7 @@ func TestNewResourceSearch(t *testing.T) {
 		// withDefaults fills from DefaultConfig().
 		want := config
 		want.CountRequestTimeout = constants.DefaultCountRequestTimeout
+		want.SearchRequestTimeout = constants.DefaultSearchRequestTimeout
 		want.AccessCheckChunkBytes = constants.DefaultAccessCheckChunkBytes
 		want.AccessCheckRetries = constants.DefaultAccessCheckRetries
 		assertion.Equal(want, result.(*ResourceSearch).config)
@@ -1406,6 +1426,71 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResourceCountQueryResourcesCountDeadline exercises CountRequestTimeout
+// against a dependency that blocks forever without it: the count walk must
+// actually stop at the configured deadline instead of hanging on the
+// access-check round trip, and the resulting error must classify as a
+// ServiceUnavailable wrapping context.DeadlineExceeded so the HTTP boundary
+// (cmd/service/error.go) maps it the same way it maps a bare deadline.
+func TestResourceCountQueryResourcesCountDeadline(t *testing.T) {
+	assertion := assert.New(t)
+
+	searcher := mock.NewMockResourceSearcher()
+	searcher.ClearResources()
+	searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"project_uid:P1"}}, false))
+
+	accessChecker := mock.NewMockAccessControlChecker()
+	accessChecker.SetCheckAccessBlocking()
+
+	config := DefaultConfig()
+	config.CountRequestTimeout = 20 * time.Millisecond
+	search := newTestResourceSearchWithConfig(t, searcher, accessChecker, config)
+
+	ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+
+	start := time.Now()
+	result, err := search.QueryResourcesCount(ctx, model.SearchCriteria{PageSize: -1, PublicOnly: true}, model.SearchCriteria{PrivateOnly: true}, model.CountAggregation{})
+	elapsed := time.Since(start)
+
+	assertion.Error(err)
+	assertion.Nil(result)
+	assertion.Less(elapsed, 5*time.Second, "the walk must stop at the configured deadline, not hang")
+
+	var unavailable errors.ServiceUnavailable
+	assertion.True(stderrors.As(err, &unavailable), "deadline exceeded during the walk must classify as service unavailable")
+	assertion.True(stderrors.Is(err, context.DeadlineExceeded), "the underlying cause must still be reachable via errors.Is")
+}
+
+// TestResourceSearchQueryResourcesDeadline exercises SearchRequestTimeout
+// against a dependency that blocks forever without it: QueryResources must
+// stop at the configured deadline instead of hanging on the access-check
+// round trip.
+func TestResourceSearchQueryResourcesDeadline(t *testing.T) {
+	assertion := assert.New(t)
+
+	searcher := mock.NewMockResourceSearcher()
+	searcher.ClearResources()
+	searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"project_uid:P1"}}, false))
+
+	accessChecker := mock.NewMockAccessControlChecker()
+	accessChecker.SetCheckAccessBlocking()
+
+	config := DefaultConfig()
+	config.SearchRequestTimeout = 20 * time.Millisecond
+	search := newTestResourceSearchWithConfig(t, searcher, accessChecker, config)
+
+	ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+
+	start := time.Now()
+	result, err := search.QueryResources(ctx, model.SearchCriteria{Tags: []string{"project_uid:P1"}})
+	elapsed := time.Since(start)
+
+	assertion.Error(err)
+	assertion.Nil(result)
+	assertion.Less(elapsed, 5*time.Second, "QueryResources must stop at the configured deadline, not hang")
+	assertion.True(stderrors.Is(err, context.DeadlineExceeded), "the underlying cause must still be reachable via errors.Is")
 }
 
 func TestAccessBucketWalkPagesAndCaps(t *testing.T) {

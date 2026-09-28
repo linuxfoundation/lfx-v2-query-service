@@ -68,6 +68,12 @@ type Config struct {
 	// on top of (not instead of) each individual call's own timeout
 	// (1..constants.MaxCountRequestTimeout).
 	CountRequestTimeout time.Duration
+	// SearchRequestTimeout bounds the total wall-clock time QueryResources
+	// may spend across every round-trip it issues, including every raw page
+	// fetched by the denied-page walk and every (possibly chunked and
+	// retried) access-check batch, on top of (not instead of) each
+	// individual call's own timeout (1..constants.MaxSearchRequestTimeout).
+	SearchRequestTimeout time.Duration
 	// AccessCheckChunkBytes is the soft ceiling on the size of a single
 	// batched access-check message sent to fga-sync; larger messages are
 	// split into chunks no bigger than this before sending
@@ -93,6 +99,7 @@ func DefaultConfig() Config {
 		MaxSummaryRecords:     constants.DefaultMaxSummaryRecords,
 		DeniedPageWalk:        constants.DefaultDeniedPageWalk,
 		CountRequestTimeout:   constants.DefaultCountRequestTimeout,
+		SearchRequestTimeout:  constants.DefaultSearchRequestTimeout,
 		AccessCheckChunkBytes: constants.DefaultAccessCheckChunkBytes,
 		AccessCheckRetries:    constants.DefaultAccessCheckRetries,
 	}
@@ -121,6 +128,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.CountRequestTimeout == 0 {
 		c.CountRequestTimeout = defaults.CountRequestTimeout
+	}
+	if c.SearchRequestTimeout == 0 {
+		c.SearchRequestTimeout = defaults.SearchRequestTimeout
 	}
 	if c.AccessCheckChunkBytes == 0 {
 		c.AccessCheckChunkBytes = defaults.AccessCheckChunkBytes
@@ -164,6 +174,9 @@ func (c Config) Validate() error {
 	if c.CountRequestTimeout <= 0 || c.CountRequestTimeout > constants.MaxCountRequestTimeout {
 		return fmt.Errorf("count request timeout must be between 1ns and %s, got %s", constants.MaxCountRequestTimeout, c.CountRequestTimeout)
 	}
+	if c.SearchRequestTimeout <= 0 || c.SearchRequestTimeout > constants.MaxSearchRequestTimeout {
+		return fmt.Errorf("search request timeout must be between 1ns and %s, got %s", constants.MaxSearchRequestTimeout, c.SearchRequestTimeout)
+	}
 	if c.AccessCheckChunkBytes < 1 || c.AccessCheckChunkBytes > constants.MaxAccessCheckChunkBytes {
 		return fmt.Errorf("access check chunk bytes must be between 1 and %d, got %d", constants.MaxAccessCheckChunkBytes, c.AccessCheckChunkBytes)
 	}
@@ -190,6 +203,16 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		"type", criteria.ResourceType,
 		"parent", criteria.Parent,
 	)
+
+	// Each round trip this method issues (the raw OpenSearch query and the
+	// batched, possibly chunked and retried, access check) has its own
+	// timeout, but nothing else bounds the total time across all of them —
+	// the denied-page walk can issue many such round trips. Bound the whole
+	// handler so a worst-case walk fails fast instead of running unbounded,
+	// mirroring QueryResourcesCount's CountRequestTimeout.
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, s.config.SearchRequestTimeout)
+	defer cancel()
 
 	// It seems that Goa v3 does not natively support complex conditional validations
 	// like “at least one of these fields must be set"
@@ -449,37 +472,48 @@ func (s *ResourceSearch) BuildMessage(ctx context.Context, principal string, res
 // lines, one check per line) into chunks no larger than chunkBytes, so a
 // large batch built from a big result page stays comfortably under NATS'
 // default max payload. A single line larger than chunkBytes is kept whole in
-// its own chunk rather than split mid-line.
-func splitAccessCheckMessage(message []byte, chunkBytes int) [][]byte {
+// its own chunk rather than split mid-line, but never past
+// constants.MaxAccessCheckChunkBytes (NATS' default max payload): a line
+// beyond that hard bound is rejected with an error instead of attempted as
+// an oversized publish, regardless of how small the configured chunkBytes
+// is.
+func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 	if len(message) == 0 {
-		return nil
+		return nil, nil
 	}
-	if chunkBytes <= 0 || len(message) <= chunkBytes {
-		return [][]byte{message}
+	if chunkBytes <= 0 {
+		chunkBytes = len(message)
 	}
 
 	var chunks [][]byte
 	start := 0
 	for start < len(message) {
 		end := start + chunkBytes
-		if end >= len(message) {
-			chunks = append(chunks, message[start:])
-			break
+		switch {
+		case end >= len(message):
+			end = len(message)
+		default:
+			if lastNL := bytes.LastIndexByte(message[start:end], '\n'); lastNL >= 0 {
+				end = start + lastNL + 1
+			} else if nextNL := bytes.IndexByte(message[end:], '\n'); nextNL >= 0 {
+				// The line starting at `start` is itself larger than
+				// chunkBytes; take it whole rather than split it.
+				end += nextNL + 1
+			} else {
+				end = len(message)
+			}
 		}
-		if lastNL := bytes.LastIndexByte(message[start:end], '\n'); lastNL >= 0 {
-			end = start + lastNL + 1
-		} else if nextNL := bytes.IndexByte(message[end:], '\n'); nextNL >= 0 {
-			// The line starting at `start` is itself larger than chunkBytes;
-			// take it whole rather than split it.
-			end += nextNL + 1
-		} else {
-			chunks = append(chunks, message[start:])
-			break
+		chunk := message[start:end]
+		if len(chunk) > constants.MaxAccessCheckChunkBytes {
+			return nil, fmt.Errorf(
+				"access check line of %d bytes exceeds the hard limit of %d bytes; refusing to send an oversized request",
+				len(chunk), constants.MaxAccessCheckChunkBytes,
+			)
 		}
-		chunks = append(chunks, message[start:end])
+		chunks = append(chunks, chunk)
 		start = end
 	}
-	return chunks
+	return chunks, nil
 }
 
 // sendAccessCheckBatch splits message into chunks bounded by
@@ -491,7 +525,12 @@ func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byt
 		return responses, nil
 	}
 
-	for _, chunk := range splitAccessCheckMessage(message, s.config.AccessCheckChunkBytes) {
+	chunks, errSplit := splitAccessCheckMessage(message, s.config.AccessCheckChunkBytes)
+	if errSplit != nil {
+		return nil, errSplit
+	}
+
+	for _, chunk := range chunks {
 		chunk = bytes.TrimSuffix(chunk, []byte("\n"))
 		if len(chunk) == 0 {
 			continue

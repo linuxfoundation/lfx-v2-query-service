@@ -34,7 +34,11 @@ import (
 //   - SEARCH_DENIED_PAGE_WALK (default 10)  extra raw pages fetched when a page has no visible resource (1..25)
 //   - UNSATISFIABLE_FILTER_REJECTION (default true) reject absent indexed filter dimensions on zero results
 //   - COUNT_REQUEST_TIMEOUT  (default 30s)  total deadline across every round-trip QueryResourcesCount issues
-//   - ACCESS_CHECK_CHUNK_BYTES (default 512KiB) soft ceiling on a single batched access-check message
+//   - SEARCH_REQUEST_TIMEOUT (default 30s)  total deadline across every round-trip QueryResources issues,
+//     including the denied-page walk
+//   - ACCESS_CHECK_CHUNK_BYTES (default 524288, i.e. 512KiB) soft ceiling, in bytes, on a single batched
+//     access-check message; a single check line beyond constants.MaxAccessCheckChunkBytes (1MiB, NATS'
+//     default max payload) is always rejected regardless of this setting
 //   - ACCESS_CHECK_RETRIES   (default 1)    retries for a single access-check chunk that fails outright;
 //     0 is not currently distinguishable from "unset" and still yields the default of 1
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
@@ -48,6 +52,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config.DeniedPageWalk = envInt("SEARCH_DENIED_PAGE_WALK", constants.DefaultDeniedPageWalk)
 	config.DisableUnsatisfiableFilterRejection = !envBool("UNSATISFIABLE_FILTER_REJECTION", true)
 	config.CountRequestTimeout = envDuration("COUNT_REQUEST_TIMEOUT", config.CountRequestTimeout)
+	config.SearchRequestTimeout = envDuration("SEARCH_REQUEST_TIMEOUT", config.SearchRequestTimeout)
 	config.AccessCheckChunkBytes = envInt("ACCESS_CHECK_CHUNK_BYTES", config.AccessCheckChunkBytes)
 	config.AccessCheckRetries = envInt("ACCESS_CHECK_RETRIES", config.AccessCheckRetries)
 
@@ -64,6 +69,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 		"search_denied_page_walk", config.DeniedPageWalk,
 		"unsatisfiable_filter_rejection", !config.DisableUnsatisfiableFilterRejection,
 		"count_request_timeout", config.CountRequestTimeout,
+		"search_request_timeout", config.SearchRequestTimeout,
 		"access_check_chunk_bytes", config.AccessCheckChunkBytes,
 		"access_check_retries", config.AccessCheckRetries,
 	)

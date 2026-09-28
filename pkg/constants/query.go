@@ -61,6 +61,18 @@ const (
 	DefaultCountRequestTimeout = 30 * time.Second
 	// MaxCountRequestTimeout is the maximum configurable count-request deadline.
 	MaxCountRequestTimeout = 5 * time.Minute
+	// DefaultSearchRequestTimeout bounds the total wall-clock time
+	// QueryResources may spend across every round-trip it issues to satisfy
+	// one request: the denied-page walk's raw OpenSearch queries plus each
+	// page's batched (possibly chunked and retried) access check.
+	// Individual calls have their own timeouts, but nothing else bounds the
+	// sum, so a page whose access checks are chunked into many small NATS
+	// round trips (a small ACCESS_CHECK_CHUNK_BYTES) or that retries
+	// repeatedly (ACCESS_CHECK_RETRIES) could otherwise run for a very long
+	// time; this deadline fails the whole request fast instead.
+	DefaultSearchRequestTimeout = 30 * time.Second
+	// MaxSearchRequestTimeout is the maximum configurable search-request deadline.
+	MaxSearchRequestTimeout = 5 * time.Minute
 	// DefaultAccessCheckChunkBytes is the default soft ceiling on the size of
 	// a single batched access-check message sent to fga-sync over NATS. A
 	// message built from a large result page is split into chunks no bigger

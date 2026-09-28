@@ -33,6 +33,7 @@ type MockAccessControlChecker struct {
 	checkAccessTransientErr   error
 	checkAccessTransientUntil int
 	checkAccessCalls          int
+	checkAccessBlock          bool
 	recordMessages            bool
 	checkAccessMessages       []string
 	isReadyError              error
@@ -56,6 +57,14 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 		// Kept for the tests that assert on the batched message; a mock
 		// wired as the process access checker retains nothing.
 		m.checkAccessMessages = append(m.checkAccessMessages, string(data))
+	}
+
+	// A test simulating a hung fga-sync round trip: block until the caller's
+	// context is cancelled or its deadline expires, then surface that as the
+	// call's error, the way a real NATS request bounded by ctx would.
+	if m.checkAccessBlock {
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 
 	// If test has set a mock error, return it (on every call, or from the
@@ -254,6 +263,13 @@ func (m *MockAccessControlChecker) SetCheckAccessErrorOnCall(n int, err error) {
 func (m *MockAccessControlChecker) SetCheckAccessTransientError(n int, err error) {
 	m.checkAccessTransientErr = err
 	m.checkAccessTransientUntil = n
+}
+
+// SetCheckAccessBlocking makes CheckAccess block until its context is done
+// (cancelled or past its deadline), then return ctx.Err(), simulating a
+// fga-sync round trip that never returns in time.
+func (m *MockAccessControlChecker) SetCheckAccessBlocking() {
+	m.checkAccessBlock = true
 }
 
 // RecordCheckAccessMessages makes the mock keep the batched message of each
