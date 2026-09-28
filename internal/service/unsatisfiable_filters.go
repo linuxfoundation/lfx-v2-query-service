@@ -114,8 +114,10 @@ func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (b
 	c.sent++
 	carried, err := c.searcher.TypeCarries(ctx, c.resourceType, probe)
 	if err != nil {
-		if ctx.Err() != nil {
-			return false, fmt.Errorf("indexed filter support check cancelled: %w", err)
+		if cause := ctx.Err(); cause != nil {
+			// The caller's cancellation is the error that passes through;
+			// the transport error the searcher saw travels with it.
+			return false, fmt.Errorf("indexed filter support check cancelled: %w (%w)", cause, err)
 		}
 		slog.ErrorContext(ctx, "indexed filter support probe failed; returning the ordinary empty result",
 			"error", err,

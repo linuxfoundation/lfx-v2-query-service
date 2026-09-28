@@ -266,16 +266,43 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 }
 
 func TestUnsatisfiableFiltersCancelledProbeIsNotUnavailable(t *testing.T) {
-	searcher := mock.NewMockResourceSearcher()
-	searcher.SetTypeCarries("committee", model.CarrierProbe{Kind: model.AnyDocument}, false, context.Canceled)
-	searcher.SetQueryResourcePages(&model.SearchResult{})
-	svc := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
-	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), constants.PrincipalContextID, "caller"))
-	cancel()
-	_, err := svc.QueryResources(ctx, model.SearchCriteria{ResourceType: stringPtr("committee"), Parent: stringPtr("project:value")})
-	require.ErrorIs(t, err, context.Canceled)
-	var unavailable errors.ServiceUnavailable
-	assert.False(t, stderrors.As(err, &unavailable))
+	transport := stderrors.New("connection reset by the search backend")
+	for _, route := range []string{"search", "count"} {
+		for _, tc := range []struct {
+			name       string
+			probeError error
+		}{
+			{"searcher reports the cancellation", context.Canceled},
+			{"searcher reports a transport error", transport},
+		} {
+			t.Run(route+"/"+tc.name, func(t *testing.T) {
+				searcher := mock.NewMockResourceSearcher()
+				searcher.SetTypeCarries("committee", model.CarrierProbe{Kind: model.AnyDocument}, false, tc.probeError)
+				searcher.SetQueryResourcePages(&model.SearchResult{})
+				searcher.SetCountPublicResponse(0)
+				searcher.SetAccessBucketPages(&model.AccessBucketPage{})
+				logs := captureLogs(t)
+				svc := newTestResourceSearch(t, searcher, mock.NewMockAccessControlChecker())
+				ctx, cancel := context.WithCancel(context.WithValue(context.Background(), constants.PrincipalContextID, "caller"))
+				cancel()
+				criteria := model.SearchCriteria{ResourceType: stringPtr("committee"), Parent: stringPtr("project:value")}
+				var err error
+				if route == "search" {
+					_, err = svc.QueryResources(ctx, criteria)
+				} else {
+					_, err = svc.QueryResourcesCount(ctx, criteria, criteria, model.CountAggregation{})
+				}
+				require.ErrorIs(t, err, context.Canceled, "the caller's cancellation passes through")
+				require.ErrorIs(t, err, tc.probeError, "the searcher's error travels with it")
+				var unavailable errors.ServiceUnavailable
+				assert.False(t, stderrors.As(err, &unavailable))
+				var validation errors.Validation
+				assert.False(t, stderrors.As(err, &validation))
+				assert.NotContains(t, logs.String(), "probe failed", "a cancellation is not a failed probe")
+				assert.Len(t, searcher.CarrierProbeCalls(), 1)
+			})
+		}
+	}
 }
 
 func TestUnsatisfiableFiltersCountAggregation(t *testing.T) {
