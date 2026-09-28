@@ -255,7 +255,11 @@ those of the same project, and ref-less records form the last run. If the cap
 falls inside the first run, the read continues until a boundary appears or the
 pages run out, returning whole runs rather than partial summaries. If neither a resumable
 boundary nor end-of-results can be established within the hard ceiling of
-50000 raw hits, the read fails with `503` and no summaries.
+50000 raw hits, the read fails with `503` and no summaries when visible rows
+were already read; when none were, it returns `200` with empty summaries,
+`complete: false` and no `page_token`, the same shape as any truncated read.
+The flag can tell a scope larger than the ceiling from an empty one, never
+which records or how many.
 
 A `page_token` is accepted only from the same version of the summary read; a
 token from any other version, older or newer, is rejected with `400` and the

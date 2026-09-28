@@ -73,7 +73,6 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		resume      *string
 		runs        membershipRunTracker
 		anyVisible  bool
-		anyReadable bool
 	)
 
 	for {
@@ -113,12 +112,7 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 		for _, hit := range page.Resources {
 			runs.observe(hit.SortValues)
 		}
-		// The page's raw hits are readable when the caller may see one of
-		// them, or when the searcher dropped hits it could not convert: those
-		// were records the caller may have been allowed to read. A page whose
-		// every hit was withheld by the access check is not.
 		anyVisible = anyVisible || len(visible) > 0
-		anyReadable = anyReadable || len(visible) > 0 || len(page.Resources) < pageHits
 		boundary, canResume := runs.boundary()
 		// Without a boundary, no part of this read can be safely returned.
 		// Count raw hits, not just visible/converted records, so denied or
@@ -129,14 +123,17 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 				"scope_tags", searchCriteria.TagsAll,
 				"pages", pages,
 				"records_read", recordsRead,
-				"any_readable", anyReadable,
+				"any_visible", anyVisible,
 			)
-			if !anyReadable {
-				// Every hit so far was withheld from the caller: a scope the
-				// caller cannot see must look exactly like a scope that does
-				// not exist, however large it is, so the read answers as a
-				// miss does: nothing, complete, no continuation.
-				complete = true
+			if !anyVisible {
+				// The caller has seen nothing so far. Access to membership
+				// records is per record, so visible ones may still lie past
+				// the ceiling: a scope the caller cannot see beyond the
+				// ceiling answers as any other truncated read does, nothing
+				// visible, not complete, no continuation. The flag alone can
+				// tell a scope larger than the ceiling from an empty one,
+				// never which records or how many.
+				complete = false
 				break
 			}
 			return nil, errors.NewServiceUnavailable("membership summary cannot be read whole within the record ceiling; retrying will not help")

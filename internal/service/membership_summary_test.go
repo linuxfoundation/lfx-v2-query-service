@@ -917,18 +917,18 @@ func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
 			require.NoError(t, err)
 			result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{B2BOrgUID: "org-1"})
 			require.Len(t, searcher.cursors, constants.MaxSummaryRunRecords/constants.MaxPageSize)
-			if mode == "denied" {
-				// Every hit was withheld: a huge scope the caller cannot see
-				// must look exactly like a scope that does not exist.
+			if mode != "visible" {
+				// The caller saw nothing: access is per record, so visible
+				// records may lie past the ceiling. The read answers as any
+				// truncated read does and never claims completeness.
 				require.NoError(t, err)
-				require.True(t, result.Complete)
+				require.False(t, result.Complete)
 				require.Nil(t, result.SearchAfter)
 				require.Empty(t, result.Summaries)
 				require.Zero(t, result.TermsTotal)
 				return
 			}
-			// The caller saw records it may read (converted and visible, or
-			// hits the searcher could not convert), so a run that cannot be
+			// The caller already saw visible rows, so a run that cannot be
 			// finished is an error, never a partial summary.
 			var unavailable pkgerrors.ServiceUnavailable
 			require.ErrorAs(t, err, &unavailable)

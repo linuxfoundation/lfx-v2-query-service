@@ -383,9 +383,18 @@ normalizes them.
    This extension has a hard ceiling of 50000 raw hits, reusing the maximum
    accepted `SUMMARY_MAX_RECORDS` value without adding configuration. If no
    resumable boundary or end-of-results can be established within that
-   ceiling, the read returns `503` with no summaries. A full page at the
-   ceiling that still carries a cursor cannot establish the end of the run
-   and fails too. Denied and unconvertible hits count toward the ceiling.
+   ceiling, the outcome depends on what the caller has seen. With visible
+   rows already read, the read returns `503` with no summaries: a summary is
+   never returned as if whole while part of it is unknown. With none, it
+   returns `200` with empty summaries, `complete: false` and no `page_token`,
+   the same shape as any truncated read: access to membership records is per
+   record, so visible records may lie past the ceiling and the read never
+   claims completeness there. The flag can tell a scope larger than the
+   ceiling from an empty one, never which records or how many. A scope the
+   walk actually exhausted reports `complete: true`, visible records or not.
+   A full page at the ceiling that still carries a cursor cannot establish
+   the end of the run and is treated the same way. Denied and unconvertible
+   hits count toward the ceiling.
    Different spellings or names on one organization's records do not split
    its summaries across reads. A continued read is not a snapshot: like the
    pages of the plain search, each call queries the live index, so a record
