@@ -27,9 +27,13 @@ import (
 // folds only whole runs, leaves out the trailing run, and returns the cursor
 // that resumes at its start. If the cap falls inside the first run, the read
 // continues until a boundary appears or the pages run out. If neither happens
-// within constants.MaxSummaryRunRecords raw hits, the read fails rather than
-// returning a partial run. A failed access check also fails the whole read:
-// a summary is never returned as if whole while part of it is unknown.
+// within constants.MaxSummaryRunRecords raw hits, the outcome depends on what
+// the caller has seen: after visible rows were read, the read fails with the
+// unavailable error rather than returning a partial run; with none, it
+// returns an empty result with Complete false and no cursor, since access is
+// per record and visible records may lie past the ceiling. A failed access
+// check also fails the whole read: a summary is never returned as if whole
+// while part of it is unknown.
 func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria model.MembershipSummaryCriteria) (*model.MembershipSummaryResult, error) {
 
 	started := time.Now()
