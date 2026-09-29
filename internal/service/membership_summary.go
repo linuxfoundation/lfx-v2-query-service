@@ -38,6 +38,17 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 
 	started := time.Now()
 
+	// Each page this method reads issues a raw OpenSearch query plus a
+	// batched (possibly chunked and retried) access check, each with its
+	// own timeout, but nothing else bounds the total time across every
+	// page. Bound the whole read so a scope with many pages, or a page
+	// whose access checks are chunked into many small NATS round trips,
+	// fails fast instead of running unbounded, mirroring QueryResources'
+	// SearchRequestTimeout.
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, s.config.SummaryRequestTimeout)
+	defer cancel()
+
 	// As on the plain search, Goa cannot express "at least one of these
 	// fields must be set", so the scope is checked here as well as at the
 	// transport boundary: an unscoped read would drain every membership

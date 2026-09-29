@@ -8,6 +8,7 @@ import (
 	stderrors "errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -623,6 +624,41 @@ func TestResourceSearchQueryMembershipSummary(t *testing.T) {
 		require.ErrorAs(t, err, &validation)
 		require.Nil(t, result)
 	})
+}
+
+// TestResourceSearchQueryMembershipSummaryDeadline exercises
+// SummaryRequestTimeout against a dependency that blocks forever without it:
+// QueryMembershipSummary must stop at the configured deadline instead of
+// hanging on the access-check round trip, mirroring
+// TestResourceSearchQueryResourcesDeadline for the plain search.
+func TestResourceSearchQueryMembershipSummaryDeadline(t *testing.T) {
+	searcher := mock.NewMockResourceSearcher()
+	searcher.SetQueryResourcePages(
+		membershipPage(nil, membershipRecord("m-1", map[string]any{
+			"uid": "m-1", "b2b_org_uid": "org-1", "company_name": "Example Corp",
+			"project_uid": "proj-1", "project_slug": "example-project",
+			"status": "Active", "tier_name": "Gold",
+			"start_date": "2023-01-01T00:00:00Z", "created_at": "2023-01-02T00:00:00Z",
+		})),
+	)
+
+	accessChecker := mock.NewMockAccessControlChecker()
+	accessChecker.SetCheckAccessBlocking()
+
+	config := DefaultConfig()
+	config.SummaryRequestTimeout = 20 * time.Millisecond
+	service := newTestResourceSearchWithConfig(t, searcher, accessChecker, config)
+
+	start := time.Now()
+	result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{
+		B2BOrgUID: "org-1",
+	})
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Less(t, elapsed, 5*time.Second, "QueryMembershipSummary must stop at the configured deadline, not hang")
+	require.True(t, stderrors.Is(err, context.DeadlineExceeded), "the underlying cause must still be reachable via errors.Is")
 }
 
 func TestConfigValidateSummaryRecordCap(t *testing.T) {

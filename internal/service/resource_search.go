@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -74,6 +75,12 @@ type Config struct {
 	// retried) access-check batch, on top of (not instead of) each
 	// individual call's own timeout (1..constants.MaxSearchRequestTimeout).
 	SearchRequestTimeout time.Duration
+	// SummaryRequestTimeout bounds the total wall-clock time
+	// QueryMembershipSummary may spend across every round-trip it issues,
+	// including every raw page it reads and every (possibly chunked and
+	// retried) access-check batch, on top of (not instead of) each
+	// individual call's own timeout (1..constants.MaxSummaryRequestTimeout).
+	SummaryRequestTimeout time.Duration
 	// AccessCheckChunkBytes is the soft ceiling on the size of a single
 	// batched access-check message sent to fga-sync; larger messages are
 	// split into chunks no bigger than this before sending
@@ -100,6 +107,7 @@ func DefaultConfig() Config {
 		DeniedPageWalk:        constants.DefaultDeniedPageWalk,
 		CountRequestTimeout:   constants.DefaultCountRequestTimeout,
 		SearchRequestTimeout:  constants.DefaultSearchRequestTimeout,
+		SummaryRequestTimeout: constants.DefaultSummaryRequestTimeout,
 		AccessCheckChunkBytes: constants.DefaultAccessCheckChunkBytes,
 		AccessCheckRetries:    constants.DefaultAccessCheckRetries,
 	}
@@ -131,6 +139,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.SearchRequestTimeout == 0 {
 		c.SearchRequestTimeout = defaults.SearchRequestTimeout
+	}
+	if c.SummaryRequestTimeout == 0 {
+		c.SummaryRequestTimeout = defaults.SummaryRequestTimeout
 	}
 	if c.AccessCheckChunkBytes == 0 {
 		c.AccessCheckChunkBytes = defaults.AccessCheckChunkBytes
@@ -176,6 +187,9 @@ func (c Config) Validate() error {
 	}
 	if c.SearchRequestTimeout <= 0 || c.SearchRequestTimeout > constants.MaxSearchRequestTimeout {
 		return fmt.Errorf("search request timeout must be between 1ns and %s, got %s", constants.MaxSearchRequestTimeout, c.SearchRequestTimeout)
+	}
+	if c.SummaryRequestTimeout <= 0 || c.SummaryRequestTimeout > constants.MaxSummaryRequestTimeout {
+		return fmt.Errorf("summary request timeout must be between 1ns and %s, got %s", constants.MaxSummaryRequestTimeout, c.SummaryRequestTimeout)
 	}
 	if c.AccessCheckChunkBytes < 1 || c.AccessCheckChunkBytes > constants.MaxAccessCheckChunkBytes {
 		return fmt.Errorf("access check chunk bytes must be between 1 and %d, got %d", constants.MaxAccessCheckChunkBytes, c.AccessCheckChunkBytes)
@@ -468,51 +482,70 @@ func (s *ResourceSearch) BuildMessage(ctx context.Context, principal string, res
 	return accessCheckMessage
 }
 
+// accessCheckResponseOverhead is the largest amount by which a response line
+// can exceed its request line: the request line is "<object>#<relation>@user:<principal>\n"
+// and the response line replaces the trailing "\n" with "\tfalse" (6 bytes),
+// the longer of the two possible values ("\ttrue" is 5).
+const accessCheckResponseOverhead = len("\tfalse") - len("\n")
+
 // splitAccessCheckMessage splits an access-check message (newline-terminated
-// lines, one check per line) into chunks no larger than chunkBytes, so a
-// large batch built from a big result page stays comfortably under NATS'
-// default max payload. A single line larger than chunkBytes is kept whole in
-// its own chunk rather than split mid-line, but never past
-// constants.MaxAccessCheckChunkBytes (NATS' default max payload): a line
-// beyond that hard bound is rejected with an error instead of attempted as
-// an oversized publish, regardless of how small the configured chunkBytes
-// is.
+// lines, one check per line) into chunks whose projected worst-case response
+// size is no larger than chunkBytes, so a large batch built from a big result
+// page stays comfortably under NATS' default max payload on the way back,
+// not just on the way out: each response line is up to
+// accessCheckResponseOverhead bytes longer than its request line
+// (internal/infrastructure/nats/client.go formats each as
+// "<key>\t<true|false>"). A single line whose projected response is larger
+// than chunkBytes is kept whole in its own chunk rather than split mid-line,
+// but never past constants.MaxAccessCheckChunkBytes (NATS' default max
+// payload): a line beyond that hard bound is rejected with an error instead
+// of attempted as an oversized publish, regardless of how small the
+// configured chunkBytes is.
 func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 	if len(message) == 0 {
 		return nil, nil
 	}
 	if chunkBytes <= 0 {
-		chunkBytes = len(message)
+		// "Never split" — the response-overhead-aware budget below always
+		// exceeds len(message), so that can no longer stand in for
+		// unlimited the way it did in the raw-byte-budget version.
+		chunkBytes = math.MaxInt
 	}
 
 	var chunks [][]byte
-	start := 0
-	for start < len(message) {
-		end := start + chunkBytes
-		switch {
-		case end >= len(message):
-			end = len(message)
-		default:
-			if lastNL := bytes.LastIndexByte(message[start:end], '\n'); lastNL >= 0 {
-				end = start + lastNL + 1
-			} else if nextNL := bytes.IndexByte(message[end:], '\n'); nextNL >= 0 {
-				// The line starting at `start` is itself larger than
-				// chunkBytes; take it whole rather than split it.
-				end += nextNL + 1
-			} else {
-				end = len(message)
-			}
+	pos := 0
+	chunkStart := 0
+	chunkProjected := 0
+	for pos < len(message) {
+		nextNL := bytes.IndexByte(message[pos:], '\n')
+		if nextNL < 0 {
+			// Malformed input with no trailing newline: treat the rest as
+			// one final line.
+			nextNL = len(message) - pos - 1
 		}
-		chunk := message[start:end]
-		if len(chunk) > constants.MaxAccessCheckChunkBytes {
+		lineEnd := pos + nextNL + 1
+		lineProjected := (lineEnd - pos) + accessCheckResponseOverhead
+
+		if chunkStart < pos && chunkProjected+lineProjected > chunkBytes {
+			// Adding this line would exceed the chunk's projected response
+			// budget, and the chunk already holds at least one line: close
+			// it here and start a new one at this line.
+			chunks = append(chunks, message[chunkStart:pos])
+			chunkStart = pos
+			chunkProjected = 0
+		}
+
+		if lineProjected > constants.MaxAccessCheckChunkBytes {
 			return nil, fmt.Errorf(
-				"access check line of %d bytes exceeds the hard limit of %d bytes; refusing to send an oversized request",
-				len(chunk), constants.MaxAccessCheckChunkBytes,
+				"access check line of %d bytes has a projected response of %d bytes, exceeding the hard limit of %d bytes; refusing to send an oversized request",
+				lineEnd-pos, lineProjected, constants.MaxAccessCheckChunkBytes,
 			)
 		}
-		chunks = append(chunks, chunk)
-		start = end
+
+		chunkProjected += lineProjected
+		pos = lineEnd
 	}
+	chunks = append(chunks, message[chunkStart:pos])
 	return chunks, nil
 }
 

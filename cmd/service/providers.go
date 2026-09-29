@@ -36,6 +36,7 @@ import (
 //   - COUNT_REQUEST_TIMEOUT  (default 30s)  total deadline across every round-trip QueryResourcesCount issues
 //   - SEARCH_REQUEST_TIMEOUT (default 30s)  total deadline across every round-trip QueryResources issues,
 //     including the denied-page walk
+//   - SUMMARY_REQUEST_TIMEOUT (default 30s) total deadline across every round-trip QueryMembershipSummary issues
 //   - ACCESS_CHECK_CHUNK_BYTES (default 524288, i.e. 512KiB) soft ceiling, in bytes, on a single batched
 //     access-check message; a single check line beyond constants.MaxAccessCheckChunkBytes (1MiB, NATS'
 //     default max payload) is always rejected regardless of this setting
@@ -53,6 +54,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 	config.DisableUnsatisfiableFilterRejection = !envBool("UNSATISFIABLE_FILTER_REJECTION", true)
 	config.CountRequestTimeout = envDuration("COUNT_REQUEST_TIMEOUT", config.CountRequestTimeout)
 	config.SearchRequestTimeout = envDuration("SEARCH_REQUEST_TIMEOUT", config.SearchRequestTimeout)
+	config.SummaryRequestTimeout = envDuration("SUMMARY_REQUEST_TIMEOUT", config.SummaryRequestTimeout)
 	config.AccessCheckChunkBytes = envInt("ACCESS_CHECK_CHUNK_BYTES", config.AccessCheckChunkBytes)
 	config.AccessCheckRetries = envInt("ACCESS_CHECK_RETRIES", config.AccessCheckRetries)
 
@@ -70,6 +72,7 @@ func ResourceSearchConfigImpl(ctx context.Context) service.Config {
 		"unsatisfiable_filter_rejection", !config.DisableUnsatisfiableFilterRejection,
 		"count_request_timeout", config.CountRequestTimeout,
 		"search_request_timeout", config.SearchRequestTimeout,
+		"summary_request_timeout", config.SummaryRequestTimeout,
 		"access_check_chunk_bytes", config.AccessCheckChunkBytes,
 		"access_check_retries", config.AccessCheckRetries,
 	)

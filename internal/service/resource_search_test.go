@@ -858,10 +858,20 @@ func TestSplitAccessCheckMessage(t *testing.T) {
 			want:       []string{"a#b@user:u\nc#d@user:u\n"},
 		},
 		{
+			// Each line's projected response ("aaaa\n" -> "aaaa\tfalse", 10
+			// bytes) already saturates chunkBytes on its own, so no two
+			// lines can share a chunk here — this is the response-overhead
+			// accounting, not a raw-request-byte budget.
 			name:       "splits on line boundaries, never mid-line",
 			message:    "aaaa\nbbbb\ncccc\n",
 			chunkBytes: 10,
-			want:       []string{"aaaa\nbbbb\n", "cccc\n"},
+			want:       []string{"aaaa\n", "bbbb\n", "cccc\n"},
+		},
+		{
+			name:       "two short lines share a chunk within the response budget",
+			message:    "aa\nbb\ncc\n",
+			chunkBytes: 16,
+			want:       []string{"aa\nbb\n", "cc\n"},
 		},
 		{
 			name:       "a single line larger than chunkBytes is kept whole",
@@ -961,6 +971,42 @@ func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
 		assertion.Nil(result)
 		assertion.Equal(0, accessChecker.CheckAccessCalls())
 	})
+
+	t.Run("a message split into multiple chunks sends every chunk and merges their results", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.DefaultResult = "allowed"
+		accessChecker.RecordCheckAccessMessages()
+
+		config := DefaultConfig()
+		// Small enough that a message with several distinct lines cannot
+		// fit in one chunk once the response-overhead budget is applied.
+		config.AccessCheckChunkBytes = 24
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		message := []byte(
+			"project:p1#view@user:user123\n" +
+				"project:p2#view@user:user123\n" +
+				"project:p3#view@user:user123\n",
+		)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), message)
+		assertion.NoError(err)
+		assertion.Greater(accessChecker.CheckAccessCalls(), 1, "the message did not fit in a single chunk")
+		assertion.Equal(model.AccessCheckResult{
+			"project:p1#view@user:user123": "true",
+			"project:p2#view@user:user123": "true",
+			"project:p3#view@user:user123": "true",
+		}, result)
+
+		sent := accessChecker.CheckAccessMessages()
+		assertion.Len(sent, accessChecker.CheckAccessCalls())
+		var sentLines []string
+		for _, chunk := range sent {
+			sentLines = append(sentLines, strings.Split(chunk, "\n")...)
+		}
+		wantLines := strings.Split(strings.TrimSuffix(string(message), "\n"), "\n")
+		assertion.ElementsMatch(wantLines, sentLines, "every line was sent exactly once, across whichever chunk carried it")
+	})
 }
 
 func TestNewResourceSearch(t *testing.T) {
@@ -1004,6 +1050,7 @@ func TestNewResourceSearch(t *testing.T) {
 		want := config
 		want.CountRequestTimeout = constants.DefaultCountRequestTimeout
 		want.SearchRequestTimeout = constants.DefaultSearchRequestTimeout
+		want.SummaryRequestTimeout = constants.DefaultSummaryRequestTimeout
 		want.AccessCheckChunkBytes = constants.DefaultAccessCheckChunkBytes
 		want.AccessCheckRetries = constants.DefaultAccessCheckRetries
 		assertion.Equal(want, result.(*ResourceSearch).config)

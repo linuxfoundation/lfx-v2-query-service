@@ -438,7 +438,14 @@ normalizes them.
    keeps walking past the record cap as far as the plain search walks denied
    pages (`SEARCH_DENIED_PAGE_WALK`) before it exposes a continuation, so a
    scope the caller cannot see and a scope that does not exist stay
-   indistinguishable to the same extent as on the plain search.
+   indistinguishable to the same extent as on the plain search. `SUMMARY_REQUEST_TIMEOUT`
+   (default 30s, any positive duration up to 5m) bounds the total wall-clock
+   time the whole read may spend across every page's raw OpenSearch query and
+   batched access check combined, on top of (not instead of) each individual
+   call's own timeout — the same request-wide-deadline pattern
+   `SEARCH_REQUEST_TIMEOUT` applies to the plain search and
+   `COUNT_REQUEST_TIMEOUT` applies to counts, so a scope with many pages or
+   heavily chunked access checks fails fast instead of running unbounded.
 3. **Record cap** — after reaching the configured record cap
    (`SUMMARY_MAX_RECORDS`, validated at startup like the count route's bucket
    cap), the read stops only at an organization boundary and reports
@@ -557,6 +564,21 @@ For authenticated requests, the query-service:
 The query-service deduplicates by `access_check_object#access_check_relation`, not by
 `object_ref`, so each distinct FGA object/relation pair is checked at most once per request
 regardless of how many resources share it.
+
+**Chunking and retries:** a batch built from a large result page is split into
+chunks bounded by `ACCESS_CHECK_CHUNK_BYTES` (default 512KiB) before it is
+sent to fga-sync, never mid-line, so the request stays comfortably under
+NATS' default 1MiB max payload. The split also budgets each chunk against its
+*projected worst-case response size*, not just its request size: a response
+line (`<key>\t<true|false>`) can be up to 6 bytes longer than its request
+line (`<key>\n`), so a chunk sized only against the outbound request could
+still produce an oversized reply. A single check line whose projected
+response would exceed `ACCESS_CHECK_CHUNK_BYTES` is still sent, kept whole in
+its own chunk rather than split; only a line beyond the hard 1MiB payload
+bound is rejected outright. Each chunk that fails outright (e.g. a transient
+NATS timeout) is retried up to `ACCESS_CHECK_RETRIES` times (default 1) before
+the whole request fails; a retry is abandoned early if the request's own
+deadline has already passed.
 
 ### Direct grant filtering
 
