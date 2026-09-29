@@ -52,8 +52,8 @@ type Config struct {
 	// walks before it stops and reports has_more (AccessBucketPage..10000).
 	MaxAccessBuckets int
 	// MaxSummaryRecords caps the number of membership records a single
-	// summary reads before it stops and reports itself incomplete
-	// (1..constants.MaxSummaryRecordCap).
+	// summary reads before the read stops at the next organization boundary
+	// and reports complete: false (1..constants.MaxSummaryRecordCap).
 	MaxSummaryRecords int
 	// DeniedPageWalk is the number of additional raw pages QueryResources
 	// fetches when a page leaves the caller no visible resource (after

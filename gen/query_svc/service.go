@@ -176,27 +176,30 @@ type QueryMembershipSummaryPayload struct {
 	// on that project
 	B2bOrgUID *string
 	// Opaque token from a previous summary response with the same project_uid and
-	// b2b_org_uid; continues that read where it stopped: at the next organization,
-	// or inside the one run that filled the read
+	// b2b_org_uid; resumes at the next organization run. A page_token is accepted
+	// only from the same version of the summary read; a token from any other
+	// version, older or newer, is rejected with 400 and the read must restart
+	// without it
 	PageToken *string
 }
 
 // Membership term summaries, one per organization and project.
 type QueryMembershipSummaryResult struct {
 	// Summaries ordered by organization name, project slug, organization UID and
-	// project UID; a read that stops at the record cap and can continue holds only
-	// the organizations it read whole, while a read that fell whole inside a
-	// single run of records sharing one company name, usually one organization,
-	// holds that run as far as it was read and continues inside it
+	// project UID; every returned summary covers a whole organization run, never a
+	// run cut short by the record cap
 	Summaries []*MembershipTermSummary
 	// Number of membership records folded into the summaries
 	TermsTotal uint64
 	// True when every matching membership record was read; false when the read
-	// stopped at the record cap and returned a page_token to continue
+	// stopped early: at an organization boundary after the record cap (then
+	// page_token continues it) or at the hard ceiling with nothing visible (then
+	// no page_token; the read cannot be continued)
 	Complete bool
-	// Opaque token present when the read stopped at the record cap; pass it back
-	// with the same project_uid and b2b_org_uid to continue the read where it
-	// stopped: at the next organization, or inside the one run that filled the read
+	// Opaque token present only when the read stopped at an organization boundary
+	// after the record cap; pass it back with the same project_uid and b2b_org_uid
+	// to continue at the start of the next organization run; absent when the read
+	// is complete or stopped at the ceiling
 	PageToken *string
 	// Cache control header
 	CacheControl *string
