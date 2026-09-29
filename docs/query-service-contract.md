@@ -589,7 +589,11 @@ its own chunk rather than split; only a line beyond the hard payload bound is
 rejected outright. That hard bound is NATS' 1MiB max payload less an 8KiB
 margin reserved for the OpenTelemetry trace-context headers attached to every
 outbound publish, since NATS' limit covers the header block plus data
-together, not the data alone. Each chunk that fails outright (e.g. a transient
+together, not the data alone. `ACCESS_CHECK_CHUNK_BYTES` itself is clamped to
+that hard bound, so configuring it right up against the nominal 1MiB ceiling
+can't let a multi-line chunk's accumulated projected response spill past the
+real limit even though no single line in it is individually oversized. Each
+chunk that fails outright (e.g. a transient
 NATS timeout) is retried up to `ACCESS_CHECK_RETRIES` times (default 1) before
 the whole request fails; a retry is abandoned early if the request's own
 deadline has already passed.

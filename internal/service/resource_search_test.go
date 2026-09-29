@@ -4,6 +4,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	stderrors "errors"
 	"fmt"
@@ -923,6 +924,30 @@ func TestSplitAccessCheckMessage(t *testing.T) {
 			}
 			assertion.Equal(tc.want, gotStrings)
 		})
+	}
+}
+
+func TestSplitAccessCheckMessage_ChunkBytesClampedToHardBound(t *testing.T) {
+	assertion := assert.New(t)
+
+	line := "o#r@user:" + strings.Repeat("u", 100) + "\n"
+	lineCount := (constants.MaxAccessCheckChunkBytes / len(line)) + 10
+	message := strings.Repeat(line, lineCount)
+
+	// chunkBytes is configured at the nominal max. Without clamping
+	// chunkBytes to accessCheckHardBoundBytes, lines would keep
+	// accumulating into one chunk up to the full nominal max, even though
+	// every chunk's projected response must stay under the hard bound
+	// (the nominal max less the header margin) to survive NATS' real
+	// max_payload once trace-context headers are attached.
+	got, err := splitAccessCheckMessage([]byte(message), constants.MaxAccessCheckChunkBytes)
+	assertion.NoError(err)
+	assertion.NotEmpty(got)
+
+	for _, chunk := range got {
+		projected := len(chunk) + bytes.Count(chunk, []byte("\n"))*accessCheckResponseOverhead
+		assertion.LessOrEqual(projected, accessCheckHardBoundBytes,
+			"chunk of %d bytes has a projected response of %d bytes, exceeding the hard bound", len(chunk), projected)
 	}
 }
 

@@ -514,16 +514,23 @@ const accessCheckHardBoundBytes = constants.MaxAccessCheckChunkBytes - constants
 // than chunkBytes is kept whole in its own chunk rather than split mid-line,
 // but never past accessCheckHardBoundBytes: a line beyond that hard bound is
 // rejected with an error instead of attempted as an oversized publish,
-// regardless of how small the configured chunkBytes is.
+// regardless of how small the configured chunkBytes is. chunkBytes itself is
+// clamped to accessCheckHardBoundBytes so a soft budget configured right up
+// against constants.MaxAccessCheckChunkBytes can't let a multi-line chunk's
+// accumulated projected response exceed the hard bound even though no single
+// line in it does.
 func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 	if len(message) == 0 {
 		return nil, nil
 	}
-	if chunkBytes <= 0 {
+	switch {
+	case chunkBytes <= 0:
 		// "Never split" — the response-overhead-aware budget below always
 		// exceeds len(message), so that can no longer stand in for
 		// unlimited the way it did in the raw-byte-budget version.
 		chunkBytes = math.MaxInt
+	case chunkBytes > accessCheckHardBoundBytes:
+		chunkBytes = accessCheckHardBoundBytes
 	}
 
 	var chunks [][]byte
