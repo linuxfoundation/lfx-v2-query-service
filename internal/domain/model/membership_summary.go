@@ -88,12 +88,15 @@ type MembershipSummaryResult struct {
 	// TermsTotal is the number of membership records folded into the summaries.
 	TermsTotal uint64
 	// Complete is true when every matching membership record was read, false
-	// when the read stopped at the record cap.
+	// when the read stopped early: at an organization boundary after the
+	// record cap, resumable with SearchAfter, or at the hard ceiling with
+	// nothing visible, not resumable, SearchAfter nil.
 	Complete bool
 	// SearchAfter is the keyset cursor the next read continues from, as a JSON
 	// array of sort values: the last hit before the organization the read
-	// stopped inside, or the last hit read when the whole read fell inside one
-	// run of records sharing a company name; nil when the read is complete.
+	// stopped inside. A resumed read starts with that whole run of records
+	// sharing a minimum parent ref. It is set only after a boundary stop; nil
+	// when the read is complete or stopped at the ceiling.
 	SearchAfter *string
 	// CacheControl is the cache-control header value of the response.
 	CacheControl string

@@ -16,7 +16,10 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/service"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/global"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPayloadToCriteria(t *testing.T) {
@@ -1549,7 +1552,8 @@ func stringPtr(s string) *string {
 }
 
 func TestQuerySvcsrvc_MembershipSummaryPageToken(t *testing.T) {
-	svc := newTestQuerySvc(t, mock.NewMockResourceSearcher(), mock.NewMockAccessControlChecker(), mock.NewMockOrganizationSearcher(), mock.NewMockAuthService())
+	searcher := mock.NewMockResourceSearcher()
+	svc := newTestQuerySvc(t, searcher, mock.NewMockAccessControlChecker(), mock.NewMockOrganizationSearcher(), mock.NewMockAuthService())
 	t.Setenv("PAGE_TOKEN_SECRET", "12345678901234567890123456789012") // 32 chars
 	ctx := context.Background()
 
@@ -1560,8 +1564,36 @@ func TestQuerySvcsrvc_MembershipSummaryPageToken(t *testing.T) {
 		Complete:    false,
 		SearchAfter: &after,
 	}, issuedFor)
-	assert.NoError(t, err)
-	assert.NotNil(t, issued.PageToken, "a cursor at the next organization becomes a page token")
+	require.NoError(t, err)
+	require.NotNil(t, issued.PageToken, "a cursor at the next organization becomes a page token")
+	decoded, err := paging.DecodePageToken(ctx, *issued.PageToken, global.PageTokenSecret(ctx))
+	require.NoError(t, err)
+	var issuedPayload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(decoded), &issuedPayload))
+	require.Equal(t, float64(constants.MembershipSummaryTokenVersion), issuedPayload["version"],
+		"newly minted tokens carry the current summary read version")
+	issuedCursor, err := json.Marshal(issuedPayload["cursor"])
+	require.NoError(t, err)
+	require.JSONEq(t, after, string(issuedCursor), "the cursor travels under the new key")
+	require.NotContains(t, issuedPayload, "after", "the previous release's cursor key is not emitted")
+
+	t.Run("the previous release's decoder rejects a newly minted token", func(t *testing.T) {
+		// The previous release's payload shape, declared here so it cannot
+		// drift with the current one. Its decoder unmarshals into this
+		// struct, ignores unknown fields such as version, and accepts the
+		// token only when after is non-empty; a new token must therefore
+		// leave after empty so that instance rejects it during a rolling
+		// deployment or a rollback instead of applying the cursor to its
+		// company-name ordering.
+		var previous struct {
+			ProjectUID string          `json:"project_uid,omitempty"`
+			B2BOrgUID  string          `json:"b2b_org_uid,omitempty"`
+			After      json.RawMessage `json:"after"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(decoded), &previous))
+		require.Empty(t, previous.After, "the old decoder sees no cursor and answers its invalid-token 400")
+		require.Equal(t, "proj-1", previous.ProjectUID)
+	})
 
 	whole, err := svc.domainMembershipSummaryToResponse(ctx, &model.MembershipSummaryResult{
 		Summaries: []model.MembershipTermSummary{},
@@ -1614,6 +1646,56 @@ func TestQuerySvcsrvc_MembershipSummaryPageToken(t *testing.T) {
 			expectedError: "page token",
 		},
 	}
+
+	t.Run("other summary token versions are rejected before any read", func(t *testing.T) {
+		// Build the previous wire layout independently of the new payload
+		// type so this regression test can never acquire a version by default.
+		previous := struct {
+			ProjectUID string          `json:"project_uid,omitempty"`
+			B2BOrgUID  string          `json:"b2b_org_uid,omitempty"`
+			After      json.RawMessage `json:"after"`
+		}{ProjectUID: "proj-1", After: json.RawMessage(after)}
+		for _, tc := range []struct {
+			name    string
+			payload any
+			message string
+		}{
+			{"previous layout without version", previous, "page_token version is not supported by this summary read; restart the read without it"},
+			{"older version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion - 1, ProjectUID: "proj-1", Cursor: json.RawMessage(after)}, "page_token version is not supported by this summary read; restart the read without it"},
+			{"newer version", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion + 1, ProjectUID: "proj-1", Cursor: json.RawMessage(after)}, "page_token version is not supported by this summary read; restart the read without it"},
+			{"current version without a cursor", membershipSummaryPageToken{Version: constants.MembershipSummaryTokenVersion, ProjectUID: "proj-1"}, "invalid page token"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				token, err := paging.EncodePageToken(tc.payload, global.PageTokenSecret(ctx))
+				require.NoError(t, err)
+				payload := &querysvc.QueryMembershipSummaryPayload{
+					Version: "1", ProjectUID: stringPtr("proj-1"), PageToken: &token,
+				}
+				criteria, err := svc.payloadToMembershipSummaryCriteria(ctx, payload)
+				var validation errors.Validation
+				require.ErrorAs(t, err, &validation)
+				require.EqualError(t, err, tc.message)
+				require.Equal(t, model.MembershipSummaryCriteria{}, criteria)
+
+				result, err := svc.QueryMembershipSummary(ctx, payload)
+				var badRequest *querysvc.BadRequestError
+				require.ErrorAs(t, err, &badRequest, "the transport exposes the existing invalid-token 400")
+				require.Equal(t, tc.message, badRequest.Message)
+				require.Nil(t, result)
+				require.Zero(t, searcher.QueryResourceCalls(), "an old token never reaches the searcher")
+			})
+		}
+	})
+
+	t.Run("a plain search cursor still round trips unchanged", func(t *testing.T) {
+		token, err := paging.EncodePageToken([]string{"a corp", "m-2"}, global.PageTokenSecret(ctx))
+		require.NoError(t, err)
+		criteria, err := svc.payloadToCriteria(ctx, &querysvc.QueryResourcesPayload{
+			PageToken: &token, PageSize: constants.DefaultPageSize,
+		})
+		require.NoError(t, err)
+		require.Equal(t, &after, criteria.SearchAfter, "summary versioning does not affect plain tokens")
+	})
 
 	t.Run("a summary token passed to the plain search is refused", func(t *testing.T) {
 		// Both routes seal their tokens with the same secret, so a summary
