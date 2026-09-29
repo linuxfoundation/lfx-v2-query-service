@@ -38,6 +38,9 @@ type ResourceSearcher interface {
 // replaced by the defaults in pkg/constants; the constructor validates the
 // result.
 type Config struct {
+	// DisableUnsatisfiableFilterRejection restores zero results without
+	// type-level carrier probes. False (including Config{}) enables rejection.
+	DisableUnsatisfiableFilterRejection bool
 	// AccessCheckTimeout bounds each batched access check sent to fga-sync.
 	AccessCheckTimeout time.Duration
 	// ReadTuplesTimeout bounds the direct tuple read used by filter_grants=direct.
@@ -229,6 +232,15 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 				"error", err,
 			)
 			return nil, fmt.Errorf("search operation failed: %w", err)
+		}
+
+		// A later empty page cannot invalidate a query that already had raw
+		// matches, and neither can a continuation of one: check only the first
+		// page of a fresh query, before CEL or access filtering.
+		if fetched == 1 && len(result.Resources) == 0 && criteria.PageToken == nil && criteria.SearchAfter == nil {
+			if err := s.checkSatisfiable(ctx, criteria); err != nil {
+				return nil, err
+			}
 		}
 
 		checkedResources, errPage := s.filterAndCheckPage(ctx, principal, pageCriteria, result)
@@ -495,6 +507,15 @@ func (s *ResourceSearch) QueryResourcesCount(
 		aggregation.AuthorizedKeys = authorizedKeys
 	}
 
+	// One check per request so a prefix named by both a filter and an
+	// aggregation is probed once; a failed probe keeps the ordinary result.
+	check := s.newCarrierCheck(publicCriteria)
+	if check != nil && result.Count == 0 && len(aggregation.AuthorizedKeys) == 0 {
+		if err := advisory(check.criteria(ctx, publicCriteria)); err != nil {
+			return nil, err
+		}
+	}
+
 	if !aggregation.HasWork() {
 		return result, nil
 	}
@@ -516,7 +537,7 @@ func (s *ResourceSearch) QueryResourcesCount(
 			result.MetricValue = &zero
 			result.MetricComplete = &metricComplete
 		}
-		return result, nil
+		return s.checkedCount(ctx, check, aggregation, result)
 	}
 
 	// The authorized set is public documents plus private documents carrying
@@ -553,6 +574,19 @@ func (s *ResourceSearch) QueryResourcesCount(
 		result.MetricComplete = &metricComplete
 	}
 
+	return s.checkedCount(ctx, check, aggregation, result)
+}
+
+// checkedCount applies the aggregation rule of the unsatisfiable-filter check
+// to a finished count: an empty grouping or a zero metric on a prefix the
+// type never carries is a 400; anything else returns the result as is.
+func (s *ResourceSearch) checkedCount(ctx context.Context, check *carrierCheck, aggregation model.CountAggregation, result *model.CountResult) (*model.CountResult, error) {
+	if check == nil {
+		return result, nil
+	}
+	if err := advisory(check.aggregation(ctx, aggregation, result)); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 

@@ -77,6 +77,85 @@ must be provided: name, parent, type, tags, or filter_grants"). In addition,
 `filter_grants` requires `type` (otherwise a `400` is returned). Validation
 lives in `validateSearchCriteria` in `internal/service/resource_search.go`.
 
+#### Unsatisfiable filters
+
+On an empty first raw page of a fresh query (no `page_token`), before CEL and
+access filtering, the service checks whether the requested `type` carries the
+indexed dimensions named by the filters. It does not probe a non-empty raw
+page, a continuation page, an empty tail reached by the denied-page walk, or
+the early return when `filter_grants=direct` finds no grants. Count requests
+use the same rule when the public and authorized private counts are both zero
+and no authorized-key aggregation would add work.
+
+The checks run in this order, stopping at the first absent dimension:
+
+1. Without a `type`, with `UNSATISFIABLE_FILTER_REJECTION=false`, or when the
+   request names no probeable dimension (no bounded date field, parent,
+   prefixed tag, or field filter, and on the count route no `group_by` or
+   `metric` prefix that step 7 qualifies), return the ordinary result without
+   probing.
+2. If the type has no indexed documents, return the ordinary result.
+   A new or unpopulated type is not a caller error.
+3. Check `date_field` for an indexed field within `data`, only when a
+   `date_from` or `date_to` bound makes it part of the query.
+4. Check the `parent` kind (the text before the first colon). The HTTP decoder
+   treats `parent=` as absent, so an empty parent is not a filter and is not
+   probed. Malformed non-empty parents are rejected by the existing decoder
+   validation before these checks.
+5. Check tag prefixes: every prefixed `tags_all` entry must be carried.
+   For `tags` (OR), reject only if no prefix is carried and there is no bare
+   tag alternative. Bare tags are not probed.
+6. Check fields in `filters` and `filters_all`: every field must be carried.
+   For `filters_or`, reject only if none of its fields is carried.
+7. Count route only, after the aggregation: when `group_by` returned no group,
+   check the `group_by` prefix; when `metric=cardinality:<prefix>` returned a
+   distinct count of zero, check the metric prefix. A non-zero count already
+   proves the type has documents, so step 2 is skipped there. Groups present
+   or a non-zero metric are never probed.
+
+Each distinct field, parent kind, or tag prefix is probed at most once per
+request, including a prefix named by both a filter and an aggregation, and a
+probe that failed is remembered for the request rather than sent again. A
+request may send at most 16 distinct probes; a request that would need more
+stops probing there and returns the ordinary result, never a partial `400`.
+A carried dimension with an unmatched value still returns an ordinary
+empty result; these checks do not validate values or whether a combination of
+otherwise carried dimensions can match.
+
+An absent dimension returns `400` with one of these exact message formats:
+
+```text
+date_field "<field>" is not carried by any indexed <type> document
+parent kind "<kind>:" is not carried by any indexed <type> document
+tag prefix "<prefix>:" is not carried by any indexed <type> document
+filter field "<field>" is not carried by any indexed <type> document
+group_by prefix "<prefix>:" is not carried by any indexed <type> document
+metric prefix "<prefix>:" is not carried by any indexed <type> document
+```
+
+The probe is type-wide: it never applies access filtering, never returns a
+record, and never includes parent or tag values in the error. It checks any
+indexed document of the type, not the caller's scoped or visible result set.
+Anonymous callers receive the same dimension checks. If a probe itself fails
+for any reason other than the caller's cancellation, the service logs the
+failure and returns the ordinary result (the empty page, or the count as
+computed), and no later check of that request rejects; only a successful probe
+that finds a dimension absent produces the `400`. A cancellation of the
+request during a probe passes through as the cancellation error: it is neither
+logged as a failed probe nor turned into the ordinary result.
+
+`UNSATISFIABLE_FILTER_REJECTION` defaults to `true`. It is a rollout-safety
+switch: setting it to `false` disables all probes and restores the previous
+silent-zero behavior on both routes. Availability follows the indexed data, so
+a newly added field or parent kind may remain rejected until it is indexed.
+
+**Release verification:** unit tests check request bodies and response handling,
+but do not prove `exists` queries on `data.<field>` against a real `flat_object`
+index. After merge and before release, verify on the development index that a
+carried field preserves a valid query and an absent field returns the documented
+`400`. If subfield existence queries fail, stop release rather than silently
+substituting another probe.
+
 ### GET /query/resources/count
 
 Same parameters as `GET /query/resources` except `cel_filter`,
@@ -87,6 +166,10 @@ Same parameters as `GET /query/resources` except `cel_filter`,
 | `group_by` | string | Tag prefix (`^[a-z][a-z0-9_]*$`, max 64). Groups the count by the value after `<prefix>:` in each document's `tags`, e.g. `group_by=project_uid` |
 | `group_by_size` | int | 1–1000, default 100. Maximum number of groups returned; requires `group_by` (otherwise `400`, including with `metric`) |
 | `metric` | string | `cardinality:<tag_prefix>` (max 80). Number of distinct `<tag_prefix>:…` tag values across the authorized documents, e.g. `metric=cardinality:email`. Any other shape, including `sum:…`, is a `400` |
+
+The shared [unsatisfiable-filter checks](#unsatisfiable-filters) also apply to
+zero counts, including anonymous counts, and to the `group_by` and `metric`
+prefixes when the aggregation returns no group or a zero distinct count.
 
 `group_by` and `metric` cannot be combined (`400`: "metric per group is not
 supported; group first, then count each group with tags"). To get a metric per
@@ -552,6 +635,10 @@ Two consequences are worth knowing before you build on this:
 
 ## tags vs filters vs cel_filter
 
+On empty results, indexed tag prefixes and filter fields are checked as
+specified in [Unsatisfiable filters](#unsatisfiable-filters). CEL expressions
+are not carrier-probed.
+
 | Mechanism | Use for | How it works |
 | --- | --- | --- |
 | `tags` / `tags_all` | Values in the `tags` field (exact match) | OpenSearch `term` query |
@@ -602,7 +689,8 @@ see.
 ## Date Range Filtering
 
 The query service supports filtering resources by date ranges on fields within
-the `data` object.
+the `data` object. On empty results, `date_field` is checked for an indexed
+carrier as described in [Unsatisfiable filters](#unsatisfiable-filters).
 
 - `date_field` (string, optional): date field to filter on (automatically
   prefixed with `"data."`)

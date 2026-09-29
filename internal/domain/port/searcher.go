@@ -16,6 +16,10 @@ type ResourceSearcher interface {
 	// QueryResources searches for resources based on the provided criteria
 	QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error)
 
+	// TypeCarries reports whether any indexed document of the type carries
+	// the requested capability. It applies no access or caller-value filters.
+	TypeCarries(ctx context.Context, resourceType string, probe model.CarrierProbe) (bool, error)
+
 	// CountPublic counts the public resources matching the criteria.
 	// The criteria must carry PublicOnly = true.
 	CountPublic(ctx context.Context, criteria model.SearchCriteria) (int, error)
