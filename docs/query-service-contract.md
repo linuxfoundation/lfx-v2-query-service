@@ -224,13 +224,24 @@ For an authenticated principal:
    [Mapping the count route depends on](#mapping-the-count-route-depends-on))
    returns `COUNT_ACCESS_BUCKET_PAGE` distinct `access_check_query` values per
    page. Each page is one batched fga-sync check (`<key>@user:<principal>`
-   lines, same format as the search route); the document counts of the granted
-   keys are added to the count. A page with fewer buckets than the page size
-   ends the walk. After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets
-   have been walked, the walk stops without requesting the next page and
-   `has_more` is `true`; pages are never split. The walk stops on
-   request-context cancellation; per-check timeouts bound each page's access
-   check, and startup validation allows at most 100 pages per count.
+   lines, same format as the search route), built and matched exactly as
+   [Access Control Flow](#access-control-flow) describes — including the
+   chunking, per-chunk retries, and projected-response-size budgeting that
+   section documents; the document counts of the granted keys are added to
+   the count. A page with fewer buckets than the page size ends the walk.
+   After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets have been
+   walked, the walk stops without requesting the next page and `has_more` is
+   `true`; pages are never split. The walk stops on request-context
+   cancellation; per-check timeouts bound each individual call, and
+   `COUNT_REQUEST_TIMEOUT` (default 30s, any positive duration up to 5m)
+   bounds the total wall-clock time the whole count may spend across every
+   page's raw OpenSearch queries and batched (possibly chunked and retried)
+   access checks combined, on top of (not instead of) each individual call's
+   own timeout — the same request-wide-deadline pattern `SEARCH_REQUEST_TIMEOUT`
+   applies to the plain search and `SUMMARY_REQUEST_TIMEOUT` applies to
+   summaries, so a scope with many pages or heavily chunked access checks
+   fails fast instead of running unbounded. Startup validation allows at most
+   100 pages per count.
    A failed access check is a
    `503`: a count is never returned as if complete when part of the authorized
    set is unknown. Likewise an OpenSearch response with a failed shard or a
@@ -574,8 +585,11 @@ line (`<key>\t<true|false>`) can be up to 6 bytes longer than its request
 line (`<key>\n`), so a chunk sized only against the outbound request could
 still produce an oversized reply. A single check line whose projected
 response would exceed `ACCESS_CHECK_CHUNK_BYTES` is still sent, kept whole in
-its own chunk rather than split; only a line beyond the hard 1MiB payload
-bound is rejected outright. Each chunk that fails outright (e.g. a transient
+its own chunk rather than split; only a line beyond the hard payload bound is
+rejected outright. That hard bound is NATS' 1MiB max payload less an 8KiB
+margin reserved for the OpenTelemetry trace-context headers attached to every
+outbound publish, since NATS' limit covers the header block plus data
+together, not the data alone. Each chunk that fails outright (e.g. a transient
 NATS timeout) is retried up to `ACCESS_CHECK_RETRIES` times (default 1) before
 the whole request fails; a retry is abandoned early if the request's own
 deadline has already passed.

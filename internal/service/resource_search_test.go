@@ -868,10 +868,14 @@ func TestSplitAccessCheckMessage(t *testing.T) {
 			want:       []string{"aaaa\n", "bbbb\n", "cccc\n"},
 		},
 		{
-			name:       "two short lines share a chunk within the response budget",
+			// fga-sync replies "aa\tfalse\nbb\tfalse" (17 bytes) for
+			// "aa\nbb\n" (6 bytes) -- the real growth is 6 bytes per line
+			// minus the one omitted trailing newline, so two lines can
+			// never share a 16-byte response budget here.
+			name:       "each line gets its own chunk when the response budget is tight",
 			message:    "aa\nbb\ncc\n",
 			chunkBytes: 16,
-			want:       []string{"aa\nbb\n", "cc\n"},
+			want:       []string{"aa\n", "bb\n", "cc\n"},
 		},
 		{
 			name:       "a single line larger than chunkBytes is kept whole",

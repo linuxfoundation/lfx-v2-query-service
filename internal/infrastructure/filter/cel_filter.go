@@ -250,9 +250,19 @@ func (pc *programCache) removeLocked(elem *list.Element) {
 	pc.order.Remove(elem)
 }
 
-// evictOldestLocked removes the least-recently-used entry, if any (must be
-// called with the lock held).
+// evictOldestLocked frees one slot for a new entry (must be called with the
+// lock held). get moves an entry to the front without extending its TTL, so
+// LRU order and expiry can diverge: an expired entry recently read may sit
+// ahead of a still-valid one. Preferring an expired entry, if any exists,
+// over the plain LRU back avoids discarding a live entry while dead weight
+// remains in the cache.
 func (pc *programCache) evictOldestLocked() {
+	for elem := pc.order.Back(); elem != nil; elem = elem.Prev() {
+		if elem.Value.(*cacheEntry).isExpired() {
+			pc.removeLocked(elem)
+			return
+		}
+	}
 	if oldest := pc.order.Back(); oldest != nil {
 		pc.removeLocked(oldest)
 	}

@@ -92,6 +92,13 @@ const (
 	DefaultAccessCheckChunkBytes = 512 * 1024
 	// MaxAccessCheckChunkBytes is the maximum configurable access-check chunk size.
 	MaxAccessCheckChunkBytes = 1024 * 1024
+	// AccessCheckNATSHeaderMargin reserves headroom below NATS' default 1MiB
+	// max_payload for the OpenTelemetry trace-context headers
+	// requestWithSpan attaches to every outbound access-check publish:
+	// max_payload bounds the HPUB header block plus data together, not the
+	// data alone, so a chunk sized right up against MaxAccessCheckChunkBytes
+	// could still be rejected as oversized once its headers are counted.
+	AccessCheckNATSHeaderMargin = 8 * 1024
 	// DefaultAccessCheckRetries is the default number of retries for a single
 	// access-check chunk that fails outright (e.g. a transient NATS timeout),
 	// on top of the initial attempt.

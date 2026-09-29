@@ -482,11 +482,26 @@ func (s *ResourceSearch) BuildMessage(ctx context.Context, principal string, res
 	return accessCheckMessage
 }
 
-// accessCheckResponseOverhead is the largest amount by which a response line
-// can exceed its request line: the request line is "<object>#<relation>@user:<principal>\n"
-// and the response line replaces the trailing "\n" with "\tfalse" (6 bytes),
-// the longer of the two possible values ("\ttrue" is 5).
-const accessCheckResponseOverhead = len("\tfalse") - len("\n")
+// accessCheckResponseOverhead is a conservative per-line budget for how much
+// a response line can exceed its request line. fga-sync's actual reply joins
+// "<key>\t<true|false>" entries with "\n" and omits the final trailing
+// newline, so a chunk of n request lines (each "<object>#<relation>@user:<principal>\n",
+// the longer response tag "\tfalse" being 6 bytes) comes back as
+// len(request) + 6n - 1 bytes, one byte less than budgeting a flat 6 bytes
+// per line. Charging the full 6 bytes per line (rather than accounting for
+// that one-byte saving) keeps the projection an overestimate, never an
+// underestimate, of the real response size.
+const accessCheckResponseOverhead = len("\tfalse")
+
+// accessCheckHardBoundBytes is the true wire-size ceiling a single chunk's
+// projected response (or its outbound request, whichever is larger) must
+// stay under. It is constants.MaxAccessCheckChunkBytes, NATS' default max
+// payload, less constants.AccessCheckNATSHeaderMargin: max_payload bounds the
+// HPUB header block plus data together, and requestWithSpan attaches
+// OpenTelemetry trace-context headers to every outbound publish, so the
+// reserved margin keeps a chunk sized right at the nominal limit from being
+// rejected once those headers are counted.
+const accessCheckHardBoundBytes = constants.MaxAccessCheckChunkBytes - constants.AccessCheckNATSHeaderMargin
 
 // splitAccessCheckMessage splits an access-check message (newline-terminated
 // lines, one check per line) into chunks whose projected worst-case response
@@ -497,10 +512,9 @@ const accessCheckResponseOverhead = len("\tfalse") - len("\n")
 // (internal/infrastructure/nats/client.go formats each as
 // "<key>\t<true|false>"). A single line whose projected response is larger
 // than chunkBytes is kept whole in its own chunk rather than split mid-line,
-// but never past constants.MaxAccessCheckChunkBytes (NATS' default max
-// payload): a line beyond that hard bound is rejected with an error instead
-// of attempted as an oversized publish, regardless of how small the
-// configured chunkBytes is.
+// but never past accessCheckHardBoundBytes: a line beyond that hard bound is
+// rejected with an error instead of attempted as an oversized publish,
+// regardless of how small the configured chunkBytes is.
 func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 	if len(message) == 0 {
 		return nil, nil
@@ -535,10 +549,10 @@ func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 			chunkProjected = 0
 		}
 
-		if lineProjected > constants.MaxAccessCheckChunkBytes {
+		if lineProjected > accessCheckHardBoundBytes {
 			return nil, fmt.Errorf(
 				"access check line of %d bytes has a projected response of %d bytes, exceeding the hard limit of %d bytes; refusing to send an oversized request",
-				lineEnd-pos, lineProjected, constants.MaxAccessCheckChunkBytes,
+				lineEnd-pos, lineProjected, accessCheckHardBoundBytes,
 			)
 		}
 

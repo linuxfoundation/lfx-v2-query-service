@@ -445,3 +445,34 @@ func TestProgramCache_LRUEviction(t *testing.T) {
 	_, ok = cache.get("c")
 	assertion.True(ok, "c should be present")
 }
+
+func TestProgramCache_EvictionPrefersExpiredOverLRU(t *testing.T) {
+	assertion := assert.New(t)
+
+	cache := newProgramCache(2)
+
+	filter, _ := NewCELFilter()
+	prg1, _ := filter.env.Program(nil) // Dummy program
+
+	cache.put("a", prg1)
+	cache.put("b", prg1)
+
+	// Expire "a" without touching it, so it stays ahead of "b" in LRU order
+	// (get would normally refresh recency but not TTL; here it is expired
+	// directly to isolate eviction from get's own removal path).
+	cache.mu.Lock()
+	cache.cache["a"].Value.(*cacheEntry).expiresAt = time.Now().Add(-1 * time.Hour)
+	cache.mu.Unlock()
+
+	// At capacity, inserting a third entry must purge the expired "a"
+	// rather than evict the live LRU-oldest "b".
+	cache.put("c", prg1)
+
+	assertion.Equal(2, len(cache.cache))
+	_, ok := cache.cache["a"]
+	assertion.False(ok, "expired a should have been purged instead of live b")
+	_, ok = cache.get("b")
+	assertion.True(ok, "b should survive since a was expired")
+	_, ok = cache.get("c")
+	assertion.True(ok, "c should be present")
+}
