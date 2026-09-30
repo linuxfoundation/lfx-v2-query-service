@@ -457,9 +457,15 @@ func TestProgramCache_EvictionPrefersExpiredOverLRU(t *testing.T) {
 	cache.put("a", prg1)
 	cache.put("b", prg1)
 
-	// Expire "a" without touching it, so it stays ahead of "b" in LRU order
-	// (get would normally refresh recency but not TTL; here it is expired
-	// directly to isolate eviction from get's own removal path).
+	// Touch "a" so it is the LRU-*newest* and "b" becomes the LRU-oldest,
+	// then expire "a" directly (bypassing get's own expiry removal). This
+	// puts LRU order and expiry at odds: plain oldest-first eviction would
+	// pick "b", while expiry-preferring eviction must still pick "a". Without
+	// this split, a reverted evictOldestLocked that ignores expiry entirely
+	// would evict the same (LRU-oldest) entry "a" and this test would not
+	// notice the regression.
+	_, ok := cache.get("a")
+	assertion.True(ok, "a should be present and not yet expired")
 	cache.mu.Lock()
 	cache.cache["a"].Value.(*cacheEntry).expiresAt = time.Now().Add(-1 * time.Hour)
 	cache.mu.Unlock()
@@ -469,7 +475,7 @@ func TestProgramCache_EvictionPrefersExpiredOverLRU(t *testing.T) {
 	cache.put("c", prg1)
 
 	assertion.Equal(2, len(cache.cache))
-	_, ok := cache.cache["a"]
+	_, ok = cache.cache["a"]
 	assertion.False(ok, "expired a should have been purged instead of live b")
 	_, ok = cache.get("b")
 	assertion.True(ok, "b should survive since a was expired")
