@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
@@ -65,7 +66,7 @@ func (c *NATSClient) requestWithSpan(ctx context.Context, subject string, data [
 	// against the connection's actual negotiated limit here so an
 	// oversized request is rejected with a clear error instead of being
 	// sent and failing opaquely against the NATS server.
-	if err := checkWireSize(subject, int64(msg.Size()), c.conn.MaxPayload()); err != nil {
+	if err := checkWireSize(subject, wirePayloadSize(msg), c.conn.MaxPayload()); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
@@ -79,6 +80,27 @@ func (c *NATSClient) requestWithSpan(ctx context.Context, subject string, data [
 	}
 	span.SetStatus(codes.Ok, "")
 	return reply, nil
+}
+
+// wirePayloadSize returns the portion of msg that counts against the NATS
+// server's max_payload limit: the serialized header block plus Data, but not
+// Subject or Reply. nats.Msg.Size() includes Subject and Reply, which
+// inflates the count relative to what the server (and nc.publish, which
+// checks len(hdr)+len(data) before ever reading Subject/Reply) actually
+// enforces -- comparing Size() against MaxPayload can therefore reject a
+// request the server would have accepted. Header serialization mirrors
+// nats.Msg's own unexported headerBytes(): an empty header set serializes to
+// nothing, a non-empty one is "NATS/1.0\r\n" + the header block + "\r\n".
+func wirePayloadSize(msg *nats.Msg) int64 {
+	var hdrSize int
+	if len(msg.Header) > 0 {
+		var buf bytes.Buffer
+		buf.WriteString("NATS/1.0\r\n")
+		_ = http.Header(msg.Header).Write(&buf)
+		buf.WriteString("\r\n")
+		hdrSize = buf.Len()
+	}
+	return int64(hdrSize + len(msg.Data))
 }
 
 // checkWireSize returns an error if size exceeds maxPayload. maxPayload <= 0

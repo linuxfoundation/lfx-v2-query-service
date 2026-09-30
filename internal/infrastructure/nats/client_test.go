@@ -6,8 +6,34 @@ package nats
 import (
 	"testing"
 
+	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestWirePayloadSize(t *testing.T) {
+	t.Run("no headers counts only data", func(t *testing.T) {
+		msg := nats.NewMsg("subj.with.some.length")
+		msg.Data = []byte("payload")
+		assert.Equal(t, int64(len("payload")), wirePayloadSize(msg))
+	})
+
+	t.Run("headers counted, subject and reply excluded", func(t *testing.T) {
+		msg := nats.NewMsg("a-subject-longer-than-the-data-and-headers-combined")
+		msg.Reply = "a-reply-subject-also-longer-than-the-rest"
+		msg.Data = []byte("x")
+		withoutHeaders := wirePayloadSize(msg)
+
+		msg.Header = nats.Header{"traceparent": []string{"00-abc-def-01"}}
+		withHeaders := wirePayloadSize(msg)
+
+		assert.Greater(t, withHeaders, withoutHeaders, "adding a header must increase the counted size")
+		// Subject+Reply together are far longer than Data+headers here; if
+		// wirePayloadSize counted them (as nats.Msg.Size() does), the result
+		// would exceed the subject/reply lengths on its own.
+		assert.Less(t, withHeaders, int64(len(msg.Subject)+len(msg.Reply)),
+			"wirePayloadSize must not include Subject or Reply")
+	})
+}
 
 func TestCheckWireSize(t *testing.T) {
 	tests := []struct {
