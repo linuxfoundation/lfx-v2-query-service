@@ -55,6 +55,22 @@ func (c *NATSClient) requestWithSpan(ctx context.Context, subject string, data [
 	msg.Data = data
 	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(msg.Header))
 
+	// Callers size chunks against a fixed header-size margin
+	// (constants.AccessCheckNATSHeaderMargin), but the injected propagator
+	// set is configurable (OTEL_PROPAGATORS) and, when it includes
+	// "baggage", carries caller-supplied data of unbounded size (baggage is
+	// extracted from the inbound HTTP request's own baggage header by the
+	// otelhttp middleware in cmd/http.go). That margin is therefore only a
+	// heuristic, not a guarantee. Check the real, fully-injected wire size
+	// against the connection's actual negotiated limit here so an
+	// oversized request is rejected with a clear error instead of being
+	// sent and failing opaquely against the NATS server.
+	if err := checkWireSize(subject, int64(msg.Size()), c.conn.MaxPayload()); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
 	reply, err := c.conn.RequestMsgWithContext(ctx, msg)
 	if err != nil {
 		span.RecordError(err)
@@ -63,6 +79,20 @@ func (c *NATSClient) requestWithSpan(ctx context.Context, subject string, data [
 	}
 	span.SetStatus(codes.Ok, "")
 	return reply, nil
+}
+
+// checkWireSize returns an error if size exceeds maxPayload. maxPayload <= 0
+// means the connection hasn't completed its INFO handshake (or reported no
+// limit); skip the check rather than reject every request against a bound
+// of zero.
+func checkWireSize(subject string, size, maxPayload int64) error {
+	if maxPayload <= 0 || size <= maxPayload {
+		return nil
+	}
+	return fmt.Errorf(
+		"NATS request to %q is %d bytes, exceeding the connection's negotiated max payload of %d bytes",
+		subject, size, maxPayload,
+	)
 }
 
 // CheckAccess sends an access control request via NATS and waits for the response
