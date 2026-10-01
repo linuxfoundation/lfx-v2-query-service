@@ -41,6 +41,10 @@ type MockAccessControlChecker struct {
 	MockTupleRefs []string
 	// SimulateTuplesError determines if ReadTuples should return an error
 	SimulateTuplesError bool
+	// MaxPayloadValue is returned by MaxPayload; 0 (the default) simulates
+	// an unknown negotiated limit, the same as a client that hasn't
+	// connected yet.
+	MaxPayloadValue int64
 }
 
 // CheckAccess implements the AccessControlChecker interface with mock behavior
@@ -136,6 +140,12 @@ func (m *MockAccessControlChecker) ReadTuples(_ context.Context, _ string, _ str
 		return m.MockTupleRefs, nil
 	}
 	return []string{}, nil
+}
+
+// MaxPayload implements the AccessControlChecker interface, returning the
+// configured MaxPayloadValue (0 by default, meaning "unknown").
+func (m *MockAccessControlChecker) MaxPayload() int64 {
+	return m.MaxPayloadValue
 }
 
 // Close implements the AccessControlChecker interface (no-op for mock)

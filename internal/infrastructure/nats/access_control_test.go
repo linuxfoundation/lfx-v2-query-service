@@ -21,6 +21,7 @@ type MockNATSClient struct {
 	isReadyError        error
 	readTuplesResponse  *ReadTuplesNATSResponse
 	readTuplesError     error
+	maxPayload          int64
 }
 
 func NewMockNATSClient() *MockNATSClient {
@@ -50,6 +51,14 @@ func (m *MockNATSClient) Close() error {
 
 func (m *MockNATSClient) IsReady(ctx context.Context) error {
 	return m.isReadyError
+}
+
+func (m *MockNATSClient) MaxPayload() int64 {
+	return m.maxPayload
+}
+
+func (m *MockNATSClient) SetMaxPayload(n int64) {
+	m.maxPayload = n
 }
 
 func (m *MockNATSClient) SetCheckAccessResponse(response AccessCheckNATSResponse) {

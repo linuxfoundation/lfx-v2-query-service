@@ -36,6 +36,9 @@ type NATSClientInterface interface {
 	ReadTuples(ctx context.Context, request *ReadTuplesNATSRequest) (*ReadTuplesNATSResponse, error)
 	Close() error
 	IsReady(ctx context.Context) error
+	// MaxPayload returns the connection's actual negotiated maximum message
+	// size, or 0 before a connection has been established.
+	MaxPayload() int64
 }
 
 // requestWithSpan wraps conn.RequestMsgWithContext with an OTel client span and
@@ -170,6 +173,16 @@ func (c *NATSClient) ReadTuples(ctx context.Context, request *ReadTuplesNATSRequ
 	}
 
 	return &response, nil
+}
+
+// MaxPayload returns the connection's actual negotiated maximum message
+// size (conn.MaxPayload(), populated from the server's INFO greeting), or 0
+// if the connection has not been established.
+func (c *NATSClient) MaxPayload() int64 {
+	if c.conn == nil {
+		return 0
+	}
+	return c.conn.MaxPayload()
 }
 
 // Close gracefully closes the NATS connection

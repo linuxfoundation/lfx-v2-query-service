@@ -21,6 +21,12 @@ type AccessControlChecker interface {
 	// has direct FGA relationships to, filtered by objectType.
 	ReadTuples(ctx context.Context, user string, objectType string, timeout time.Duration) ([]string, error)
 
+	// MaxPayload returns the transport's actual negotiated maximum message
+	// size, or 0 if unknown. Callers sizing an outbound batch must not assume
+	// a fixed constant: the real ceiling depends on how the connected server
+	// is configured and can be smaller than any client-side default.
+	MaxPayload() int64
+
 	// Close gracefully closes the access control checker connection
 	Close() error
 

@@ -907,7 +907,7 @@ func TestSplitAccessCheckMessage(t *testing.T) {
 	assertion := assert.New(t)
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := splitAccessCheckMessage([]byte(tc.message), tc.chunkBytes)
+			got, err := splitAccessCheckMessage([]byte(tc.message), tc.chunkBytes, accessCheckHardBoundBytes)
 			if tc.wantErr {
 				assertion.Error(err)
 				assertion.Nil(got)
@@ -940,7 +940,7 @@ func TestSplitAccessCheckMessage_ChunkBytesClampedToHardBound(t *testing.T) {
 	// every chunk's projected response must stay under the hard bound
 	// (the nominal max less the header margin) to survive NATS' real
 	// max_payload once trace-context headers are attached.
-	got, err := splitAccessCheckMessage([]byte(message), constants.MaxAccessCheckChunkBytes)
+	got, err := splitAccessCheckMessage([]byte(message), constants.MaxAccessCheckChunkBytes, accessCheckHardBoundBytes)
 	assertion.NoError(err)
 	assertion.NotEmpty(got)
 
@@ -949,6 +949,36 @@ func TestSplitAccessCheckMessage_ChunkBytesClampedToHardBound(t *testing.T) {
 		assertion.LessOrEqual(projected, accessCheckHardBoundBytes,
 			"chunk of %d bytes has a projected response of %d bytes, exceeding the hard bound", len(chunk), projected)
 	}
+}
+
+// TestEffectiveAccessCheckHardBound covers the NATS max-payload-aware
+// derivation: when the connection's negotiated max payload is smaller than
+// constants.MaxAccessCheckChunkBytes, the hard bound must shrink with it so
+// a chunk sized against the nominal default can't be accepted by the split
+// logic yet still be rejected (or come back oversized) by the real
+// connection.
+func TestEffectiveAccessCheckHardBound(t *testing.T) {
+	assertion := assert.New(t)
+
+	t.Run("unknown max payload falls back to the nominal hard bound", func(t *testing.T) {
+		assertion.Equal(accessCheckHardBoundBytes, effectiveAccessCheckHardBound(0))
+	})
+
+	t.Run("max payload above the nominal cap does not raise the bound", func(t *testing.T) {
+		assertion.Equal(accessCheckHardBoundBytes, effectiveAccessCheckHardBound(int64(constants.MaxAccessCheckChunkBytes)*10))
+	})
+
+	t.Run("a smaller negotiated max payload shrinks the bound", func(t *testing.T) {
+		const smallMaxPayload = int64(256 * 1024)
+		got := effectiveAccessCheckHardBound(smallMaxPayload)
+		assertion.Equal(int(smallMaxPayload)-constants.AccessCheckNATSHeaderMargin, got)
+		assertion.Less(got, accessCheckHardBoundBytes)
+	})
+
+	t.Run("a negotiated max payload smaller than the header margin still returns a usable positive bound", func(t *testing.T) {
+		got := effectiveAccessCheckHardBound(1)
+		assertion.GreaterOrEqual(got, 1)
+	})
 }
 
 func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
@@ -1036,6 +1066,26 @@ func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
 		wantLines := strings.Split(strings.TrimSuffix(string(message), "\n"), "\n")
 		assertion.ElementsMatch(wantLines, sentLines, "every line was sent exactly once, across whichever chunk carried it")
 	})
+
+	t.Run("a smaller negotiated max payload forces more, smaller chunks than the configured soft budget alone would", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.DefaultResult = "allowed"
+		accessChecker.RecordCheckAccessMessages()
+		// Below AccessCheckNATSHeaderMargin so even one line's projected
+		// response exceeds the effective hard bound; the connection's
+		// negotiated max payload, not the soft config budget, must be what
+		// drives the split and the resulting error.
+		accessChecker.MaxPayloadValue = 4
+
+		config := DefaultConfig()
+		config.AccessCheckChunkBytes = constants.MaxAccessCheckChunkBytes
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:p1#view@user:user123\n"))
+		assertion.Error(err, "a negotiated max payload too small for even one line must be rejected, not silently sent oversized")
+		assertion.Nil(result)
+		assertion.Equal(0, accessChecker.CheckAccessCalls())
+	})
 }
 
 func TestNewResourceSearch(t *testing.T) {
@@ -1097,6 +1147,16 @@ func TestNewResourceSearch(t *testing.T) {
 		{"max below page", Config{AccessBucketPage: 100, MaxAccessBuckets: 50}, "max access buckets"},
 		{"max above limit", Config{MaxAccessBuckets: constants.MaxCountAccessBuckets + 1}, "max access buckets must not exceed 10000"},
 		{"denied page walk above the maximum", Config{DeniedPageWalk: constants.MaxDeniedPageWalk + 1}, "denied page walk"},
+		{"negative count request timeout", Config{CountRequestTimeout: -time.Second}, "count request timeout"},
+		{"count request timeout above the maximum", Config{CountRequestTimeout: constants.MaxCountRequestTimeout + time.Second}, "count request timeout"},
+		{"negative search request timeout", Config{SearchRequestTimeout: -time.Second}, "search request timeout"},
+		{"search request timeout above the maximum", Config{SearchRequestTimeout: constants.MaxSearchRequestTimeout + time.Second}, "search request timeout"},
+		{"negative summary request timeout", Config{SummaryRequestTimeout: -time.Second}, "summary request timeout"},
+		{"summary request timeout above the maximum", Config{SummaryRequestTimeout: constants.MaxSummaryRequestTimeout + time.Second}, "summary request timeout"},
+		{"negative access check chunk bytes", Config{AccessCheckChunkBytes: -1}, "access check chunk bytes"},
+		{"access check chunk bytes above the maximum", Config{AccessCheckChunkBytes: constants.MaxAccessCheckChunkBytes + 1}, "access check chunk bytes"},
+		{"negative access check retries", Config{AccessCheckRetries: -1}, "access check retries"},
+		{"access check retries above the maximum", Config{AccessCheckRetries: constants.MaxAccessCheckRetries + 1}, "access check retries"},
 	}
 	for _, tc := range invalid {
 		t.Run("rejects "+tc.name, func(t *testing.T) {

@@ -493,9 +493,10 @@ func (s *ResourceSearch) BuildMessage(ctx context.Context, principal string, res
 // underestimate, of the real response size.
 const accessCheckResponseOverhead = len("\tfalse")
 
-// accessCheckHardBoundBytes is the true wire-size ceiling a single chunk's
-// projected response (or its outbound request, whichever is larger) must
-// stay under. It is constants.MaxAccessCheckChunkBytes, NATS' default max
+// accessCheckHardBoundBytes is the nominal wire-size ceiling a single
+// chunk's projected response (or its outbound request, whichever is larger)
+// must stay under when the connection's actual negotiated max payload is
+// unknown. It is constants.MaxAccessCheckChunkBytes, NATS' default max
 // payload, less constants.AccessCheckNATSHeaderMargin: max_payload bounds the
 // HPUB header block plus data together, and requestWithSpan attaches
 // OpenTelemetry trace-context headers to every outbound publish, so the
@@ -503,23 +504,45 @@ const accessCheckResponseOverhead = len("\tfalse")
 // rejected once those headers are counted.
 const accessCheckHardBoundBytes = constants.MaxAccessCheckChunkBytes - constants.AccessCheckNATSHeaderMargin
 
+// effectiveAccessCheckHardBound derives the real hard bound to split and
+// clamp against from the connection's actual negotiated NATS max payload
+// (port.AccessControlChecker.MaxPayload()). A server can be configured with
+// a max_payload below constants.MaxAccessCheckChunkBytes (NATS' own
+// 1 MiB default); sizing every chunk against the static nominal bound
+// regardless of that would let a chunk's request or projected response fit
+// the nominal bound while still exceeding what the connection will actually
+// accept, so every publish and retry would deterministically fail. When
+// maxPayload is 0 (not yet known, e.g. a connection that hasn't completed
+// its handshake), accessCheckHardBoundBytes is used unchanged.
+func effectiveAccessCheckHardBound(maxPayload int64) int {
+	bound := int64(constants.MaxAccessCheckChunkBytes)
+	if maxPayload > 0 && maxPayload < bound {
+		bound = maxPayload
+	}
+	bound -= constants.AccessCheckNATSHeaderMargin
+	if bound < 1 {
+		bound = 1
+	}
+	return int(bound)
+}
+
 // splitAccessCheckMessage splits an access-check message (newline-terminated
 // lines, one check per line) into chunks whose projected worst-case response
 // size is no larger than chunkBytes, so a large batch built from a big result
-// page stays comfortably under NATS' default max payload on the way back,
-// not just on the way out: each response line is up to
+// page stays comfortably under the connection's actual max payload on the
+// way back, not just on the way out: each response line is up to
 // accessCheckResponseOverhead bytes longer than its request line
 // (internal/infrastructure/nats/client.go formats each as
 // "<key>\t<true|false>"). A single line whose projected response is larger
 // than chunkBytes is kept whole in its own chunk rather than split mid-line,
-// but never past accessCheckHardBoundBytes: a line beyond that hard bound is
-// rejected with an error instead of attempted as an oversized publish,
-// regardless of how small the configured chunkBytes is. chunkBytes itself is
-// clamped to accessCheckHardBoundBytes so a soft budget configured right up
-// against constants.MaxAccessCheckChunkBytes can't let a multi-line chunk's
-// accumulated projected response exceed the hard bound even though no single
-// line in it does.
-func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
+// but never past hardBound (see effectiveAccessCheckHardBound): a line
+// beyond that hard bound is rejected with an error instead of attempted as
+// an oversized publish, regardless of how small the configured chunkBytes
+// is. chunkBytes itself is clamped to hardBound so a soft budget configured
+// right up against constants.MaxAccessCheckChunkBytes can't let a
+// multi-line chunk's accumulated projected response exceed the hard bound
+// even though no single line in it does.
+func splitAccessCheckMessage(message []byte, chunkBytes int, hardBound int) ([][]byte, error) {
 	if len(message) == 0 {
 		return nil, nil
 	}
@@ -529,8 +552,8 @@ func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 		// against a projected size, not len(message) directly, so 0 cannot
 		// stand in for unlimited; use the actual max instead.
 		chunkBytes = math.MaxInt
-	case chunkBytes > accessCheckHardBoundBytes:
-		chunkBytes = accessCheckHardBoundBytes
+	case chunkBytes > hardBound:
+		chunkBytes = hardBound
 	}
 
 	var chunks [][]byte
@@ -556,10 +579,10 @@ func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 			chunkProjected = 0
 		}
 
-		if lineProjected > accessCheckHardBoundBytes {
+		if lineProjected > hardBound {
 			return nil, fmt.Errorf(
 				"access check line of %d bytes has a projected response of %d bytes, exceeding the hard limit of %d bytes; refusing to send an oversized request",
-				lineEnd-pos, lineProjected, accessCheckHardBoundBytes,
+				lineEnd-pos, lineProjected, hardBound,
 			)
 		}
 
@@ -578,7 +601,8 @@ func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byt
 		return model.AccessCheckResult{}, nil
 	}
 
-	chunks, errSplit := splitAccessCheckMessage(message, s.config.AccessCheckChunkBytes)
+	hardBound := effectiveAccessCheckHardBound(s.accessChecker.MaxPayload())
+	chunks, errSplit := splitAccessCheckMessage(message, s.config.AccessCheckChunkBytes, hardBound)
 	if errSplit != nil {
 		return nil, errSplit
 	}
