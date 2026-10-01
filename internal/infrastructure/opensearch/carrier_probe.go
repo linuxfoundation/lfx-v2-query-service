@@ -56,5 +56,5 @@ func (os *OpenSearchSearcher) TypeCarries(ctx context.Context, resourceType stri
 	if response == nil {
 		return false, fmt.Errorf("opensearch carrier probe returned no response")
 	}
-	return response.Total.Value > 0, nil
+	return response.Value > 0, nil
 }
