@@ -525,9 +525,9 @@ func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 	}
 	switch {
 	case chunkBytes <= 0:
-		// "Never split" — the response-overhead-aware budget below always
-		// exceeds len(message), so that can no longer stand in for
-		// unlimited the way it did in the raw-byte-budget version.
+		// "Never split": the response-overhead-aware budget below compares
+		// against a projected size, not len(message) directly, so 0 cannot
+		// stand in for unlimited; use the actual max instead.
 		chunkBytes = math.MaxInt
 	case chunkBytes > accessCheckHardBoundBytes:
 		chunkBytes = accessCheckHardBoundBytes
@@ -574,15 +574,16 @@ func splitAccessCheckMessage(message []byte, chunkBytes int) ([][]byte, error) {
 // config.AccessCheckChunkBytes, sends each chunk (retrying up to
 // config.AccessCheckRetries times on failure) and merges the responses.
 func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byte) (model.AccessCheckResult, error) {
-	responses := make(model.AccessCheckResult)
 	if len(message) == 0 {
-		return responses, nil
+		return model.AccessCheckResult{}, nil
 	}
 
 	chunks, errSplit := splitAccessCheckMessage(message, s.config.AccessCheckChunkBytes)
 	if errSplit != nil {
 		return nil, errSplit
 	}
+
+	var responses model.AccessCheckResult
 
 	for _, chunk := range chunks {
 		chunk = bytes.TrimSuffix(chunk, []byte("\n"))
@@ -612,9 +613,21 @@ func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byt
 		if err != nil {
 			return nil, fmt.Errorf("access control check failed: %w", err)
 		}
+		if responses == nil {
+			// Common case: a single chunk. Adopt its map directly instead of
+			// allocating a second map and copying every entry into it; the
+			// chunk's result map is freshly built per call and not held by
+			// anything else.
+			responses = result
+			continue
+		}
 		for key, value := range result {
 			responses[key] = value
 		}
+	}
+
+	if responses == nil {
+		responses = model.AccessCheckResult{}
 	}
 
 	return responses, nil

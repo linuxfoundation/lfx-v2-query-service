@@ -7,9 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
@@ -56,65 +56,21 @@ func (c *NATSClient) requestWithSpan(ctx context.Context, subject string, data [
 	msg.Data = data
 	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(msg.Header))
 
-	// Callers size chunks against a fixed header-size margin
-	// (constants.AccessCheckNATSHeaderMargin), but the injected propagator
-	// set is configurable (OTEL_PROPAGATORS) and, when it includes
-	// "baggage", carries caller-supplied data of unbounded size (baggage is
-	// extracted from the inbound HTTP request's own baggage header by the
-	// otelhttp middleware in cmd/http.go). That margin is therefore only a
-	// heuristic, not a guarantee. Check the real, fully-injected wire size
-	// against the connection's actual negotiated limit here so an
-	// oversized request is rejected with a clear error instead of being
-	// sent and failing opaquely against the NATS server.
-	if err := checkWireSize(subject, wirePayloadSize(msg), c.conn.MaxPayload()); err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, err
-	}
-
 	reply, err := c.conn.RequestMsgWithContext(ctx, msg)
 	if err != nil {
+		// nats.Conn.publish already rejects an oversized header+data payload
+		// locally with nats.ErrMaxPayload before ever writing to the
+		// connection, so no separate wire-size check is needed here. Wrap it
+		// with the subject for a clearer error.
+		if stderrors.Is(err, nats.ErrMaxPayload) {
+			err = fmt.Errorf("NATS request to %q exceeds the connection's negotiated max payload: %w", subject, err)
+		}
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
 	return reply, nil
-}
-
-// wirePayloadSize returns the portion of msg that counts against the NATS
-// server's max_payload limit: the serialized header block plus Data, but not
-// Subject or Reply. nats.Msg.Size() includes Subject and Reply, which
-// inflates the count relative to what the server (and nc.publish, which
-// checks len(hdr)+len(data) before ever reading Subject/Reply) actually
-// enforces -- comparing Size() against MaxPayload can therefore reject a
-// request the server would have accepted. Header serialization mirrors
-// nats.Msg's own unexported headerBytes(): an empty header set serializes to
-// nothing, a non-empty one is "NATS/1.0\r\n" + the header block + "\r\n".
-func wirePayloadSize(msg *nats.Msg) int64 {
-	var hdrSize int
-	if len(msg.Header) > 0 {
-		var buf bytes.Buffer
-		buf.WriteString("NATS/1.0\r\n")
-		_ = http.Header(msg.Header).Write(&buf)
-		buf.WriteString("\r\n")
-		hdrSize = buf.Len()
-	}
-	return int64(hdrSize + len(msg.Data))
-}
-
-// checkWireSize returns an error if size exceeds maxPayload. maxPayload <= 0
-// means the connection hasn't completed its INFO handshake (or reported no
-// limit); skip the check rather than reject every request against a bound
-// of zero.
-func checkWireSize(subject string, size, maxPayload int64) error {
-	if maxPayload <= 0 || size <= maxPayload {
-		return nil
-	}
-	return fmt.Errorf(
-		"NATS request to %q is %d bytes, exceeding the connection's negotiated max payload of %d bytes",
-		subject, size, maxPayload,
-	)
 }
 
 // CheckAccess sends an access control request via NATS and waits for the response

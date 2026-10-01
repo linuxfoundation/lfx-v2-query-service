@@ -776,9 +776,8 @@ Key components:
 - **ResourceFilter Interface**: `internal/domain/port/filter.go`
 - **CELFilter Implementation**: uses `google/cel-go` for evaluation.
 - **Expression Caching**: TTL-bounded map cache for compiled CEL programs (100
-  max entries, 5-minute TTL). There is no LRU eviction: when the cache is full
-  it first drops expired entries, and if it is still full it stops caching new
-  programs (they are recompiled on each use until space frees up).
+  max entries, 5-minute TTL). When the cache is full, it evicts an expired
+  entry first, otherwise the least-recently-used program.
 - **Security**: max expression length 1000 chars, evaluation timeout 100ms per
   resource.
 

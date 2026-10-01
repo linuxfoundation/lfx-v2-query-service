@@ -38,8 +38,9 @@ import (
 //     including the denied-page walk
 //   - SUMMARY_REQUEST_TIMEOUT (default 30s) total deadline across every round-trip QueryMembershipSummary issues
 //   - ACCESS_CHECK_CHUNK_BYTES (default 524288, i.e. 512KiB) soft ceiling, in bytes, on a single batched
-//     access-check message; a single check line beyond constants.MaxAccessCheckChunkBytes (1MiB, NATS'
-//     default max payload) is always rejected regardless of this setting
+//     access-check message; a single check line whose projected response exceeds the hard bound
+//     (constants.MaxAccessCheckChunkBytes minus constants.AccessCheckNATSHeaderMargin) is always rejected
+//     regardless of this setting
 //   - ACCESS_CHECK_RETRIES   (default 1)    retries for a single access-check chunk that fails outright;
 //     0 is not currently distinguishable from "unset" and still yields the default of 1
 func ResourceSearchConfigImpl(ctx context.Context) service.Config {
