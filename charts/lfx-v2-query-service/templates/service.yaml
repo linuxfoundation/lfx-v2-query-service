@@ -6,6 +6,8 @@ kind: Service
 metadata:
   name: lfx-v2-query-service
   namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
 
 spec:
   ports:
