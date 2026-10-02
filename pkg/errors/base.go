@@ -19,3 +19,10 @@ func (b base) error() string {
 	}
 	return fmt.Sprintf("%s: %v", b.message, b.err)
 }
+
+// Unwrap exposes the wrapped cause so errors.Is/errors.As can see through a
+// base-embedding error type (e.g. a caller checking errors.Is(err,
+// context.DeadlineExceeded) against a ServiceUnavailable wrapping it).
+func (b base) Unwrap() error {
+	return b.err
+}

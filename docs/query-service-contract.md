@@ -224,13 +224,24 @@ For an authenticated principal:
    [Mapping the count route depends on](#mapping-the-count-route-depends-on))
    returns `COUNT_ACCESS_BUCKET_PAGE` distinct `access_check_query` values per
    page. Each page is one batched fga-sync check (`<key>@user:<principal>`
-   lines, same format as the search route); the document counts of the granted
-   keys are added to the count. A page with fewer buckets than the page size
-   ends the walk. After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets
-   have been walked, the walk stops without requesting the next page and
-   `has_more` is `true`; pages are never split. The walk stops on
-   request-context cancellation; per-check timeouts bound each page's access
-   check, and startup validation allows at most 100 pages per count.
+   lines, same format as the search route), built and matched exactly as
+   [Access Control Flow](#access-control-flow) describes — including the
+   chunking, per-chunk retries, and projected-response-size budgeting that
+   section documents; the document counts of the granted keys are added to
+   the count. A page with fewer buckets than the page size ends the walk.
+   After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets have been
+   walked, the walk stops without requesting the next page and `has_more` is
+   `true`; pages are never split. The walk stops on request-context
+   cancellation; per-check timeouts bound each individual call, and
+   `COUNT_REQUEST_TIMEOUT` (default 30s, any positive duration up to 5m)
+   bounds the total wall-clock time the whole count may spend across every
+   page's raw OpenSearch queries and batched (possibly chunked and retried)
+   access checks combined, on top of (not instead of) each individual call's
+   own timeout — the same request-wide-deadline pattern `SEARCH_REQUEST_TIMEOUT`
+   applies to the plain search and `SUMMARY_REQUEST_TIMEOUT` applies to
+   summaries, so a scope with many pages or heavily chunked access checks
+   fails fast instead of running unbounded. Startup validation allows at most
+   100 pages per count.
    A failed access check is a
    `503`: a count is never returned as if complete when part of the authorized
    set is unknown. Likewise an OpenSearch response with a failed shard or a
@@ -438,7 +449,14 @@ normalizes them.
    keeps walking past the record cap as far as the plain search walks denied
    pages (`SEARCH_DENIED_PAGE_WALK`) before it exposes a continuation, so a
    scope the caller cannot see and a scope that does not exist stay
-   indistinguishable to the same extent as on the plain search.
+   indistinguishable to the same extent as on the plain search. `SUMMARY_REQUEST_TIMEOUT`
+   (default 30s, any positive duration up to 5m) bounds the total wall-clock
+   time the whole read may spend across every page's raw OpenSearch query and
+   batched access check combined, on top of (not instead of) each individual
+   call's own timeout — the same request-wide-deadline pattern
+   `SEARCH_REQUEST_TIMEOUT` applies to the plain search and
+   `COUNT_REQUEST_TIMEOUT` applies to counts, so a scope with many pages or
+   heavily chunked access checks fails fast instead of running unbounded.
 3. **Record cap** — after reaching the configured record cap
    (`SUMMARY_MAX_RECORDS`, validated at startup like the count route's bucket
    cap), the read stops only at an organization boundary and reports
@@ -557,6 +575,28 @@ For authenticated requests, the query-service:
 The query-service deduplicates by `access_check_object#access_check_relation`, not by
 `object_ref`, so each distinct FGA object/relation pair is checked at most once per request
 regardless of how many resources share it.
+
+**Chunking and retries:** a batch built from a large result page is split into
+chunks bounded by `ACCESS_CHECK_CHUNK_BYTES` (default 512KiB) before it is
+sent to fga-sync, never mid-line, so the request stays comfortably under
+NATS' default 1MiB max payload. The split also budgets each chunk against its
+*projected worst-case response size*, not just its request size: a response
+line (`<key>\t<true|false>`) can be up to 6 bytes longer than its request
+line (`<key>\n`), so a chunk sized only against the outbound request could
+still produce an oversized reply. A single check line whose projected
+response would exceed `ACCESS_CHECK_CHUNK_BYTES` is still sent, kept whole in
+its own chunk rather than split; only a line beyond the hard payload bound is
+rejected outright. That hard bound is NATS' 1MiB max payload less an 8KiB
+margin reserved for the OpenTelemetry trace-context headers attached to every
+outbound publish, since NATS' limit covers the header block plus data
+together, not the data alone. `ACCESS_CHECK_CHUNK_BYTES` itself is clamped to
+that hard bound, so configuring it right up against the nominal 1MiB ceiling
+can't let a multi-line chunk's accumulated projected response spill past the
+real limit even though no single line in it is individually oversized. Each
+chunk that fails outright (e.g. a transient
+NATS timeout) is retried up to `ACCESS_CHECK_RETRIES` times (default 1) before
+the whole request fails; a retry is abandoned early if the request's own
+deadline has already passed.
 
 ### Direct grant filtering
 
@@ -736,9 +776,8 @@ Key components:
 - **ResourceFilter Interface**: `internal/domain/port/filter.go`
 - **CELFilter Implementation**: uses `google/cel-go` for evaluation.
 - **Expression Caching**: TTL-bounded map cache for compiled CEL programs (100
-  max entries, 5-minute TTL). There is no LRU eviction: when the cache is full
-  it first drops expired entries, and if it is still full it stops caching new
-  programs (they are recompiled on each use until space frees up).
+  max entries, 5-minute TTL). When the cache is full, it evicts an expired
+  entry first, otherwise the least-recently-used program.
 - **Security**: max expression length 1000 chars, evaluation timeout 100ms per
   resource.
 

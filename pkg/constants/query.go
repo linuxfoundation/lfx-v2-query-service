@@ -3,6 +3,8 @@
 
 package constants
 
+import "time"
+
 const (
 
 	// DefaultPageSize is the default number of results per page for queries
@@ -52,6 +54,57 @@ const (
 	// Tokens from the unversioned read may point inside a run and must not
 	// be accepted by this version. This does not version other query tokens.
 	MembershipSummaryTokenVersion = 1
+	// DefaultCountRequestTimeout bounds the total wall-clock time
+	// QueryResourcesCount may spend across every round-trip pair (search
+	// plus access check) it issues to satisfy one request. Individual
+	// calls have their own timeouts, but nothing else bounds the sum.
+	DefaultCountRequestTimeout = 30 * time.Second
+	// MaxCountRequestTimeout is the maximum configurable count-request deadline.
+	MaxCountRequestTimeout = 5 * time.Minute
+	// DefaultSearchRequestTimeout bounds the total wall-clock time
+	// QueryResources may spend across every round-trip it issues to satisfy
+	// one request: the denied-page walk's raw OpenSearch queries plus each
+	// page's batched (possibly chunked and retried) access check.
+	// Individual calls have their own timeouts, but nothing else bounds the
+	// sum, so a page whose access checks are chunked into many small NATS
+	// round trips (a small ACCESS_CHECK_CHUNK_BYTES) or that retries
+	// repeatedly (ACCESS_CHECK_RETRIES) could otherwise run for a very long
+	// time; this deadline fails the whole request fast instead.
+	DefaultSearchRequestTimeout = 30 * time.Second
+	// MaxSearchRequestTimeout is the maximum configurable search-request deadline.
+	MaxSearchRequestTimeout = 5 * time.Minute
+	// DefaultSummaryRequestTimeout bounds the total wall-clock time
+	// QueryMembershipSummary may spend across every round-trip it issues:
+	// each page's raw OpenSearch query plus its batched (possibly chunked
+	// and retried) access check. Individual calls have their own timeouts,
+	// but nothing else bounds the sum, so a scope with many pages or a page
+	// whose access checks are chunked into many small NATS round trips
+	// could otherwise run for a very long time; this deadline fails the
+	// whole request fast instead.
+	DefaultSummaryRequestTimeout = 30 * time.Second
+	// MaxSummaryRequestTimeout is the maximum configurable summary-request deadline.
+	MaxSummaryRequestTimeout = 5 * time.Minute
+	// DefaultAccessCheckChunkBytes is the default soft ceiling on the size of
+	// a single batched access-check message sent to fga-sync over NATS. A
+	// message built from a large result page is split into chunks no bigger
+	// than this before it is sent, so it stays comfortably under NATS'
+	// default 1MiB max payload regardless of how many resources a page held.
+	DefaultAccessCheckChunkBytes = 512 * 1024
+	// MaxAccessCheckChunkBytes is the maximum configurable access-check chunk size.
+	MaxAccessCheckChunkBytes = 1024 * 1024
+	// AccessCheckNATSHeaderMargin reserves headroom below NATS' default 1MiB
+	// max_payload for the OpenTelemetry trace-context headers
+	// requestWithSpan attaches to every outbound access-check publish:
+	// max_payload bounds the HPUB header block plus data together, not the
+	// data alone, so a chunk sized right up against MaxAccessCheckChunkBytes
+	// could still be rejected as oversized once its headers are counted.
+	AccessCheckNATSHeaderMargin = 8 * 1024
+	// DefaultAccessCheckRetries is the default number of retries for a single
+	// access-check chunk that fails outright (e.g. a transient NATS timeout),
+	// on top of the initial attempt.
+	DefaultAccessCheckRetries = 1
+	// MaxAccessCheckRetries is the maximum configurable access-check retry count.
+	MaxAccessCheckRetries = 5
 )
 
 // Membership summary scope: the indexed resource type the read covers and the

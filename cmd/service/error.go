@@ -38,6 +38,10 @@ func wrapError(ctx context.Context, err error) error {
 			return &querysvc.ServiceUnavailableError{
 				Message: serviceUnavailable.Error(),
 			}
+		case stderrors.Is(err, context.DeadlineExceeded):
+			return &querysvc.ServiceUnavailableError{
+				Message: "request exceeded its deadline",
+			}
 		default:
 			return &querysvc.InternalServerError{
 				Message: err.Error(),

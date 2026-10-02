@@ -230,10 +230,20 @@ func TestDecodePageToken(t *testing.T) {
 			name: "decode corrupted token",
 			setupToken: func() string {
 				token, _ := EncodePageToken("test", &secretKey)
-				// Corrupt the token by changing a character
+				// Corrupt the token by changing a character. The token's
+				// middle char is unpredictable (EncodePageToken uses a
+				// random nonce), so swap to a value guaranteed to differ
+				// rather than unconditionally setting 'X' -- which is a
+				// no-op, and the test flaky, on the rare encoding where
+				// that position already holds 'X'.
 				corrupted := []rune(token)
 				if len(corrupted) > 0 {
-					corrupted[len(corrupted)/2] = 'X'
+					mid := len(corrupted) / 2
+					if corrupted[mid] == 'X' {
+						corrupted[mid] = 'Y'
+					} else {
+						corrupted[mid] = 'X'
+					}
 				}
 				return string(corrupted)
 			},

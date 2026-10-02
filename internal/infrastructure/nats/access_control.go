@@ -101,6 +101,12 @@ func (n *NATSAccessControlChecker) ReadTuples(ctx context.Context, user string, 
 	return objectRefs, nil
 }
 
+// MaxPayload returns the underlying connection's actual negotiated maximum
+// message size, or 0 if unknown.
+func (n *NATSAccessControlChecker) MaxPayload() int64 {
+	return n.client.MaxPayload()
+}
+
 // Close gracefully closes the NATS connection
 func (n *NATSAccessControlChecker) Close() error {
 	return n.client.Close()
