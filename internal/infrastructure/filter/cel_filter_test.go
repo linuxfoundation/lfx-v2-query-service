@@ -5,6 +5,8 @@ package filter
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -457,13 +459,14 @@ func TestProgramCache_EvictionPrefersExpiredOverLRU(t *testing.T) {
 	cache.put("a", prg1)
 	cache.put("b", prg1)
 
-	// Touch "a" so it is the LRU-*newest* and "b" becomes the LRU-oldest,
-	// then expire "a" directly (bypassing get's own expiry removal). This
-	// puts LRU order and expiry at odds: plain oldest-first eviction would
-	// pick "b", while expiry-preferring eviction must still pick "a". Without
-	// this split, a reverted evictOldestLocked that ignores expiry entirely
-	// would evict the same (LRU-oldest) entry "b" and this test would not
-	// notice the regression.
+	// Touch "a" so it becomes the LRU-*newest* and "b" becomes the
+	// LRU-oldest, then expire "a" directly (bypassing get's own expiry
+	// removal). This is what puts LRU order and expiry at odds: plain
+	// oldest-first eviction would pick "b", while expiry-preferring eviction
+	// must still pick "a". Without the touch, "a" would be both the
+	// LRU-oldest and the expired entry, so a reverted evictOldestLocked that
+	// ignores expiry entirely would evict the same entry and this test would
+	// not notice the regression.
 	_, ok := cache.get("a")
 	assertion.True(ok, "a should be present and not yet expired")
 	cache.mu.Lock()
@@ -481,4 +484,58 @@ func TestProgramCache_EvictionPrefersExpiredOverLRU(t *testing.T) {
 	assertion.True(ok, "b should survive since a was expired")
 	_, ok = cache.get("c")
 	assertion.True(ok, "c should be present")
+}
+
+// TestProgramCache_Concurrent exercises programCache under -race with many
+// goroutines hitting it at once: some repeatedly hammer a small shared set of
+// keys (lock contention plus LRU-list reordering on every hit), others each
+// insert their own goroutine-specific keys (eviction churn once the cache is
+// at capacity). None of this asserts a specific eviction outcome — concurrent
+// access makes the result inherently racy — but it does assert the cache
+// never panics and never grows past its capacity, and it gives `go test
+// -race` concurrent reads and writes of pc.mu-guarded state to look at.
+func TestProgramCache_Concurrent(t *testing.T) {
+	assertion := assert.New(t)
+
+	const capacity = 100
+	cache := newProgramCache(capacity)
+
+	filter, err := NewCELFilter()
+	assertion.NoError(err)
+	prg, _ := filter.env.Program(nil) // Dummy program, shared by every entry.
+
+	const (
+		goroutines        = 50
+		opsPerGoroutine   = 200
+		sharedKeyCount    = 5
+		distinctKeyFactor = 4 // enough distinct keys per goroutine to exceed capacity overall
+	)
+
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < opsPerGoroutine; i++ {
+				// Repeated hits on a small shared key set.
+				sharedKey := fmt.Sprintf("shared-%d", i%sharedKeyCount)
+				if _, ok := cache.get(sharedKey); !ok {
+					cache.put(sharedKey, prg)
+				}
+
+				// Goroutine-specific misses, enough distinct keys across all
+				// goroutines to force eviction past the cache's capacity.
+				missKey := fmt.Sprintf("g%d-%d", g, i%distinctKeyFactor)
+				if _, ok := cache.get(missKey); !ok {
+					cache.put(missKey, prg)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+
+	cache.mu.Lock()
+	size := len(cache.cache)
+	cache.mu.Unlock()
+	assertion.LessOrEqual(size, capacity, "the cache must never grow past its configured capacity")
 }
