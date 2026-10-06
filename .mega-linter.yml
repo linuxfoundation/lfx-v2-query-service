@@ -16,8 +16,7 @@ DISABLE_LINTERS:
   - SPELL_LYCHEE
   # yamllint is sufficient for us.
   - YAML_PRETTIER
-  # Go version compatibility issue with MegaLinter Docker container
-  ## stderr: go: go.mod requires go >= 1.24.2 (running go 1.23.8; GOTOOLCHAIN=local)
+  # Prefer Revive.
   - GO_GOLANGCI_LINT
 DISABLE_ERRORS_LINTERS:
   # There's no easy local feedback loop for spelling issues before
