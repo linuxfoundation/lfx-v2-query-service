@@ -6,6 +6,7 @@ package service
 import (
 	"bytes"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -88,11 +89,11 @@ type Config struct {
 	AccessCheckChunkBytes int
 	// AccessCheckRetries is the number of retries for a single access-check
 	// chunk that fails outright, on top of the initial attempt
-	// (0..constants.MaxAccessCheckRetries). Like every other field here, a
-	// zero value is indistinguishable from "unset" and is replaced by
-	// constants.DefaultAccessCheckRetries in withDefaults, so an explicit
-	// "never retry" cannot currently be configured.
-	AccessCheckRetries int
+	// (0..constants.MaxAccessCheckRetries). Unlike every other field here, a
+	// nil pointer, not a zero value, means "unset": withDefaults replaces nil
+	// with constants.DefaultAccessCheckRetries, so an explicit 0 is honored
+	// and disables retries.
+	AccessCheckRetries *int
 }
 
 // DefaultConfig returns the configuration used when nothing is set in the
@@ -109,8 +110,14 @@ func DefaultConfig() Config {
 		SearchRequestTimeout:  constants.DefaultSearchRequestTimeout,
 		SummaryRequestTimeout: constants.DefaultSummaryRequestTimeout,
 		AccessCheckChunkBytes: constants.DefaultAccessCheckChunkBytes,
-		AccessCheckRetries:    constants.DefaultAccessCheckRetries,
+		AccessCheckRetries:    intPtr(constants.DefaultAccessCheckRetries),
 	}
+}
+
+// intPtr returns a pointer to n, used to populate *int config fields that
+// distinguish "unset" (nil) from an explicit zero value.
+func intPtr(n int) *int {
+	return &n
 }
 
 // withDefaults fills zero values from DefaultConfig.
@@ -146,7 +153,7 @@ func (c Config) withDefaults() Config {
 	if c.AccessCheckChunkBytes == 0 {
 		c.AccessCheckChunkBytes = defaults.AccessCheckChunkBytes
 	}
-	if c.AccessCheckRetries == 0 {
+	if c.AccessCheckRetries == nil {
 		c.AccessCheckRetries = defaults.AccessCheckRetries
 	}
 	return c
@@ -194,8 +201,11 @@ func (c Config) Validate() error {
 	if c.AccessCheckChunkBytes < 1 || c.AccessCheckChunkBytes > constants.MaxAccessCheckChunkBytes {
 		return fmt.Errorf("access check chunk bytes must be between 1 and %d, got %d", constants.MaxAccessCheckChunkBytes, c.AccessCheckChunkBytes)
 	}
-	if c.AccessCheckRetries < 0 || c.AccessCheckRetries > constants.MaxAccessCheckRetries {
-		return fmt.Errorf("access check retries must be between 0 and %d, got %d", constants.MaxAccessCheckRetries, c.AccessCheckRetries)
+	if c.AccessCheckRetries == nil {
+		return fmt.Errorf("access check retries must be set")
+	}
+	if *c.AccessCheckRetries < 0 || *c.AccessCheckRetries > constants.MaxAccessCheckRetries {
+		return fmt.Errorf("access check retries must be between 0 and %d, got %d", constants.MaxAccessCheckRetries, *c.AccessCheckRetries)
 	}
 	return nil
 }
@@ -609,6 +619,15 @@ func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byt
 
 	var responses model.AccessCheckResult
 
+	// A ResourceSearch assembled without going through NewResourceSearch (as
+	// some tests do) never ran withDefaults, so AccessCheckRetries may still
+	// be nil; fall back to the documented default rather than dereferencing
+	// a nil pointer.
+	retries := constants.DefaultAccessCheckRetries
+	if s.config.AccessCheckRetries != nil {
+		retries = *s.config.AccessCheckRetries
+	}
+
 	for _, chunk := range chunks {
 		chunk = bytes.TrimSuffix(chunk, []byte("\n"))
 		if len(chunk) == 0 {
@@ -619,7 +638,7 @@ func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byt
 			result model.AccessCheckResult
 			err    error
 		)
-		for attempt := 0; attempt <= s.config.AccessCheckRetries; attempt++ {
+		for attempt := 0; attempt <= retries; attempt++ {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				err = ctxErr
 				break
@@ -628,9 +647,15 @@ func (s *ResourceSearch) sendAccessCheckBatch(ctx context.Context, message []byt
 			if err == nil {
 				break
 			}
+			if stderrors.Is(err, port.ErrAccessCheckPayloadTooLarge) {
+				// A chunk that exceeds the connection's negotiated max
+				// payload fails the same way on every attempt; retrying
+				// cannot fix it, so stop immediately.
+				break
+			}
 			slog.WarnContext(ctx, "access control check chunk failed",
 				"attempt", attempt+1,
-				"max_attempts", s.config.AccessCheckRetries+1,
+				"max_attempts", retries+1,
 				"error", err,
 			)
 		}
