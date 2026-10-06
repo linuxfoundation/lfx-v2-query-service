@@ -82,6 +82,16 @@ app:
     ##   value: "10"
     ## SUMMARY_MAX_RECORDS:       # default 5000, 1..50000 - membership records read before a summary reports complete: false
     ##   value: "5000"
+    ## COUNT_REQUEST_TIMEOUT:     # default 30s, up to 5m - total deadline for /query/resources/count
+    ##   value: 30s
+    ## SEARCH_REQUEST_TIMEOUT:    # default 30s, up to 5m - total deadline for /query/resources
+    ##   value: 30s
+    ## SUMMARY_REQUEST_TIMEOUT:   # default 30s, up to 5m - total deadline for /query/memberships/summary
+    ##   value: 30s
+    ## ACCESS_CHECK_CHUNK_BYTES:  # default 524288, 1..1048576 - soft ceiling on a batched access-check message
+    ##   value: "524288"
+    ## ACCESS_CHECK_RETRIES:      # default 1, 0..5 - retries for a failed access-check chunk; 0 disables retries
+    ##   value: "1"
   # extraEnv allows injecting additional environment variables before OTEL configuration.
   # Supports both simple values and Kubernetes field references.
   extraEnv: []
