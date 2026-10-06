@@ -26,7 +26,7 @@ GOLANGCI_LINT_VERSION := v2.2.2
 LINT_TIMEOUT := 10m
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
 
-GOA_VERSION := v3.22.6
+GOA_VERSION := v3.30.0
 
 ##@ Development
 
@@ -50,6 +50,7 @@ deps: ## Install dependencies
 .PHONY: apigen
 apigen: deps #@ Generate API code using Goa
 	goa gen github.com/linuxfoundation/lfx-v2-query-service/design
+	jq 'walk(if type == "object" and has("security") and (.security | type) == "array" then .security |= map(with_entries(.value = (.value // []))) else . end)' gen/http/openapi.json > /tmp/openapi.json.fixed && mv /tmp/openapi.json.fixed gen/http/openapi.json
 
 .PHONY: lint
 lint: ## Run golangci-lint (local Go linting)
