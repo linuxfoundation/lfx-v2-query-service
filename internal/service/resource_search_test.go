@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
@@ -991,7 +992,7 @@ func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
 		accessChecker.SetCheckAccessTransientError(1, stderrors.New("fga-sync timeout"))
 
 		config := DefaultConfig()
-		config.AccessCheckRetries = 1
+		config.AccessCheckRetries = intPtr(1)
 		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
 
 		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
@@ -1005,7 +1006,7 @@ func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
 		accessChecker.SetCheckAccessError(stderrors.New("fga-sync down"))
 
 		config := DefaultConfig()
-		config.AccessCheckRetries = 1
+		config.AccessCheckRetries = intPtr(1)
 		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
 
 		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
@@ -1014,12 +1015,40 @@ func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
 		assertion.Equal(2, accessChecker.CheckAccessCalls())
 	})
 
+	t.Run("ACCESS_CHECK_RETRIES=0 disables retries", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.SetCheckAccessError(stderrors.New("fga-sync down"))
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = intPtr(0)
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
+		assertion.Error(err)
+		assertion.Nil(result)
+		assertion.Equal(1, accessChecker.CheckAccessCalls(), "a single attempt, no retry")
+	})
+
+	t.Run("a deterministic max-payload error is not retried", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.SetCheckAccessError(port.ErrAccessCheckPayloadTooLarge)
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = intPtr(5)
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
+		assertion.Error(err)
+		assertion.Nil(result)
+		assertion.Equal(1, accessChecker.CheckAccessCalls(), "a deterministic error fails identically on every attempt, so a retry cannot help")
+	})
+
 	t.Run("a cancelled context aborts the retry loop without exhausting all attempts", func(t *testing.T) {
 		accessChecker := mock.NewMockAccessControlChecker()
 		accessChecker.SetCheckAccessError(stderrors.New("fga-sync down"))
 
 		config := DefaultConfig()
-		config.AccessCheckRetries = 5
+		config.AccessCheckRetries = intPtr(5)
 		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1071,6 +1100,40 @@ func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
 		accessChecker := mock.NewMockAccessControlChecker()
 		accessChecker.DefaultResult = "allowed"
 		accessChecker.RecordCheckAccessMessages()
+		// Just above the header margin, so the effective hard bound fits one
+		// line but not two; the connection's negotiated max payload, not the
+		// much larger soft config budget, must be what drives the split.
+		accessChecker.MaxPayloadValue = int64(constants.AccessCheckNATSHeaderMargin + 64)
+
+		config := DefaultConfig()
+		config.AccessCheckChunkBytes = constants.MaxAccessCheckChunkBytes
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		message := []byte(
+			"project:p1#view@user:user123\n" +
+				"project:p2#view@user:user123\n" +
+				"project:p3#view@user:user123\n",
+		)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), message)
+		assertion.NoError(err)
+		assertion.Equal(model.AccessCheckResult{
+			"project:p1#view@user:user123": "true",
+			"project:p2#view@user:user123": "true",
+			"project:p3#view@user:user123": "true",
+		}, result)
+		assertion.Equal(3, accessChecker.CheckAccessCalls(), "the negotiated bound forces one line per chunk")
+
+		sent := accessChecker.CheckAccessMessages()
+		assertion.Len(sent, 3)
+		for _, chunk := range sent {
+			assertion.Len(strings.Split(strings.TrimSuffix(chunk, "\n"), "\n"), 1, "each chunk carries a single line")
+		}
+	})
+
+	t.Run("a negotiated max payload too small for even one line is rejected", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.DefaultResult = "allowed"
 		// Below AccessCheckNATSHeaderMargin so even one line's projected
 		// response exceeds the effective hard bound; the connection's
 		// negotiated max payload, not the soft config budget, must be what
@@ -1131,7 +1194,7 @@ func TestNewResourceSearch(t *testing.T) {
 		want.SearchRequestTimeout = constants.DefaultSearchRequestTimeout
 		want.SummaryRequestTimeout = constants.DefaultSummaryRequestTimeout
 		want.AccessCheckChunkBytes = constants.DefaultAccessCheckChunkBytes
-		want.AccessCheckRetries = constants.DefaultAccessCheckRetries
+		want.AccessCheckRetries = intPtr(constants.DefaultAccessCheckRetries)
 		assertion.Equal(want, result.(*ResourceSearch).config)
 	})
 
@@ -1155,8 +1218,8 @@ func TestNewResourceSearch(t *testing.T) {
 		{"summary request timeout above the maximum", Config{SummaryRequestTimeout: constants.MaxSummaryRequestTimeout + time.Second}, "summary request timeout"},
 		{"negative access check chunk bytes", Config{AccessCheckChunkBytes: -1}, "access check chunk bytes"},
 		{"access check chunk bytes above the maximum", Config{AccessCheckChunkBytes: constants.MaxAccessCheckChunkBytes + 1}, "access check chunk bytes"},
-		{"negative access check retries", Config{AccessCheckRetries: -1}, "access check retries"},
-		{"access check retries above the maximum", Config{AccessCheckRetries: constants.MaxAccessCheckRetries + 1}, "access check retries"},
+		{"negative access check retries", Config{AccessCheckRetries: intPtr(-1)}, "access check retries"},
+		{"access check retries above the maximum", Config{AccessCheckRetries: intPtr(constants.MaxAccessCheckRetries + 1)}, "access check retries"},
 	}
 	for _, tc := range invalid {
 		t.Run("rejects "+tc.name, func(t *testing.T) {
