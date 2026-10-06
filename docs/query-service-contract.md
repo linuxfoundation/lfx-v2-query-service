@@ -578,25 +578,28 @@ regardless of how many resources share it.
 
 **Chunking and retries:** a batch built from a large result page is split into
 chunks bounded by `ACCESS_CHECK_CHUNK_BYTES` (default 512KiB) before it is
-sent to fga-sync, never mid-line, so the request stays comfortably under
-NATS' default 1MiB max payload. The split also budgets each chunk against its
-*projected worst-case response size*, not just its request size: a response
-line (`<key>\t<true|false>`) can be up to 6 bytes longer than its request
-line (`<key>\n`), so a chunk sized only against the outbound request could
-still produce an oversized reply. A single check line whose projected
+sent to fga-sync, never mid-line, so the request stays comfortably under the
+connection's negotiated NATS `max_payload`. The split also budgets each chunk
+against its *projected worst-case response size*, not just its request size:
+a response line (`<key>\t<true|false>`) can be up to 6 bytes longer than its
+request line (`<key>\n`), so a chunk sized only against the outbound request
+could still produce an oversized reply. A single check line whose projected
 response would exceed `ACCESS_CHECK_CHUNK_BYTES` is still sent, kept whole in
 its own chunk rather than split; only a line beyond the hard payload bound is
-rejected outright. That hard bound is NATS' 1MiB max payload less an 8KiB
-margin reserved for the OpenTelemetry trace-context headers attached to every
-outbound publish, since NATS' limit covers the header block plus data
-together, not the data alone. `ACCESS_CHECK_CHUNK_BYTES` itself is clamped to
-that hard bound, so configuring it right up against the nominal 1MiB ceiling
-can't let a multi-line chunk's accumulated projected response spill past the
-real limit even though no single line in it is individually oversized. Each
-chunk that fails outright (e.g. a transient
-NATS timeout) is retried up to `ACCESS_CHECK_RETRIES` times (default 1) before
-the whole request fails; a retry is abandoned early if the request's own
-deadline has already passed.
+rejected outright. That hard bound is the connection's negotiated NATS
+`max_payload` — capped at 1MiB, and falling back to 1MiB when the negotiated
+value is unknown — less an 8KiB margin reserved for the OpenTelemetry
+trace-context headers attached to every outbound publish, since NATS' limit
+covers the header block plus data together, not the data alone.
+`ACCESS_CHECK_CHUNK_BYTES` itself is clamped to that hard bound, so
+configuring it right up against the nominal 1MiB ceiling can't let a
+multi-line chunk's accumulated projected response spill past the real limit
+even though no single line in it is individually oversized. Each chunk that
+fails outright (e.g. a transient NATS timeout) is retried up to
+`ACCESS_CHECK_RETRIES` times (default 1, `0` disables retries) before the
+whole request fails; a retry is abandoned early if the request's own deadline
+has already passed, or if the failure was the chunk exceeding NATS'
+`max_payload`, which a retry cannot fix.
 
 ### Direct grant filtering
 
