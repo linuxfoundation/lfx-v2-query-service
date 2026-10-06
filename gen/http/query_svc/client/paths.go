@@ -17,6 +17,11 @@ func QueryResourcesCountQuerySvcPath() string {
 	return "/query/resources/count"
 }
 
+// QueryMembershipSummaryQuerySvcPath returns the URL path to the query-svc service query-membership-summary HTTP endpoint.
+func QueryMembershipSummaryQuerySvcPath() string {
+	return "/query/memberships/summary"
+}
+
 // QueryOrgsQuerySvcPath returns the URL path to the query-svc service query-orgs HTTP endpoint.
 func QueryOrgsQuerySvcPath() string {
 	return "/query/orgs"

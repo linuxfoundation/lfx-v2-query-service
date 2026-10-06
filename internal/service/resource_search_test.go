@@ -4,6 +4,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	stderrors "errors"
 	"fmt"
@@ -831,6 +832,262 @@ func TestResourceSearchCheckAccess(t *testing.T) {
 	}
 }
 
+func TestSplitAccessCheckMessage(t *testing.T) {
+	tests := []struct {
+		name       string
+		message    string
+		chunkBytes int
+		want       []string
+		wantErr    bool
+	}{
+		{
+			name:       "empty message",
+			message:    "",
+			chunkBytes: 100,
+			want:       nil,
+		},
+		{
+			name:       "message under the limit is a single chunk",
+			message:    "a#b@user:u\nc#d@user:u\n",
+			chunkBytes: 100,
+			want:       []string{"a#b@user:u\nc#d@user:u\n"},
+		},
+		{
+			name:       "non-positive chunkBytes never splits",
+			message:    "a#b@user:u\nc#d@user:u\n",
+			chunkBytes: 0,
+			want:       []string{"a#b@user:u\nc#d@user:u\n"},
+		},
+		{
+			// Each line's projected response ("aaaa\n" -> "aaaa\tfalse", 10
+			// bytes) already saturates chunkBytes on its own, so no two
+			// lines can share a chunk here — this is the response-overhead
+			// accounting, not a raw-request-byte budget.
+			name:       "splits on line boundaries, never mid-line",
+			message:    "aaaa\nbbbb\ncccc\n",
+			chunkBytes: 10,
+			want:       []string{"aaaa\n", "bbbb\n", "cccc\n"},
+		},
+		{
+			// fga-sync replies "aa\tfalse\nbb\tfalse" (17 bytes) for
+			// "aa\nbb\n" (6 bytes) -- the real growth is 6 bytes per line
+			// minus the one omitted trailing newline, so two lines can
+			// never share a 16-byte response budget here.
+			name:       "each line gets its own chunk when the response budget is tight",
+			message:    "aa\nbb\ncc\n",
+			chunkBytes: 16,
+			want:       []string{"aa\n", "bb\n", "cc\n"},
+		},
+		{
+			name:       "a single line larger than chunkBytes is kept whole",
+			message:    "short\nthis-line-is-longer-than-the-limit\nshort2\n",
+			chunkBytes: 10,
+			want:       []string{"short\n", "this-line-is-longer-than-the-limit\n", "short2\n"},
+		},
+		{
+			name:       "trailing oversized line with no following newline is kept whole",
+			message:    "short\nthis-line-is-longer-than-the-limit-and-unterminated",
+			chunkBytes: 10,
+			want:       []string{"short\n", "this-line-is-longer-than-the-limit-and-unterminated"},
+		},
+		{
+			name:       "a line beyond the hard payload bound is rejected, not sent oversized",
+			message:    "short\n" + strings.Repeat("a", constants.MaxAccessCheckChunkBytes+1) + "\n",
+			chunkBytes: 10,
+			wantErr:    true,
+		},
+		{
+			name:       "an unsplit message beyond the hard payload bound is rejected",
+			message:    strings.Repeat("a", constants.MaxAccessCheckChunkBytes+1),
+			chunkBytes: constants.MaxAccessCheckChunkBytes + 10,
+			wantErr:    true,
+		},
+	}
+
+	assertion := assert.New(t)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := splitAccessCheckMessage([]byte(tc.message), tc.chunkBytes, accessCheckHardBoundBytes)
+			if tc.wantErr {
+				assertion.Error(err)
+				assertion.Nil(got)
+				return
+			}
+			assertion.NoError(err)
+			gotStrings := make([]string, len(got))
+			for i, chunk := range got {
+				gotStrings[i] = string(chunk)
+			}
+			if tc.want == nil {
+				assertion.Nil(got)
+				return
+			}
+			assertion.Equal(tc.want, gotStrings)
+		})
+	}
+}
+
+func TestSplitAccessCheckMessage_ChunkBytesClampedToHardBound(t *testing.T) {
+	assertion := assert.New(t)
+
+	line := "o#r@user:" + strings.Repeat("u", 100) + "\n"
+	lineCount := (constants.MaxAccessCheckChunkBytes / len(line)) + 10
+	message := strings.Repeat(line, lineCount)
+
+	// chunkBytes is configured at the nominal max. Without clamping
+	// chunkBytes to accessCheckHardBoundBytes, lines would keep
+	// accumulating into one chunk up to the full nominal max, even though
+	// every chunk's projected response must stay under the hard bound
+	// (the nominal max less the header margin) to survive NATS' real
+	// max_payload once trace-context headers are attached.
+	got, err := splitAccessCheckMessage([]byte(message), constants.MaxAccessCheckChunkBytes, accessCheckHardBoundBytes)
+	assertion.NoError(err)
+	assertion.NotEmpty(got)
+
+	for _, chunk := range got {
+		projected := len(chunk) + bytes.Count(chunk, []byte("\n"))*accessCheckResponseOverhead
+		assertion.LessOrEqual(projected, accessCheckHardBoundBytes,
+			"chunk of %d bytes has a projected response of %d bytes, exceeding the hard bound", len(chunk), projected)
+	}
+}
+
+// TestEffectiveAccessCheckHardBound covers the NATS max-payload-aware
+// derivation: when the connection's negotiated max payload is smaller than
+// constants.MaxAccessCheckChunkBytes, the hard bound must shrink with it so
+// a chunk sized against the nominal default can't be accepted by the split
+// logic yet still be rejected (or come back oversized) by the real
+// connection.
+func TestEffectiveAccessCheckHardBound(t *testing.T) {
+	assertion := assert.New(t)
+
+	t.Run("unknown max payload falls back to the nominal hard bound", func(t *testing.T) {
+		assertion.Equal(accessCheckHardBoundBytes, effectiveAccessCheckHardBound(0))
+	})
+
+	t.Run("max payload above the nominal cap does not raise the bound", func(t *testing.T) {
+		assertion.Equal(accessCheckHardBoundBytes, effectiveAccessCheckHardBound(int64(constants.MaxAccessCheckChunkBytes)*10))
+	})
+
+	t.Run("a smaller negotiated max payload shrinks the bound", func(t *testing.T) {
+		const smallMaxPayload = int64(256 * 1024)
+		got := effectiveAccessCheckHardBound(smallMaxPayload)
+		assertion.Equal(int(smallMaxPayload)-constants.AccessCheckNATSHeaderMargin, got)
+		assertion.Less(got, accessCheckHardBoundBytes)
+	})
+
+	t.Run("a negotiated max payload smaller than the header margin still returns a usable positive bound", func(t *testing.T) {
+		got := effectiveAccessCheckHardBound(1)
+		assertion.GreaterOrEqual(got, 1)
+	})
+}
+
+func TestResourceSearchSendAccessCheckBatchRetry(t *testing.T) {
+	assertion := assert.New(t)
+
+	t.Run("a transient failure resolved by a retry returns the merged result", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.DefaultResult = "allowed"
+		accessChecker.AllowedUserIDs = []string{"user123"}
+		accessChecker.SetCheckAccessTransientError(1, stderrors.New("fga-sync timeout"))
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = 1
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
+		assertion.NoError(err)
+		assertion.Equal(model.AccessCheckResult{"project:test-project#view@user:user123": "true"}, result)
+		assertion.Equal(2, accessChecker.CheckAccessCalls())
+	})
+
+	t.Run("a failure that outlasts the retry budget is returned", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.SetCheckAccessError(stderrors.New("fga-sync down"))
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = 1
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:test-project#view@user:user123\n"))
+		assertion.Error(err)
+		assertion.Nil(result)
+		assertion.Equal(2, accessChecker.CheckAccessCalls())
+	})
+
+	t.Run("a cancelled context aborts the retry loop without exhausting all attempts", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.SetCheckAccessError(stderrors.New("fga-sync down"))
+
+		config := DefaultConfig()
+		config.AccessCheckRetries = 5
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result, err := search.sendAccessCheckBatch(ctx, []byte("project:test-project#view@user:user123\n"))
+		assertion.Error(err)
+		assertion.Nil(result)
+		assertion.Equal(0, accessChecker.CheckAccessCalls())
+	})
+
+	t.Run("a message split into multiple chunks sends every chunk and merges their results", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.DefaultResult = "allowed"
+		accessChecker.RecordCheckAccessMessages()
+
+		config := DefaultConfig()
+		// Small enough that a message with several distinct lines cannot
+		// fit in one chunk once the response-overhead budget is applied.
+		config.AccessCheckChunkBytes = 24
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		message := []byte(
+			"project:p1#view@user:user123\n" +
+				"project:p2#view@user:user123\n" +
+				"project:p3#view@user:user123\n",
+		)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), message)
+		assertion.NoError(err)
+		assertion.Greater(accessChecker.CheckAccessCalls(), 1, "the message did not fit in a single chunk")
+		assertion.Equal(model.AccessCheckResult{
+			"project:p1#view@user:user123": "true",
+			"project:p2#view@user:user123": "true",
+			"project:p3#view@user:user123": "true",
+		}, result)
+
+		sent := accessChecker.CheckAccessMessages()
+		assertion.Len(sent, accessChecker.CheckAccessCalls())
+		var sentLines []string
+		for _, chunk := range sent {
+			sentLines = append(sentLines, strings.Split(chunk, "\n")...)
+		}
+		wantLines := strings.Split(strings.TrimSuffix(string(message), "\n"), "\n")
+		assertion.ElementsMatch(wantLines, sentLines, "every line was sent exactly once, across whichever chunk carried it")
+	})
+
+	t.Run("a smaller negotiated max payload forces more, smaller chunks than the configured soft budget alone would", func(t *testing.T) {
+		accessChecker := mock.NewMockAccessControlChecker()
+		accessChecker.DefaultResult = "allowed"
+		accessChecker.RecordCheckAccessMessages()
+		// Below AccessCheckNATSHeaderMargin so even one line's projected
+		// response exceeds the effective hard bound; the connection's
+		// negotiated max payload, not the soft config budget, must be what
+		// drives the split and the resulting error.
+		accessChecker.MaxPayloadValue = 4
+
+		config := DefaultConfig()
+		config.AccessCheckChunkBytes = constants.MaxAccessCheckChunkBytes
+		search := newTestResourceSearchWithConfig(t, mock.NewMockResourceSearcher(), accessChecker, config)
+
+		result, err := search.sendAccessCheckBatch(context.Background(), []byte("project:p1#view@user:user123\n"))
+		assertion.Error(err, "a negotiated max payload too small for even one line must be rejected, not silently sent oversized")
+		assertion.Nil(result)
+		assertion.Equal(0, accessChecker.CheckAccessCalls())
+	})
+}
+
 func TestNewResourceSearch(t *testing.T) {
 	assertion := assert.New(t)
 
@@ -864,10 +1121,18 @@ func TestNewResourceSearch(t *testing.T) {
 	})
 
 	t.Run("explicit config is kept", func(t *testing.T) {
-		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3, DeniedPageWalk: 4}
+		config := Config{AccessCheckTimeout: time.Second, ReadTuplesTimeout: 2 * time.Second, AccessBucketPage: 2, MaxAccessBuckets: 3, MaxSummaryRecords: 4, DeniedPageWalk: 4}
 		result, err := NewResourceSearch(nil, nil, mock.NewMockResourceFilter(), config)
 		assertion.NoError(err)
-		assertion.Equal(config, result.(*ResourceSearch).config)
+		// Fields left unset in the literal above are zero values, which
+		// withDefaults fills from DefaultConfig().
+		want := config
+		want.CountRequestTimeout = constants.DefaultCountRequestTimeout
+		want.SearchRequestTimeout = constants.DefaultSearchRequestTimeout
+		want.SummaryRequestTimeout = constants.DefaultSummaryRequestTimeout
+		want.AccessCheckChunkBytes = constants.DefaultAccessCheckChunkBytes
+		want.AccessCheckRetries = constants.DefaultAccessCheckRetries
+		assertion.Equal(want, result.(*ResourceSearch).config)
 	})
 
 	invalid := []struct {
@@ -882,6 +1147,16 @@ func TestNewResourceSearch(t *testing.T) {
 		{"max below page", Config{AccessBucketPage: 100, MaxAccessBuckets: 50}, "max access buckets"},
 		{"max above limit", Config{MaxAccessBuckets: constants.MaxCountAccessBuckets + 1}, "max access buckets must not exceed 10000"},
 		{"denied page walk above the maximum", Config{DeniedPageWalk: constants.MaxDeniedPageWalk + 1}, "denied page walk"},
+		{"negative count request timeout", Config{CountRequestTimeout: -time.Second}, "count request timeout"},
+		{"count request timeout above the maximum", Config{CountRequestTimeout: constants.MaxCountRequestTimeout + time.Second}, "count request timeout"},
+		{"negative search request timeout", Config{SearchRequestTimeout: -time.Second}, "search request timeout"},
+		{"search request timeout above the maximum", Config{SearchRequestTimeout: constants.MaxSearchRequestTimeout + time.Second}, "search request timeout"},
+		{"negative summary request timeout", Config{SummaryRequestTimeout: -time.Second}, "summary request timeout"},
+		{"summary request timeout above the maximum", Config{SummaryRequestTimeout: constants.MaxSummaryRequestTimeout + time.Second}, "summary request timeout"},
+		{"negative access check chunk bytes", Config{AccessCheckChunkBytes: -1}, "access check chunk bytes"},
+		{"access check chunk bytes above the maximum", Config{AccessCheckChunkBytes: constants.MaxAccessCheckChunkBytes + 1}, "access check chunk bytes"},
+		{"negative access check retries", Config{AccessCheckRetries: -1}, "access check retries"},
+		{"access check retries above the maximum", Config{AccessCheckRetries: constants.MaxAccessCheckRetries + 1}, "access check retries"},
 	}
 	for _, tc := range invalid {
 		t.Run("rejects "+tc.name, func(t *testing.T) {
@@ -993,18 +1268,22 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                 string
-		principal            string
-		config               Config
-		aggregation          model.CountAggregation
-		setupMocks           func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
-		expectedError        bool
-		expectedUnavailable  bool
-		expectedCount        int
-		expectedHasMore      bool
-		expectedPages        int
-		expectedCacheControl bool
-		check                func(*testing.T, *model.CountResult)
+		name                string
+		principal           string
+		config              Config
+		aggregation         model.CountAggregation
+		setupMocks          func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
+		expectedError       bool
+		expectedUnavailable bool
+		expectedCount       int
+		expectedHasMore     bool
+		expectedPages       int
+		// expectedCheckAccessCalls overrides expectedPages for the
+		// CheckAccessCalls assertion, for cases where a failing call is
+		// retried; zero means "same as expectedPages".
+		expectedCheckAccessCalls int
+		expectedCacheControl     bool
+		check                    func(*testing.T, *model.CountResult)
 	}{
 		{
 			name:      "anonymous user gets the public count only, cacheable, no walk",
@@ -1103,9 +1382,10 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 				accessChecker.DefaultResult = "allowed"
 				accessChecker.SetCheckAccessErrorOnCall(2, assert.AnError)
 			},
-			expectedError:       true,
-			expectedUnavailable: true,
-			expectedPages:       2,
+			expectedError:            true,
+			expectedUnavailable:      true,
+			expectedPages:            2,
+			expectedCheckAccessCalls: 3, // page 2's failing check is retried once (DefaultAccessCheckRetries)
 		},
 		{
 			name:        "group_by runs over public plus granted resources",
@@ -1254,8 +1534,12 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 				var unavailable errors.ServiceUnavailable
 				assertion.Equal(tc.expectedUnavailable, stderrors.As(err, &unavailable), "service unavailable classification")
 				if tc.expectedPages > 0 {
+					expectedChecks := tc.expectedCheckAccessCalls
+					if expectedChecks == 0 {
+						expectedChecks = tc.expectedPages
+					}
 					assertion.Equal(tc.expectedPages, resourceSearcher.AccessBucketCalls(), "pages walked before failing")
-					assertion.Equal(tc.expectedPages, accessChecker.CheckAccessCalls(), "checks issued before failing")
+					assertion.Equal(expectedChecks, accessChecker.CheckAccessCalls(), "checks issued before failing")
 				}
 				return
 			}
@@ -1278,6 +1562,71 @@ func TestResourceCountQueryResourcesCount(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestResourceCountQueryResourcesCountDeadline exercises CountRequestTimeout
+// against a dependency that blocks forever without it: the count walk must
+// actually stop at the configured deadline instead of hanging on the
+// access-check round trip, and the resulting error must classify as a
+// ServiceUnavailable wrapping context.DeadlineExceeded so the HTTP boundary
+// (cmd/service/error.go) maps it the same way it maps a bare deadline.
+func TestResourceCountQueryResourcesCountDeadline(t *testing.T) {
+	assertion := assert.New(t)
+
+	searcher := mock.NewMockResourceSearcher()
+	searcher.ClearResources()
+	searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"project_uid:P1"}}, false))
+
+	accessChecker := mock.NewMockAccessControlChecker()
+	accessChecker.SetCheckAccessBlocking()
+
+	config := DefaultConfig()
+	config.CountRequestTimeout = 20 * time.Millisecond
+	search := newTestResourceSearchWithConfig(t, searcher, accessChecker, config)
+
+	ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+
+	start := time.Now()
+	result, err := search.QueryResourcesCount(ctx, model.SearchCriteria{PageSize: -1, PublicOnly: true}, model.SearchCriteria{PrivateOnly: true}, model.CountAggregation{})
+	elapsed := time.Since(start)
+
+	assertion.Error(err)
+	assertion.Nil(result)
+	assertion.Less(elapsed, 5*time.Second, "the walk must stop at the configured deadline, not hang")
+
+	var unavailable errors.ServiceUnavailable
+	assertion.True(stderrors.As(err, &unavailable), "deadline exceeded during the walk must classify as service unavailable")
+	assertion.True(stderrors.Is(err, context.DeadlineExceeded), "the underlying cause must still be reachable via errors.Is")
+}
+
+// TestResourceSearchQueryResourcesDeadline exercises SearchRequestTimeout
+// against a dependency that blocks forever without it: QueryResources must
+// stop at the configured deadline instead of hanging on the access-check
+// round trip.
+func TestResourceSearchQueryResourcesDeadline(t *testing.T) {
+	assertion := assert.New(t)
+
+	searcher := mock.NewMockResourceSearcher()
+	searcher.ClearResources()
+	searcher.AddResource(mock.NewResourceWithDefaults("v1_past_meeting", "m1", map[string]any{"tags": []string{"project_uid:P1"}}, false))
+
+	accessChecker := mock.NewMockAccessControlChecker()
+	accessChecker.SetCheckAccessBlocking()
+
+	config := DefaultConfig()
+	config.SearchRequestTimeout = 20 * time.Millisecond
+	search := newTestResourceSearchWithConfig(t, searcher, accessChecker, config)
+
+	ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "dev_user")
+
+	start := time.Now()
+	result, err := search.QueryResources(ctx, model.SearchCriteria{Tags: []string{"project_uid:P1"}})
+	elapsed := time.Since(start)
+
+	assertion.Error(err)
+	assertion.Nil(result)
+	assertion.Less(elapsed, 5*time.Second, "QueryResources must stop at the configured deadline, not hang")
+	assertion.True(stderrors.Is(err, context.DeadlineExceeded), "the underlying cause must still be reachable via errors.Is")
 }
 
 func TestAccessBucketWalkPagesAndCaps(t *testing.T) {

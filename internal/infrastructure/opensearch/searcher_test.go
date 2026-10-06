@@ -519,6 +519,21 @@ func TestOpenSearchSearcherRender(t *testing.T) {
 			unexpectedFields: []string{"\"_score\""},
 		},
 		{
+			name: "summary parent refs sort on their minimum with missing refs last",
+			criteria: model.SearchCriteria{
+				ResourceType: stringPtr("project_membership"),
+				SortBy:       "parent_refs", SortOrder: "asc", SortMode: "min", PageSize: 1000,
+			},
+			expectedFields:   []string{`"sort":[{"parent_refs":{"order":"asc","mode":"min","missing":"_last"}},{"_id":"asc"}]`},
+			unexpectedFields: []string{"sort_name"},
+		},
+		{
+			name:             "plain search has no multi-valued sort mode",
+			criteria:         model.SearchCriteria{SortBy: "sort_name", SortOrder: "asc", PageSize: 1000},
+			expectedFields:   []string{`"sort":[{"sort_name":{"order":"asc","missing":"_last"}},{"_id":"asc"}]`},
+			unexpectedFields: []string{`"mode"`, "parent_refs"},
+		},
+		{
 			// Without an explicit operator, match_bool_prefix defaults to OR, so an extra
 			// word can only add matches, never remove them — the opposite of what someone
 			// typing more of a name expects.
@@ -679,6 +694,22 @@ func TestOpenSearchSearcherConvertResponse(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOpenSearchSearcherConvertSearchResponseCursor(t *testing.T) {
+	searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index"}
+	token := "opaque-token"
+	cursor := `["2024-01-01T00:00:00Z","project-1"]`
+
+	result, err := searcher.convertSearchResponse(context.Background(), &SearchResponse{
+		Hits:        Hits{Total: Total{Value: 1}, Hits: []Hit{}},
+		PageToken:   &token,
+		SearchAfter: &cursor,
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, &token, result.PageToken)
+	assert.Equal(t, &cursor, result.NextSearchAfter, "a service-side drain continues from the cursor, not the token")
 }
 
 func TestOpenSearchSearcherConvertHit(t *testing.T) {
@@ -1627,6 +1658,36 @@ func TestAuthorizedAggregationSkipsWhenNothingIsVisible(t *testing.T) {
 		assert.Empty(t, result.Groups)
 		assert.Equal(t, 0, client.aggregationCalls)
 	})
+}
+
+func TestOpenSearchSearcherConvertHitSortValues(t *testing.T) {
+	searcher := &OpenSearchSearcher{client: NewMockOpenSearchClient(), index: "test-index"}
+	source := json.RawMessage(`{"object_type":"project_membership","object_id":"m-1","data":{"uid":"m-1"}}`)
+
+	tests := []struct {
+		name     string
+		hit      Hit
+		expected string
+	}{
+		{
+			name:     "a sorted hit keeps its own cursor",
+			hit:      Hit{ID: "m-1", Source: source, Sort: json.RawMessage(`["a corp","m-1"]`)},
+			expected: `["a corp","m-1"]`,
+		},
+		{
+			name:     "an unsorted hit carries none",
+			hit:      Hit{ID: "m-1", Source: source},
+			expected: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resource, err := searcher.convertHit(tc.hit)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, resource.SortValues)
+		})
+	}
 }
 
 // TestOpenSearchSearcherConvertResponsePropagatesCursor pins the contract the

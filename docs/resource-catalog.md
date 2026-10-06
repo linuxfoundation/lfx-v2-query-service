@@ -226,6 +226,47 @@ GET /query/resources?v=1&type=project_membership&tags=project_uid:<project_uid>&
 GET /query/resources?v=1&type=project_membership&tags=b2b_org_uid:<b2b_org_uid>
 ```
 
+### Summarize a membership history per organization and project
+
+```bash
+# every organization on one project
+GET /query/memberships/summary?v=1&project_uid=<project_uid>
+# every project of one organization
+GET /query/memberships/summary?v=1&b2b_org_uid=<b2b_org_uid>
+# one organization on one project
+GET /query/memberships/summary?v=1&project_uid=<project_uid>&b2b_org_uid=<b2b_org_uid>
+```
+
+One summary per organization and project, folded from the membership records:
+how many records, the earliest start and the latest end, the current record's
+status, tier and dates, the tier names and statuses seen, and the records
+themselves oldest first. At least one of `project_uid` and `b2b_org_uid` is
+required.
+
+Use this instead of paging `type=project_membership` and folding the history in
+the client: `status`, `tier_name` and the dates are `data` fields, which cannot
+be aggregated, so the fold has to happen over the records themselves. The
+summaries cover only the records the caller may see. `complete` is `false`
+when the read stopped at an organization boundary after reaching the configured
+record cap; it then carries a `page_token` that resumes at the next run with
+the same scope. The read groups an organization's records by its parent ref,
+whatever company name they carry; organization-less records are read with
+those of the same project, and ref-less records form the last run. If the cap
+falls inside the first run, the read continues until a boundary appears or the
+pages run out, returning whole runs rather than partial summaries. If neither a resumable
+boundary nor end-of-results can be established within the hard ceiling of
+50000 raw hits, the read fails with `503` and no summaries when visible rows
+were already read; when none were, it returns `200` with empty summaries,
+`complete: false` and no `page_token`, the same shape as any truncated read.
+The flag can tell a scope larger than the ceiling from an empty one, never
+which records or how many.
+
+A `page_token` is accepted only from the same version of the summary read; a
+token from any other version, older or newer, is rejected with `400` and the
+read must restart without it.
+See [GET /query/memberships/summary](query-service-contract.md#get-querymembershipssummary)
+for the parameters, the result fields and the fold rules.
+
 ### Find key contacts for a membership
 
 ```bash

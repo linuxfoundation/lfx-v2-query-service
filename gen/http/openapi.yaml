@@ -13,6 +13,73 @@ produces:
     - application/xml
     - application/gob
 paths:
+    /query/memberships/summary:
+        get:
+            tags:
+                - query-svc
+            summary: query-membership-summary query-svc
+            description: Summarize the membership records of an organization, a project, or both, into one summary per organization and project.
+            operationId: query-svc#query-membership-summary
+            parameters:
+                - name: v
+                  in: query
+                  description: Version of the API
+                  required: true
+                  type: string
+                  enum:
+                    - "1"
+                - name: project_uid
+                  in: query
+                  description: Project UID to summarize; at least one of project_uid and b2b_org_uid is required, both restrict the read to the memberships of that organization on that project
+                  required: false
+                  type: string
+                  minLength: 1
+                - name: b2b_org_uid
+                  in: query
+                  description: Organization UID to summarize; at least one of project_uid and b2b_org_uid is required, both restrict the read to the memberships of that organization on that project
+                  required: false
+                  type: string
+                  minLength: 1
+                - name: page_token
+                  in: query
+                  description: Opaque token from a previous summary response with the same project_uid and b2b_org_uid; resumes at the next organization run. A page_token is accepted only from the same version of the summary read; a token from any other version, older or newer, is rejected with 400 and the read must restart without it
+                  required: false
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/QuerySvcQueryMembershipSummaryResponseBody'
+                        required:
+                            - summaries
+                            - terms_total
+                            - complete
+                    headers:
+                        Cache-Control:
+                            description: Cache control header
+                            type: string
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/BadRequestError'
+                        required:
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/InternalServerError'
+                        required:
+                            - message
+                "503":
+                    description: Service Unavailable response.
+                    schema:
+                        $ref: '#/definitions/ServiceUnavailableError'
+                        required:
+                            - message
+            schemes:
+                - http
+            security:
+                - jwt_header_Authorization: []
     /query/orgs:
         get:
             tags:
@@ -469,6 +536,175 @@ definitions:
             message: An internal server error occurred.
         required:
             - message
+    MembershipTerm:
+        title: MembershipTerm
+        type: object
+        properties:
+            end_date:
+                type: string
+                description: End date of the membership record; omitted when the record carries none
+                example: "2024-01-01T00:00:00Z"
+            membership_uid:
+                type: string
+                description: Membership record UID
+                example: m-1
+            start_date:
+                type: string
+                description: Start date of the membership record; omitted when the record carries none
+                example: "2023-01-01T00:00:00Z"
+            status:
+                type: string
+                description: Membership status as stored on the record
+                example: Active
+            tier:
+                type: string
+                description: Membership tier label as stored on the record; omitted when the record has none
+                example: Gold
+            tier_name:
+                type: string
+                description: Membership tier product name as stored on the record
+                example: Gold Membership
+        description: One membership record of an organization on a project.
+        example:
+            end_date: "2024-01-01T00:00:00Z"
+            membership_uid: m-1
+            start_date: "2023-01-01T00:00:00Z"
+            status: Active
+            tier: Gold
+            tier_name: Gold Membership
+        required:
+            - membership_uid
+            - status
+            - tier_name
+    MembershipTermSummary:
+        title: MembershipTermSummary
+        type: object
+        properties:
+            b2b_org_uid:
+                type: string
+                description: Organization UID; empty when the records carry no organization UID
+                example: org-1
+            company_name:
+                type: string
+                description: Organization name as stored on the current record
+                example: Example Corp
+            current_end:
+                type: string
+                description: End date of the current record; omitted when there is no current record or the current record carries none
+                example: "2025-01-01T00:00:00Z"
+            current_membership_uid:
+                type: string
+                description: UID of the current record; omitted when there is no current record or the current record carries none
+                example: m-2
+            current_start:
+                type: string
+                description: Start date of the current record; omitted when there is no current record or the current record carries none
+                example: "2024-01-01T00:00:00Z"
+            current_status:
+                type: string
+                description: Status of the current record; omitted when there is no current record or the current record carries none
+                example: Active
+            current_tier_name:
+                type: string
+                description: Tier product name of the current record; omitted when there is no current record or the current record carries none
+                example: Gold Membership
+            first_start:
+                type: string
+                description: Earliest start date across the records; omitted when no record has one
+                example: "2023-01-01T00:00:00Z"
+            last_end:
+                type: string
+                description: Latest end date across the records; omitted when no record has one
+                example: "2025-01-01T00:00:00Z"
+            project_slug:
+                type: string
+                description: Project slug as stored on the current record
+                example: example-project
+            project_uid:
+                type: string
+                description: Project UID; empty when the records carry no project UID
+                example: proj-1
+            statuses:
+                type: array
+                items:
+                    type: string
+                    example: Aut expedita repudiandae placeat saepe.
+                description: Distinct statuses in first appearance order
+                example:
+                    - Expired
+                    - Active
+            term_count:
+                type: integer
+                description: Number of membership records folded into this summary
+                example: 2
+                format: int64
+            terms:
+                type: array
+                items:
+                    $ref: '#/definitions/MembershipTerm'
+                description: Membership records of this organization on this project, oldest first
+                example:
+                    - end_date: "2024-01-01T00:00:00Z"
+                      membership_uid: m-1
+                      start_date: "2023-01-01T00:00:00Z"
+                      status: Expired
+                      tier_name: Silver Membership
+                    - end_date: "2025-01-01T00:00:00Z"
+                      membership_uid: m-2
+                      start_date: "2024-01-01T00:00:00Z"
+                      status: Active
+                      tier: Gold
+                      tier_name: Gold Membership
+            tier_names:
+                type: array
+                items:
+                    type: string
+                    example: Reprehenderit impedit voluptatum.
+                description: Distinct tier product names in first appearance order
+                example:
+                    - Silver Membership
+                    - Gold Membership
+        description: Membership history of one organization on one project, folded from the membership records.
+        example:
+            b2b_org_uid: org-1
+            company_name: Example Corp
+            current_end: "2025-01-01T00:00:00Z"
+            current_membership_uid: m-2
+            current_start: "2024-01-01T00:00:00Z"
+            current_status: Active
+            current_tier_name: Gold Membership
+            first_start: "2023-01-01T00:00:00Z"
+            last_end: "2025-01-01T00:00:00Z"
+            project_slug: example-project
+            project_uid: proj-1
+            statuses:
+                - Expired
+                - Active
+            term_count: 2
+            terms:
+                - end_date: "2024-01-01T00:00:00Z"
+                  membership_uid: m-1
+                  start_date: "2023-01-01T00:00:00Z"
+                  status: Expired
+                  tier_name: Silver Membership
+                - end_date: "2025-01-01T00:00:00Z"
+                  membership_uid: m-2
+                  start_date: "2024-01-01T00:00:00Z"
+                  status: Active
+                  tier: Gold
+                  tier_name: Gold Membership
+            tier_names:
+                - Silver Membership
+                - Gold Membership
+        required:
+            - b2b_org_uid
+            - company_name
+            - project_uid
+            - project_slug
+            - term_count
+            - tier_names
+            - statuses
+            - terms
     NotFoundError:
         title: NotFoundError
         type: object
@@ -537,6 +773,98 @@ definitions:
         required:
             - name
             - domain
+    QuerySvcQueryMembershipSummaryResponseBody:
+        title: QuerySvcQueryMembershipSummaryResponseBody
+        type: object
+        properties:
+            complete:
+                type: boolean
+                description: 'True when every matching membership record was read; false when the read stopped early: at an organization boundary after the record cap (then page_token continues it) or at the hard ceiling with nothing visible (then no page_token; the read cannot be continued)'
+                example: true
+            page_token:
+                type: string
+                description: Opaque token present only when the read stopped at an organization boundary after the record cap; pass it back with the same project_uid and b2b_org_uid to continue at the start of the next organization run; absent when the read is complete or stopped at the ceiling
+                example: '****'
+            summaries:
+                type: array
+                items:
+                    $ref: '#/definitions/MembershipTermSummary'
+                description: Summaries ordered by organization name, project slug, organization UID and project UID; every returned summary covers a whole organization run, never a run cut short by the record cap
+                example:
+                    - b2b_org_uid: org-1
+                      company_name: Example Corp
+                      current_end: "2025-01-01T00:00:00Z"
+                      current_membership_uid: m-2
+                      current_start: "2024-01-01T00:00:00Z"
+                      current_status: Active
+                      current_tier_name: Gold Membership
+                      first_start: "2023-01-01T00:00:00Z"
+                      last_end: "2025-01-01T00:00:00Z"
+                      project_slug: example-project
+                      project_uid: proj-1
+                      statuses:
+                        - Expired
+                        - Active
+                      term_count: 2
+                      terms:
+                        - end_date: "2024-01-01T00:00:00Z"
+                          membership_uid: m-1
+                          start_date: "2023-01-01T00:00:00Z"
+                          status: Expired
+                          tier_name: Silver Membership
+                        - end_date: "2025-01-01T00:00:00Z"
+                          membership_uid: m-2
+                          start_date: "2024-01-01T00:00:00Z"
+                          status: Active
+                          tier: Gold
+                          tier_name: Gold Membership
+                      tier_names:
+                        - Silver Membership
+                        - Gold Membership
+            terms_total:
+                type: integer
+                description: Number of membership records folded into the summaries
+                example: 2
+                format: int64
+        description: Membership term summaries, one per organization and project.
+        example:
+            complete: true
+            summaries:
+                - b2b_org_uid: org-1
+                  company_name: Example Corp
+                  current_end: "2025-01-01T00:00:00Z"
+                  current_membership_uid: m-2
+                  current_start: "2024-01-01T00:00:00Z"
+                  current_status: Active
+                  current_tier_name: Gold Membership
+                  first_start: "2023-01-01T00:00:00Z"
+                  last_end: "2025-01-01T00:00:00Z"
+                  project_slug: example-project
+                  project_uid: proj-1
+                  statuses:
+                    - Expired
+                    - Active
+                  term_count: 2
+                  terms:
+                    - end_date: "2024-01-01T00:00:00Z"
+                      membership_uid: m-1
+                      start_date: "2023-01-01T00:00:00Z"
+                      status: Expired
+                      tier_name: Silver Membership
+                    - end_date: "2025-01-01T00:00:00Z"
+                      membership_uid: m-2
+                      start_date: "2024-01-01T00:00:00Z"
+                      status: Active
+                      tier: Gold
+                      tier_name: Gold Membership
+                  tier_names:
+                    - Silver Membership
+                    - Gold Membership
+            terms_total: 2
+        required:
+            - summaries
+            - terms_total
+            - complete
     QuerySvcQueryResourcesCountResponseBody:
         title: QuerySvcQueryResourcesCountResponseBody
         type: object

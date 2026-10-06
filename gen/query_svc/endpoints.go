@@ -16,12 +16,13 @@ import (
 
 // Endpoints wraps the "query-svc" service endpoints.
 type Endpoints struct {
-	QueryResources      goa.Endpoint
-	QueryResourcesCount goa.Endpoint
-	QueryOrgs           goa.Endpoint
-	SuggestOrgs         goa.Endpoint
-	Readyz              goa.Endpoint
-	Livez               goa.Endpoint
+	QueryResources         goa.Endpoint
+	QueryResourcesCount    goa.Endpoint
+	QueryMembershipSummary goa.Endpoint
+	QueryOrgs              goa.Endpoint
+	SuggestOrgs            goa.Endpoint
+	Readyz                 goa.Endpoint
+	Livez                  goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "query-svc" service with endpoints.
@@ -29,12 +30,13 @@ func NewEndpoints(s Service) *Endpoints {
 	// Casting service to Auther interface
 	a := s.(Auther)
 	return &Endpoints{
-		QueryResources:      NewQueryResourcesEndpoint(s, a.JWTAuth),
-		QueryResourcesCount: NewQueryResourcesCountEndpoint(s, a.JWTAuth),
-		QueryOrgs:           NewQueryOrgsEndpoint(s, a.JWTAuth),
-		SuggestOrgs:         NewSuggestOrgsEndpoint(s, a.JWTAuth),
-		Readyz:              NewReadyzEndpoint(s),
-		Livez:               NewLivezEndpoint(s),
+		QueryResources:         NewQueryResourcesEndpoint(s, a.JWTAuth),
+		QueryResourcesCount:    NewQueryResourcesCountEndpoint(s, a.JWTAuth),
+		QueryMembershipSummary: NewQueryMembershipSummaryEndpoint(s, a.JWTAuth),
+		QueryOrgs:              NewQueryOrgsEndpoint(s, a.JWTAuth),
+		SuggestOrgs:            NewSuggestOrgsEndpoint(s, a.JWTAuth),
+		Readyz:                 NewReadyzEndpoint(s),
+		Livez:                  NewLivezEndpoint(s),
 	}
 }
 
@@ -42,6 +44,7 @@ func NewEndpoints(s Service) *Endpoints {
 func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.QueryResources = m(e.QueryResources)
 	e.QueryResourcesCount = m(e.QueryResourcesCount)
+	e.QueryMembershipSummary = m(e.QueryMembershipSummary)
 	e.QueryOrgs = m(e.QueryOrgs)
 	e.SuggestOrgs = m(e.SuggestOrgs)
 	e.Readyz = m(e.Readyz)
@@ -83,6 +86,25 @@ func NewQueryResourcesCountEndpoint(s Service, authJWTFn security.AuthJWTFunc) g
 			return nil, err
 		}
 		return s.QueryResourcesCount(ctx, p)
+	}
+}
+
+// NewQueryMembershipSummaryEndpoint returns an endpoint function that calls
+// the method "query-membership-summary" of service "query-svc".
+func NewQueryMembershipSummaryEndpoint(s Service, authJWTFn security.AuthJWTFunc) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*QueryMembershipSummaryPayload)
+		var err error
+		sc := security.JWTScheme{
+			Name:           "jwt",
+			Scopes:         []string{},
+			RequiredScopes: []string{},
+		}
+		ctx, err = authJWTFn(ctx, p.BearerToken, &sc)
+		if err != nil {
+			return nil, err
+		}
+		return s.QueryMembershipSummary(ctx, p)
 	}
 }
 

@@ -65,6 +65,24 @@ spec:
           config:
             values:
               aud: lfx-v2-query-service
+    - id: "rule:lfx:lfx-v2-query-service:membership-summary"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /query/memberships/summary
+      execute:
+        - authenticator: oidc
+        - authenticator: anonymous_authenticator
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: lfx-v2-query-service
     - id: "rule:lfx:lfx-v2-query-service:org-search"
       allow_encoded_slashes: "off"
       match:

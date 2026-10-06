@@ -89,6 +89,18 @@ func TestWrapError(t *testing.T) {
 			expectedErrorType:    &querysvc.InternalServerError{},
 			expectedErrorMessage: "unexpected client error",
 		},
+		{
+			name:                 "bare context.DeadlineExceeded maps to service unavailable",
+			inputError:           context.DeadlineExceeded,
+			expectedErrorType:    &querysvc.ServiceUnavailableError{},
+			expectedErrorMessage: "request exceeded its deadline",
+		},
+		{
+			name:                 "wrapped context.DeadlineExceeded maps to service unavailable",
+			inputError:           fmt.Errorf("querying resources: %w", context.DeadlineExceeded),
+			expectedErrorType:    &querysvc.ServiceUnavailableError{},
+			expectedErrorMessage: "request exceeded its deadline",
+		},
 	}
 
 	for _, tc := range tests {

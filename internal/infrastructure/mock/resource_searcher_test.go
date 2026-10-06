@@ -6,6 +6,7 @@ package mock
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/stretchr/testify/assert"
@@ -392,4 +393,50 @@ func TestMockResourceSearcherClearResources(t *testing.T) {
 // Helper function to create string pointers
 func stringPtr(s string) *string {
 	return &s
+}
+
+func TestMockRecordsNothingUnlessATestAsksForIt(t *testing.T) {
+	tests := []struct {
+		name            string
+		setup           func(*MockResourceSearcher, *MockAccessControlChecker)
+		expectedQueries int
+		expectedChecks  int
+	}{
+		{
+			name:            "a mock used as the process searcher and checker keeps no call",
+			setup:           func(*MockResourceSearcher, *MockAccessControlChecker) {},
+			expectedQueries: 0,
+			expectedChecks:  0,
+		},
+		{
+			name: "a test that asks for the calls gets them",
+			setup: func(searcher *MockResourceSearcher, checker *MockAccessControlChecker) {
+				searcher.SetQueryResourcePages(&model.SearchResult{})
+				checker.RecordCheckAccessMessages()
+			},
+			expectedQueries: 2,
+			expectedChecks:  2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			searcher := NewMockResourceSearcher()
+			checker := NewMockAccessControlChecker()
+			tt.setup(searcher, checker)
+
+			for range 2 {
+				_, err := searcher.QueryResources(ctx, model.SearchCriteria{})
+				assert.NoError(t, err)
+				_, err = checker.CheckAccess(ctx, "user:test-user", []byte("project:proj-1#auditor@user:test-user"), time.Second)
+				assert.NoError(t, err)
+			}
+
+			assert.Len(t, searcher.QueryResourceCriteria(), tt.expectedQueries)
+			assert.Len(t, checker.CheckAccessMessages(), tt.expectedChecks)
+			assert.Equal(t, 2, searcher.QueryResourceCalls(), "every page is counted")
+			assert.Equal(t, 2, checker.CheckAccessCalls(), "every check is counted")
+		})
+	}
 }

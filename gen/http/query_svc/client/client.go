@@ -25,6 +25,10 @@ type Client struct {
 	// query-resources-count endpoint.
 	QueryResourcesCountDoer goahttp.Doer
 
+	// QueryMembershipSummary Doer is the HTTP client used to make requests to the
+	// query-membership-summary endpoint.
+	QueryMembershipSummaryDoer goahttp.Doer
+
 	// QueryOrgs Doer is the HTTP client used to make requests to the query-orgs
 	// endpoint.
 	QueryOrgsDoer goahttp.Doer
@@ -59,17 +63,18 @@ func NewClient(
 	restoreBody bool,
 ) *Client {
 	return &Client{
-		QueryResourcesDoer:      doer,
-		QueryResourcesCountDoer: doer,
-		QueryOrgsDoer:           doer,
-		SuggestOrgsDoer:         doer,
-		ReadyzDoer:              doer,
-		LivezDoer:               doer,
-		RestoreResponseBody:     restoreBody,
-		scheme:                  scheme,
-		host:                    host,
-		decoder:                 dec,
-		encoder:                 enc,
+		QueryResourcesDoer:         doer,
+		QueryResourcesCountDoer:    doer,
+		QueryMembershipSummaryDoer: doer,
+		QueryOrgsDoer:              doer,
+		SuggestOrgsDoer:            doer,
+		ReadyzDoer:                 doer,
+		LivezDoer:                  doer,
+		RestoreResponseBody:        restoreBody,
+		scheme:                     scheme,
+		host:                       host,
+		decoder:                    dec,
+		encoder:                    enc,
 	}
 }
 
@@ -116,6 +121,30 @@ func (c *Client) QueryResourcesCount() goa.Endpoint {
 		resp, err := c.QueryResourcesCountDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("query-svc", "query-resources-count", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// QueryMembershipSummary returns an endpoint that makes HTTP requests to the
+// query-svc service query-membership-summary server.
+func (c *Client) QueryMembershipSummary() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeQueryMembershipSummaryRequest(c.encoder)
+		decodeResponse = DecodeQueryMembershipSummaryResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildQueryMembershipSummaryRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.QueryMembershipSummaryDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("query-svc", "query-membership-summary", err)
 		}
 		return decodeResponse(resp)
 	}

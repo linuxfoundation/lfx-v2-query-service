@@ -23,7 +23,7 @@ import (
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() []string {
 	return []string{
-		"query-svc (query-resources|query-resources-count|query-orgs|suggest-orgs|readyz|livez)",
+		"query-svc (query-resources|query-resources-count|query-membership-summary|query-orgs|suggest-orgs|readyz|livez)",
 	}
 }
 
@@ -83,6 +83,13 @@ func ParseEndpoint(
 		querySvcQueryResourcesCountMetricFlag      = querySvcQueryResourcesCountFlags.String("metric", "", "")
 		querySvcQueryResourcesCountBearerTokenFlag = querySvcQueryResourcesCountFlags.String("bearer-token", "REQUIRED", "")
 
+		querySvcQueryMembershipSummaryFlags           = flag.NewFlagSet("query-membership-summary", flag.ExitOnError)
+		querySvcQueryMembershipSummaryVersionFlag     = querySvcQueryMembershipSummaryFlags.String("version", "REQUIRED", "")
+		querySvcQueryMembershipSummaryProjectUIDFlag  = querySvcQueryMembershipSummaryFlags.String("project-uid", "", "")
+		querySvcQueryMembershipSummaryB2bOrgUIDFlag   = querySvcQueryMembershipSummaryFlags.String("b2b-org-uid", "", "")
+		querySvcQueryMembershipSummaryPageTokenFlag   = querySvcQueryMembershipSummaryFlags.String("page-token", "", "")
+		querySvcQueryMembershipSummaryBearerTokenFlag = querySvcQueryMembershipSummaryFlags.String("bearer-token", "REQUIRED", "")
+
 		querySvcQueryOrgsFlags           = flag.NewFlagSet("query-orgs", flag.ExitOnError)
 		querySvcQueryOrgsVersionFlag     = querySvcQueryOrgsFlags.String("version", "REQUIRED", "")
 		querySvcQueryOrgsNameFlag        = querySvcQueryOrgsFlags.String("name", "", "")
@@ -101,6 +108,7 @@ func ParseEndpoint(
 	querySvcFlags.Usage = querySvcUsage
 	querySvcQueryResourcesFlags.Usage = querySvcQueryResourcesUsage
 	querySvcQueryResourcesCountFlags.Usage = querySvcQueryResourcesCountUsage
+	querySvcQueryMembershipSummaryFlags.Usage = querySvcQueryMembershipSummaryUsage
 	querySvcQueryOrgsFlags.Usage = querySvcQueryOrgsUsage
 	querySvcSuggestOrgsFlags.Usage = querySvcSuggestOrgsUsage
 	querySvcReadyzFlags.Usage = querySvcReadyzUsage
@@ -146,6 +154,9 @@ func ParseEndpoint(
 			case "query-resources-count":
 				epf = querySvcQueryResourcesCountFlags
 
+			case "query-membership-summary":
+				epf = querySvcQueryMembershipSummaryFlags
+
 			case "query-orgs":
 				epf = querySvcQueryOrgsFlags
 
@@ -189,6 +200,9 @@ func ParseEndpoint(
 			case "query-resources-count":
 				endpoint = c.QueryResourcesCount()
 				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountFiltersAllFlag, *querySvcQueryResourcesCountFiltersOrFlag, *querySvcQueryResourcesCountGroupByFlag, *querySvcQueryResourcesCountGroupBySizeFlag, *querySvcQueryResourcesCountMetricFlag, *querySvcQueryResourcesCountBearerTokenFlag)
+			case "query-membership-summary":
+				endpoint = c.QueryMembershipSummary()
+				data, err = querysvcc.BuildQueryMembershipSummaryPayload(*querySvcQueryMembershipSummaryVersionFlag, *querySvcQueryMembershipSummaryProjectUIDFlag, *querySvcQueryMembershipSummaryB2bOrgUIDFlag, *querySvcQueryMembershipSummaryPageTokenFlag, *querySvcQueryMembershipSummaryBearerTokenFlag)
 			case "query-orgs":
 				endpoint = c.QueryOrgs()
 				data, err = querysvcc.BuildQueryOrgsPayload(*querySvcQueryOrgsVersionFlag, *querySvcQueryOrgsNameFlag, *querySvcQueryOrgsDomainFlag, *querySvcQueryOrgsBearerTokenFlag)
@@ -217,6 +231,7 @@ func querySvcUsage() {
 	fmt.Fprintln(os.Stderr, "COMMAND:")
 	fmt.Fprintln(os.Stderr, `    query-resources: Locate resources by their type or parent, or use typeahead search to query resources by a display name or similar alias.`)
 	fmt.Fprintln(os.Stderr, `    query-resources-count: Count matching resources by query.`)
+	fmt.Fprintln(os.Stderr, `    query-membership-summary: Summarize the membership records of an organization, a project, or both, into one summary per organization and project.`)
 	fmt.Fprintln(os.Stderr, `    query-orgs: Locate a single organization by name or domain.`)
 	fmt.Fprintln(os.Stderr, `    suggest-orgs: Get organization suggestions for typeahead search based on a query.`)
 	fmt.Fprintln(os.Stderr, `    readyz: Check if the service is able to take inbound requests.`)
@@ -323,6 +338,32 @@ func querySvcQueryResourcesCountUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "query-svc query-resources-count --version \"1\" --name \"gov board\" --parent \"project:123\" --type \"committee\" --tags '[\n      \"active\",\n      \"public\"\n   ]' --tags-all '[\n      \"governance\",\n      \"security\"\n   ]' --date-field \"updated_at\" --date-from \"2025-01-10\" --date-to \"2025-01-28\" --filters '[\n      \"status:active\",\n      \"priority:high\"\n   ]' --filters-all '[\n      \"status:active\",\n      \"priority:high\"\n   ]' --filters-or '[\n      \"mailing_list_id:abc\",\n      \"mailing_list_id:xyz\"\n   ]' --group-by \"project_uid\" --group-by-size 100 --metric \"\" --bearer-token \"eyJhbGci...\"")
+}
+
+func querySvcQueryMembershipSummaryUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] query-svc query-membership-summary", os.Args[0])
+	fmt.Fprint(os.Stderr, " -version STRING")
+	fmt.Fprint(os.Stderr, " -project-uid STRING")
+	fmt.Fprint(os.Stderr, " -b2b-org-uid STRING")
+	fmt.Fprint(os.Stderr, " -page-token STRING")
+	fmt.Fprint(os.Stderr, " -bearer-token STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Summarize the membership records of an organization, a project, or both, into one summary per organization and project.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -version STRING: `)
+	fmt.Fprintln(os.Stderr, `    -project-uid STRING: `)
+	fmt.Fprintln(os.Stderr, `    -b2b-org-uid STRING: `)
+	fmt.Fprintln(os.Stderr, `    -page-token STRING: `)
+	fmt.Fprintln(os.Stderr, `    -bearer-token STRING: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "query-svc query-membership-summary --version \"1\" --project-uid \"proj-1\" --b2b-org-uid \"org-1\" --page-token \"****\" --bearer-token \"eyJhbGci...\"")
 }
 
 func querySvcQueryOrgsUsage() {

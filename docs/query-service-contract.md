@@ -77,6 +77,85 @@ must be provided: name, parent, type, tags, or filter_grants"). In addition,
 `filter_grants` requires `type` (otherwise a `400` is returned). Validation
 lives in `validateSearchCriteria` in `internal/service/resource_search.go`.
 
+#### Unsatisfiable filters
+
+On an empty first raw page of a fresh query (no `page_token`), before CEL and
+access filtering, the service checks whether the requested `type` carries the
+indexed dimensions named by the filters. It does not probe a non-empty raw
+page, a continuation page, an empty tail reached by the denied-page walk, or
+the early return when `filter_grants=direct` finds no grants. Count requests
+use the same rule when the public and authorized private counts are both zero
+and no authorized-key aggregation would add work.
+
+The checks run in this order, stopping at the first absent dimension:
+
+1. Without a `type`, with `UNSATISFIABLE_FILTER_REJECTION=false`, or when the
+   request names no probeable dimension (no bounded date field, parent,
+   prefixed tag, or field filter, and on the count route no `group_by` or
+   `metric` prefix that step 7 qualifies), return the ordinary result without
+   probing.
+2. If the type has no indexed documents, return the ordinary result.
+   A new or unpopulated type is not a caller error.
+3. Check `date_field` for an indexed field within `data`, only when a
+   `date_from` or `date_to` bound makes it part of the query.
+4. Check the `parent` kind (the text before the first colon). The HTTP decoder
+   treats `parent=` as absent, so an empty parent is not a filter and is not
+   probed. Malformed non-empty parents are rejected by the existing decoder
+   validation before these checks.
+5. Check tag prefixes: every prefixed `tags_all` entry must be carried.
+   For `tags` (OR), reject only if no prefix is carried and there is no bare
+   tag alternative. Bare tags are not probed.
+6. Check fields in `filters` and `filters_all`: every field must be carried.
+   For `filters_or`, reject only if none of its fields is carried.
+7. Count route only, after the aggregation: when `group_by` returned no group,
+   check the `group_by` prefix; when `metric=cardinality:<prefix>` returned a
+   distinct count of zero, check the metric prefix. A non-zero count already
+   proves the type has documents, so step 2 is skipped there. Groups present
+   or a non-zero metric are never probed.
+
+Each distinct field, parent kind, or tag prefix is probed at most once per
+request, including a prefix named by both a filter and an aggregation, and a
+probe that failed is remembered for the request rather than sent again. A
+request may send at most 16 distinct probes; a request that would need more
+stops probing there and returns the ordinary result, never a partial `400`.
+A carried dimension with an unmatched value still returns an ordinary
+empty result; these checks do not validate values or whether a combination of
+otherwise carried dimensions can match.
+
+An absent dimension returns `400` with one of these exact message formats:
+
+```text
+date_field "<field>" is not carried by any indexed <type> document
+parent kind "<kind>:" is not carried by any indexed <type> document
+tag prefix "<prefix>:" is not carried by any indexed <type> document
+filter field "<field>" is not carried by any indexed <type> document
+group_by prefix "<prefix>:" is not carried by any indexed <type> document
+metric prefix "<prefix>:" is not carried by any indexed <type> document
+```
+
+The probe is type-wide: it never applies access filtering, never returns a
+record, and never includes parent or tag values in the error. It checks any
+indexed document of the type, not the caller's scoped or visible result set.
+Anonymous callers receive the same dimension checks. If a probe itself fails
+for any reason other than the caller's cancellation, the service logs the
+failure and returns the ordinary result (the empty page, or the count as
+computed), and no later check of that request rejects; only a successful probe
+that finds a dimension absent produces the `400`. A cancellation of the
+request during a probe passes through as the cancellation error: it is neither
+logged as a failed probe nor turned into the ordinary result.
+
+`UNSATISFIABLE_FILTER_REJECTION` defaults to `true`. It is a rollout-safety
+switch: setting it to `false` disables all probes and restores the previous
+silent-zero behavior on both routes. Availability follows the indexed data, so
+a newly added field or parent kind may remain rejected until it is indexed.
+
+**Release verification:** unit tests check request bodies and response handling,
+but do not prove `exists` queries on `data.<field>` against a real `flat_object`
+index. After merge and before release, verify on the development index that a
+carried field preserves a valid query and an absent field returns the documented
+`400`. If subfield existence queries fail, stop release rather than silently
+substituting another probe.
+
 ### GET /query/resources/count
 
 Same parameters as `GET /query/resources` except `cel_filter`,
@@ -87,6 +166,10 @@ Same parameters as `GET /query/resources` except `cel_filter`,
 | `group_by` | string | Tag prefix (`^[a-z][a-z0-9_]*$`, max 64). Groups the count by the value after `<prefix>:` in each document's `tags`, e.g. `group_by=project_uid` |
 | `group_by_size` | int | 1–1000, default 100. Maximum number of groups returned; requires `group_by` (otherwise `400`, including with `metric`) |
 | `metric` | string | `cardinality:<tag_prefix>` (max 80). Number of distinct `<tag_prefix>:…` tag values across the authorized documents, e.g. `metric=cardinality:email`. Any other shape, including `sum:…`, is a `400` |
+
+The shared [unsatisfiable-filter checks](#unsatisfiable-filters) also apply to
+zero counts, including anonymous counts, and to the `group_by` and `metric`
+prefixes when the aggregation returns no group or a zero distinct count.
 
 `group_by` and `metric` cannot be combined (`400`: "metric per group is not
 supported; group first, then count each group with tags"). To get a metric per
@@ -141,13 +224,24 @@ For an authenticated principal:
    [Mapping the count route depends on](#mapping-the-count-route-depends-on))
    returns `COUNT_ACCESS_BUCKET_PAGE` distinct `access_check_query` values per
    page. Each page is one batched fga-sync check (`<key>@user:<principal>`
-   lines, same format as the search route); the document counts of the granted
-   keys are added to the count. A page with fewer buckets than the page size
-   ends the walk. After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets
-   have been walked, the walk stops without requesting the next page and
-   `has_more` is `true`; pages are never split. The walk stops on
-   request-context cancellation; per-check timeouts bound each page's access
-   check, and startup validation allows at most 100 pages per count.
+   lines, same format as the search route), built and matched exactly as
+   [Access Control Flow](#access-control-flow) describes — including the
+   chunking, per-chunk retries, and projected-response-size budgeting that
+   section documents; the document counts of the granted keys are added to
+   the count. A page with fewer buckets than the page size ends the walk.
+   After a full page, once `COUNT_MAX_ACCESS_BUCKETS` buckets have been
+   walked, the walk stops without requesting the next page and `has_more` is
+   `true`; pages are never split. The walk stops on request-context
+   cancellation; per-check timeouts bound each individual call, and
+   `COUNT_REQUEST_TIMEOUT` (default 30s, any positive duration up to 5m)
+   bounds the total wall-clock time the whole count may spend across every
+   page's raw OpenSearch queries and batched (possibly chunked and retried)
+   access checks combined, on top of (not instead of) each individual call's
+   own timeout — the same request-wide-deadline pattern `SEARCH_REQUEST_TIMEOUT`
+   applies to the plain search and `SUMMARY_REQUEST_TIMEOUT` applies to
+   summaries, so a scope with many pages or heavily chunked access checks
+   fails fast instead of running unbounded. Startup validation allows at most
+   100 pages per count.
    A failed access check is a
    `503`: a count is never returned as if complete when part of the authorized
    set is unknown. Likewise an OpenSearch response with a failed shard or a
@@ -183,11 +277,12 @@ Environment variables (defaults live in code; no values file needs to set them):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search and count routes) |
+| `ACCESS_CHECK_TIMEOUT` | `15s` | Timeout of each batched fga-sync access check (search, count and summary routes) |
 | `READ_TUPLES_TIMEOUT` | `15s` | Timeout of the `filter_grants=direct` tuple read |
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
 | `SEARCH_DENIED_PAGE_WALK` | `10` | Extra raw pages `/query/resources` fetches when a page leaves the caller no visible resource (1–25); see [Page Size](#page-size) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
+| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before returning whole organization runs with `complete: false` (1..50000, validated at startup); normally at most the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK`. With no resumable organization boundary yet, the read continues to finish the first run, bounded by 50000 raw hits (the existing configurable cap ceiling). If neither a boundary nor end-of-results is established within that ceiling, the read fails with `503`, never a partial summary |
 
 #### Not supported
 
@@ -225,6 +320,216 @@ subfield, or is absent, authenticated counts now return `503` with the warning
 original fallback-plus-warning rule: guessing an unmapped subfield must never
 turn private resources into a successful public-only count. Plain `keyword`
 (the mockdata fallback mapping) remains supported.
+
+### GET /query/memberships/summary
+
+Summarizes the membership records (`project_membership`) of an organization, a
+project, or both into one summary per organization and project.
+
+The summary is a fold, not an aggregation: status, tier name and the membership
+dates live in `data`, which is a `flat_object` and therefore never aggregatable
+(see [Mapping the count route depends on](#mapping-the-count-route-depends-on)).
+The route reads the matching records page by page and folds them in process, so
+callers do not have to drain every page and fold the history themselves.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `v` | string (required) | API version, must be `1` |
+| `project_uid` | string | Summarize the memberships on this project |
+| `b2b_org_uid` | string | Summarize the memberships of this organization |
+| `page_token` | string | Continue an earlier read of the same scope and summary-read version at the next organization run |
+
+At least one of `project_uid` and `b2b_org_uid` must be provided; a request with
+neither is a `400 Bad Request` naming both ("at least one summary parameter must
+be provided: project_uid or b2b_org_uid"). Given together they restrict the read
+to the memberships of that organization on that project. There are no other
+filters. A read that stops at the record cap returns a `page_token`, and
+passing it back with the same `project_uid` and `b2b_org_uid` continues at the
+start of the next organization run. A token passed with another scope is a
+`400 Bad Request`.
+
+A `page_token` is accepted only from the same version of the summary read; a
+token from any other version, older or newer, is rejected with `400` and the
+read must restart without it.
+
+**Response**:
+
+```json
+{
+  "summaries": [
+    {
+      "b2b_org_uid": "org-1",
+      "company_name": "Example Corp",
+      "project_uid": "proj-1",
+      "project_slug": "example-project",
+      "term_count": 2,
+      "first_start": "2023-01-01T00:00:00Z",
+      "last_end": "2025-01-01T00:00:00Z",
+      "current_status": "Active",
+      "current_tier_name": "Gold Membership",
+      "current_start": "2024-01-01T00:00:00Z",
+      "current_end": "2025-01-01T00:00:00Z",
+      "current_membership_uid": "m-2",
+      "tier_names": ["Silver Membership", "Gold Membership"],
+      "statuses": ["Expired", "Active"],
+      "terms": [
+        {
+          "membership_uid": "m-1",
+          "status": "Expired",
+          "tier_name": "Silver Membership",
+          "start_date": "2023-01-01T00:00:00Z",
+          "end_date": "2024-01-01T00:00:00Z"
+        },
+        {
+          "membership_uid": "m-2",
+          "status": "Active",
+          "tier_name": "Gold Membership",
+          "tier": "Gold",
+          "start_date": "2024-01-01T00:00:00Z",
+          "end_date": "2025-01-01T00:00:00Z"
+        }
+      ]
+    }
+  ],
+  "terms_total": 2,
+  "complete": true
+}
+```
+
+| Field | Present | Meaning |
+| --- | --- | --- |
+| `summaries` | always | One entry per organization and project, ordered by company name, project slug, organization UID and project UID. Every returned summary covers a whole organization run, never a run cut short by the record cap. Empty when nothing matched or nothing was visible |
+| `terms_total` | always | Membership records folded into the summaries |
+| `complete` | always | `true` when every matching record was read; `false` when the read stopped early: at an organization boundary after reaching the record cap, so more whole runs remain and `page_token` continues them, or at the hard ceiling with nothing visible, when no `page_token` is returned and the read cannot be continued |
+| `page_token` | when the read stopped at an organization boundary after the record cap | Opaque token; pass it back with the same scope to continue at the start of the next organization run. Absent when the read is complete or stopped at the ceiling with nothing visible (see the ceiling paragraph below) |
+| `cache_control` | anonymous callers | Response header, as on the other reads (see [Anonymous vs Authenticated Requests](#anonymous-vs-authenticated-requests)) |
+
+Fields of one summary:
+
+| Field | Present | Meaning |
+| --- | --- | --- |
+| `b2b_org_uid` / `project_uid` | always | Identifiers of the pair; empty when the records carry none |
+| `company_name` / `project_slug` | always | Labels as stored on the current record |
+| `term_count` | always | Membership records folded into this summary |
+| `first_start` / `last_end` | when a record carries one | Earliest start date and latest end date across the records |
+| `current_status`, `current_tier_name`, `current_start`, `current_end`, `current_membership_uid` | when the current record carries one | Attributes of the current record (see the fold rules below); each is omitted when there is no current record and when the current record carries no such value |
+| `tier_names` / `statuses` | always | Distinct tier product names and statuses in first-appearance order |
+| `terms` | always | The membership records themselves, oldest first: `membership_uid`, `status`, `tier_name`, `tier` (the tier label, omitted when the record has none), `start_date`, `end_date` (each omitted when the record carries none) |
+
+Dates are returned exactly as stored on the record; the route neither parses nor
+normalizes them.
+
+#### How a summary is computed
+
+1. **Read** — the scope becomes a search for `type=project_membership` carrying
+   the `project_uid:` and `b2b_org_uid:` tags requested (the index tags rather
+   than `data` filters: the same keyword terms the `project_membership`
+   catalog recipes use, and the cheapest scope for the read), in whole pages,
+   in organization order: the records are sorted ascending on `parent_refs`
+   with explicit `mode: min`, with the record id as tiebreaker. The
+   member-service indexer contract gives a membership only `b2b_org:<uid>`
+   and `project:<uid>` refs (each when set). The organization ref sorts first,
+   so its records are read together whatever company name they carry. A record
+   without an organization is read with its project's organization-less
+   records; ref-less records sort last as one run. Output summaries retain
+   their name-based order within each response.
+   The route continues from the keyset cursor of the previous page until a
+   page carries none. An OpenSearch response with a failed shard or a
+   timeout is a `503` (`allow_partial_search_results=false` is sent), never
+   a shorter page: a short page is what ends the read, and a read is never
+   reported complete over hits it did not see. A record served on more than one
+   page, because it was re-indexed while the read was between pages, is folded
+   once, as the copy read last: that is the one the re-index wrote.
+2. **Visibility** — identical to the plain search: each page is access-checked
+   in one batched fga-sync request, built and matched exactly as
+   [Access Control Flow](#access-control-flow) describes, and only the records
+   the caller may see reach the fold. A failed access check is a `503`, never a
+   partial summary: a summary is never returned as if whole while part of the
+   caller's visibility is unknown. While the caller has seen nothing, the read
+   keeps walking past the record cap as far as the plain search walks denied
+   pages (`SEARCH_DENIED_PAGE_WALK`) before it exposes a continuation, so a
+   scope the caller cannot see and a scope that does not exist stay
+   indistinguishable to the same extent as on the plain search. `SUMMARY_REQUEST_TIMEOUT`
+   (default 30s, any positive duration up to 5m) bounds the total wall-clock
+   time the whole read may spend across every page's raw OpenSearch query and
+   batched access check combined, on top of (not instead of) each individual
+   call's own timeout — the same request-wide-deadline pattern
+   `SEARCH_REQUEST_TIMEOUT` applies to the plain search and
+   `COUNT_REQUEST_TIMEOUT` applies to counts, so a scope with many pages or
+   heavily chunked access checks fails fast instead of running unbounded.
+3. **Record cap** — after reaching the configured record cap
+   (`SUMMARY_MAX_RECORDS`, validated at startup like the count route's bucket
+   cap), the read stops only at an organization boundary and reports
+   `complete: false`, or exhausts the scope and reports `complete: true`.
+   The cap is checked after a whole page, so pages are never split. While the
+   caller has seen nothing the cap yields to the denied-page walk described
+   above. Normally the read uses at most the larger of the cap rounded up to
+   whole pages and one full page more than `SEARCH_DENIED_PAGE_WALK`; when no
+   boundary exists yet it continues to finish the first run, bounded by the
+   hard ceiling described below.
+   Because the records arrive in organization order, the read then folds every
+   organization it has read whole, leaves out the organization it stopped
+   inside (its records may continue on the next page), and returns a
+   `page_token` holding the cursor at that organization; the next read with
+   the same scope and that token starts with it. The boundary is found over
+   every record read, visible or not, so a caller who cannot see the last
+   organization still resumes at the right place. A run is the records that
+   share the minimum parent ref: one organization regardless of its name,
+   or one project's organization-less records, or all ref-less records.
+   When the whole read falls inside a single run there is no
+   boundary to cut at: the read continues page by page until a boundary
+   appears or the pages run out. It then applies the same boundary cut, or
+   completes with the whole run. No summary is returned for a run cut short
+   by the cap, and a token never resumes inside a run.
+   This extension has a hard ceiling of 50000 raw hits, reusing the maximum
+   accepted `SUMMARY_MAX_RECORDS` value without adding configuration. If no
+   resumable boundary or end-of-results can be established within that
+   ceiling, the outcome depends on what the caller has seen. With visible
+   rows already read, the read returns `503` with no summaries: a summary is
+   never returned as if whole while part of it is unknown. With none, it
+   returns `200` with empty summaries, `complete: false` and no `page_token`,
+   the same shape as any truncated read: access to membership records is per
+   record, so visible records may lie past the ceiling and the read never
+   claims completeness there. The flag can tell a scope larger than the
+   ceiling from an empty one, never which records or how many. A scope the
+   walk actually exhausted reports `complete: true`, visible records or not.
+   A full page at the ceiling that still carries a cursor cannot establish
+   the end of the run and is treated the same way. Denied and unconvertible
+   hits count toward the ceiling.
+   Different spellings or names on one organization's records do not split
+   its summaries across reads. A continued read is not a snapshot: like the
+   pages of the plain search, each call queries the live index, so a record
+   re-indexed under another organization reference between two calls can
+   appear in both or in neither. A caller that
+   needs an exact roster across such a change re-reads it.
+4. **Fold** — the visible records are grouped and reduced (below). `terms_total`
+   counts the records that were folded, not the records that were read.
+
+#### Fold rules
+
+- **Grouping.** A record folds under its organization UID, or under its company
+  name when it carries no organization UID, and under its project UID, or under
+  its project slug when it carries no project UID. Labels are trimmed and
+  case-folded so one organization or project keeps one summary. A record with
+  neither identifier nor label on a side folds under the empty value: no record
+  is dropped for want of an identifier. This matters because a membership on a
+  project that is not onboarded in LFX v2 carries a slug but no project UID.
+- **Order within a group.** Records are ordered oldest first by start date, then
+  creation date, then record UID, all compared as the strings they are stored
+  as.
+- **Dates.** `first_start` is the earliest start date a record carries,
+  `last_end` the latest end date; records without one are skipped rather than
+  treated as empty.
+- **Current record.** The latest-starting record whose status is active, or the
+  latest-starting record when none is active. It supplies the `current_*` fields
+  and the `company_name` and `project_slug` labels of the summary.
+- **Tier names and statuses.** Distinct values in first-appearance order, empty
+  values skipped.
+
+For an anonymous caller the read runs with the `public: true` filter, as every
+read does. Membership records are indexed private, so an anonymous caller
+receives an empty `summaries` list with `complete: true` and the anonymous
+`Cache-Control` header set.
 
 ## Anonymous vs Authenticated Requests
 
@@ -270,6 +575,28 @@ For authenticated requests, the query-service:
 The query-service deduplicates by `access_check_object#access_check_relation`, not by
 `object_ref`, so each distinct FGA object/relation pair is checked at most once per request
 regardless of how many resources share it.
+
+**Chunking and retries:** a batch built from a large result page is split into
+chunks bounded by `ACCESS_CHECK_CHUNK_BYTES` (default 512KiB) before it is
+sent to fga-sync, never mid-line, so the request stays comfortably under
+NATS' default 1MiB max payload. The split also budgets each chunk against its
+*projected worst-case response size*, not just its request size: a response
+line (`<key>\t<true|false>`) can be up to 6 bytes longer than its request
+line (`<key>\n`), so a chunk sized only against the outbound request could
+still produce an oversized reply. A single check line whose projected
+response would exceed `ACCESS_CHECK_CHUNK_BYTES` is still sent, kept whole in
+its own chunk rather than split; only a line beyond the hard payload bound is
+rejected outright. That hard bound is NATS' 1MiB max payload less an 8KiB
+margin reserved for the OpenTelemetry trace-context headers attached to every
+outbound publish, since NATS' limit covers the header block plus data
+together, not the data alone. `ACCESS_CHECK_CHUNK_BYTES` itself is clamped to
+that hard bound, so configuring it right up against the nominal 1MiB ceiling
+can't let a multi-line chunk's accumulated projected response spill past the
+real limit even though no single line in it is individually oversized. Each
+chunk that fails outright (e.g. a transient
+NATS timeout) is retried up to `ACCESS_CHECK_RETRIES` times (default 1) before
+the whole request fails; a retry is abandoned early if the request's own
+deadline has already passed.
 
 ### Direct grant filtering
 
@@ -348,6 +675,10 @@ Two consequences are worth knowing before you build on this:
 
 ## tags vs filters vs cel_filter
 
+On empty results, indexed tag prefixes and filter fields are checked as
+specified in [Unsatisfiable filters](#unsatisfiable-filters). CEL expressions
+are not carrier-probed.
+
 | Mechanism | Use for | How it works |
 | --- | --- | --- |
 | `tags` / `tags_all` | Values in the `tags` field (exact match) | OpenSearch `term` query |
@@ -390,10 +721,16 @@ Query-service specifics:
   (token generation), `internal/domain/model/search_criteria.go` (`PageSize`
   field), `pkg/constants/query.go` (`DefaultPageSize`, `MaxPageSize`).
 
+An OpenSearch response with a failed shard or a timeout is a `503`
+(`allow_partial_search_results=false` is sent), never a shorter page: a short
+page ends paging, and a cursor is never minted past hits the search did not
+see.
+
 ## Date Range Filtering
 
 The query service supports filtering resources by date ranges on fields within
-the `data` object.
+the `data` object. On empty results, `date_field` is checked for an indexed
+carrier as described in [Unsatisfiable filters](#unsatisfiable-filters).
 
 - `date_field` (string, optional): date field to filter on (automatically
   prefixed with `"data."`)
@@ -439,9 +776,8 @@ Key components:
 - **ResourceFilter Interface**: `internal/domain/port/filter.go`
 - **CELFilter Implementation**: uses `google/cel-go` for evaluation.
 - **Expression Caching**: TTL-bounded map cache for compiled CEL programs (100
-  max entries, 5-minute TTL). There is no LRU eviction: when the cache is full
-  it first drops expired entries, and if it is still full it stops caching new
-  programs (they are recompiled on each use until space frees up).
+  max entries, 5-minute TTL). When the cache is full, it evicts an expired
+  entry first, otherwise the least-recently-used program.
 - **Security**: max expression length 1000 chars, evaluation timeout 100ms per
   resource.
 

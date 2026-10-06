@@ -63,6 +63,17 @@ func TestHTTPClientAggregationSearch(t *testing.T) {
 		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
 	})
 
+	t.Run("an aggregation OpenSearch refused to answer whole is service unavailable", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[],"type":"search_phase_execution_exception","reason":"Partial shards failure","phase":"query","grouped":true},"status":503}`))
+		})
+		_, err := client.AggregationSearch(context.Background(), "resources", []byte(`{"size":0}`))
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+	})
+
 	t.Run("too many clauses is a validation error", func(t *testing.T) {
 		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
@@ -136,6 +147,130 @@ func TestHTTPClientGetMapping(t *testing.T) {
 		})
 		_, err := client.GetMapping(context.Background(), "resources")
 		assert.Error(t, err)
+	})
+}
+
+func TestHTTPClientSearchCursor(t *testing.T) {
+	t.Setenv("PAGE_TOKEN_SECRET", "12345678901234567890123456789012") // 32 chars
+	fullPage := `{"took":1,"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":3},"hits":[` +
+		`{"_id":"a-1","_source":{"object_type":"project_membership","object_id":"m-1","data":{"uid":"m-1"}},"sort":["a corp","a-1"]},` +
+		`{"_id":"b-1","_source":{"object_type":"project_membership","object_id":"m-2","data":{"uid":"m-2"}},"sort":["b corp","b-1"]}]}}`
+
+	tests := []struct {
+		name         string
+		body         string
+		pageSize     int
+		expectedSort []string
+		expectCursor *string
+	}{
+		{
+			name:         "a full sorted page keeps every hit's cursor and continues from the last",
+			body:         fullPage,
+			pageSize:     2,
+			expectedSort: []string{`["a corp","a-1"]`, `["b corp","b-1"]`},
+			expectCursor: func() *string { s := `["b corp","b-1"]`; return &s }(),
+		},
+		{
+			name:         "a short page keeps every hit's cursor and carries no continuation",
+			body:         fullPage,
+			pageSize:     3,
+			expectedSort: []string{`["a corp","a-1"]`, `["b corp","b-1"]`},
+			expectCursor: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			})
+			response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), tc.pageSize)
+			assert.NoError(t, err)
+			assert.Len(t, response.Hits.Hits, len(tc.expectedSort))
+			for i, hit := range response.Hits.Hits {
+				assert.JSONEq(t, tc.expectedSort[i], string(hit.Sort), "hit %d keeps its own sort values", i)
+			}
+			if tc.expectCursor == nil {
+				assert.Nil(t, response.SearchAfter)
+				assert.Nil(t, response.PageToken)
+				return
+			}
+			assert.NotNil(t, response.SearchAfter)
+			assert.JSONEq(t, *tc.expectCursor, *response.SearchAfter)
+			assert.NotNil(t, response.PageToken, "a full page also carries the opaque token for callers")
+		})
+	}
+}
+
+func TestHTTPClientSearchRefusesPartialResults(t *testing.T) {
+	t.Run("asks OpenSearch to fail rather than answer partially", func(t *testing.T) {
+		var gotQuery string
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			gotQuery = r.URL.RawQuery
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"took":1,"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":0},"hits":[]}}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		require.NoError(t, err)
+		assert.Empty(t, response.Hits.Hits)
+		assert.Contains(t, gotQuery, "allow_partial_search_results=false")
+	})
+
+	t.Run("a failed shard is service unavailable, not a shorter page", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"took":1,"timed_out":false,"_shards":{"total":2,"successful":1,"failed":1,"failures":[{"shard":1,"reason":{"type":"circuit_breaking_exception"}}]},"hits":{"total":{"value":1},"hits":[{"_id":"a","_source":{"object_id":"a"},"sort":["alpha","a"]}]}}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("a timed out search is service unavailable", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"took":1,"timed_out":true,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":0},"hits":[]}}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("a search OpenSearch refused to answer whole is service unavailable", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[],"type":"search_phase_execution_exception","reason":"Partial shards failure","phase":"query","grouped":true},"status":503}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("a request OpenSearch rejected is the service's own fault, not an outage", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[{"type":"parsing_exception","reason":"unknown key"}],"type":"parsing_exception","reason":"unknown key"},"status":400}`))
+		})
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"nope":{}}}`), 10)
+		require.Error(t, err)
+		var unavailable errors.ServiceUnavailable
+		assert.False(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
+	})
+
+	t.Run("an unreachable OpenSearch is service unavailable", func(t *testing.T) {
+		client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {})
+		server.Close()
+		response, err := client.Search(context.Background(), "resources", []byte(`{"query":{"match_all":{}}}`), 10)
+		var unavailable errors.ServiceUnavailable
+		assert.True(t, stderrors.As(err, &unavailable), "got %v", err)
+		assert.Nil(t, response)
 	})
 }
 

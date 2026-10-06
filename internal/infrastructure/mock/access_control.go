@@ -27,15 +27,24 @@ type MockAccessControlChecker struct {
 	// DefaultResult is the default access result ("allowed" or "denied")
 	DefaultResult string
 	// Test helper fields
-	checkAccessResponse    map[string]string
-	checkAccessError       error
-	checkAccessErrorOnCall int
-	checkAccessCalls       int
-	isReadyError           error
+	checkAccessResponse       map[string]string
+	checkAccessError          error
+	checkAccessErrorOnCall    int
+	checkAccessTransientErr   error
+	checkAccessTransientUntil int
+	checkAccessCalls          int
+	checkAccessBlock          bool
+	recordMessages            bool
+	checkAccessMessages       []string
+	isReadyError              error
 	// MockTupleRefs is the list of object refs returned by ReadTuples
 	MockTupleRefs []string
 	// SimulateTuplesError determines if ReadTuples should return an error
 	SimulateTuplesError bool
+	// MaxPayloadValue is returned by MaxPayload; 0 (the default) simulates
+	// an unknown negotiated limit, the same as a client that hasn't
+	// connected yet.
+	MaxPayloadValue int64
 }
 
 // CheckAccess implements the AccessControlChecker interface with mock behavior
@@ -48,11 +57,32 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 	)
 
 	m.checkAccessCalls++
+	if m.recordMessages {
+		// Kept for the tests that assert on the batched message; a mock
+		// wired as the process access checker retains nothing.
+		m.checkAccessMessages = append(m.checkAccessMessages, string(data))
+	}
 
-	// If test has set a mock error, return it (on every call, or only on the
-	// configured call number).
-	if m.checkAccessError != nil && (m.checkAccessErrorOnCall == 0 || m.checkAccessErrorOnCall == m.checkAccessCalls) {
+	// A test simulating a hung fga-sync round trip: block until the caller's
+	// context is cancelled or its deadline expires, then surface that as the
+	// call's error, the way a real NATS request bounded by ctx would.
+	if m.checkAccessBlock {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	// If test has set a mock error, return it (on every call, or from the
+	// configured call number onward — a retried call after the configured
+	// call keeps failing too, like a real outage would).
+	if m.checkAccessError != nil && (m.checkAccessErrorOnCall == 0 || m.checkAccessCalls >= m.checkAccessErrorOnCall) {
 		return nil, m.checkAccessError
+	}
+
+	// If test has set a transient error, fail while the call count is at or
+	// below the configured threshold, then succeed — simulating a blip that
+	// a retry resolves.
+	if m.checkAccessTransientErr != nil && m.checkAccessCalls <= m.checkAccessTransientUntil {
+		return nil, m.checkAccessTransientErr
 	}
 
 	// If test has set a mock response, return it
@@ -110,6 +140,12 @@ func (m *MockAccessControlChecker) ReadTuples(_ context.Context, _ string, _ str
 		return m.MockTupleRefs, nil
 	}
 	return []string{}, nil
+}
+
+// MaxPayload implements the AccessControlChecker interface, returning the
+// configured MaxPayloadValue (0 by default, meaning "unknown").
+func (m *MockAccessControlChecker) MaxPayload() int64 {
+	return m.MaxPayloadValue
 }
 
 // Close implements the AccessControlChecker interface (no-op for mock)
@@ -222,11 +258,41 @@ func (m *MockAccessControlChecker) SetCheckAccessError(err error) {
 	m.checkAccessErrorOnCall = 0
 }
 
-// SetCheckAccessErrorOnCall makes only the n-th CheckAccess call (1-based)
-// fail with err; earlier and later calls behave normally.
+// SetCheckAccessErrorOnCall makes the n-th CheckAccess call (1-based) and
+// every call after it fail with err; earlier calls behave normally. This
+// also fails a retry of the n-th call, since a retry is just another call
+// with a higher count.
 func (m *MockAccessControlChecker) SetCheckAccessErrorOnCall(n int, err error) {
 	m.checkAccessError = err
 	m.checkAccessErrorOnCall = n
+}
+
+// SetCheckAccessTransientError makes CheckAccess fail with err for its first
+// n calls (1-based), then behave normally from call n+1 onward — a blip that
+// a retry resolves, unlike SetCheckAccessErrorOnCall's persistent outage.
+func (m *MockAccessControlChecker) SetCheckAccessTransientError(n int, err error) {
+	m.checkAccessTransientErr = err
+	m.checkAccessTransientUntil = n
+}
+
+// SetCheckAccessBlocking makes CheckAccess block until its context is done
+// (cancelled or past its deadline), then return ctx.Err(), simulating a
+// fga-sync round trip that never returns in time.
+func (m *MockAccessControlChecker) SetCheckAccessBlocking() {
+	m.checkAccessBlock = true
+}
+
+// RecordCheckAccessMessages makes the mock keep the batched message of each
+// CheckAccess call, for a test that asserts on them.
+func (m *MockAccessControlChecker) RecordCheckAccessMessages() {
+	m.recordMessages = true
+}
+
+// CheckAccessMessages returns the batched access-check message of each
+// CheckAccess call recorded since RecordCheckAccessMessages was called, in
+// call order.
+func (m *MockAccessControlChecker) CheckAccessMessages() []string {
+	return m.checkAccessMessages
 }
 
 // CheckAccessCalls returns how many times CheckAccess was called.

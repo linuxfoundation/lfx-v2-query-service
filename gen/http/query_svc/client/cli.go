@@ -387,6 +387,64 @@ func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, 
 	return v, nil
 }
 
+// BuildQueryMembershipSummaryPayload builds the payload for the query-svc
+// query-membership-summary endpoint from CLI flags.
+func BuildQueryMembershipSummaryPayload(querySvcQueryMembershipSummaryVersion string, querySvcQueryMembershipSummaryProjectUID string, querySvcQueryMembershipSummaryB2bOrgUID string, querySvcQueryMembershipSummaryPageToken string, querySvcQueryMembershipSummaryBearerToken string) (*querysvc.QueryMembershipSummaryPayload, error) {
+	var err error
+	var version string
+	{
+		version = querySvcQueryMembershipSummaryVersion
+		if !(version == "1") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("version", version, []any{"1"}))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	var projectUID *string
+	{
+		if querySvcQueryMembershipSummaryProjectUID != "" {
+			projectUID = &querySvcQueryMembershipSummaryProjectUID
+			if utf8.RuneCountInString(*projectUID) < 1 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("project_uid", *projectUID, utf8.RuneCountInString(*projectUID), 1, true))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var b2bOrgUID *string
+	{
+		if querySvcQueryMembershipSummaryB2bOrgUID != "" {
+			b2bOrgUID = &querySvcQueryMembershipSummaryB2bOrgUID
+			if utf8.RuneCountInString(*b2bOrgUID) < 1 {
+				err = goa.MergeErrors(err, goa.InvalidLengthError("b2b_org_uid", *b2bOrgUID, utf8.RuneCountInString(*b2bOrgUID), 1, true))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var pageToken *string
+	{
+		if querySvcQueryMembershipSummaryPageToken != "" {
+			pageToken = &querySvcQueryMembershipSummaryPageToken
+		}
+	}
+	var bearerToken string
+	{
+		bearerToken = querySvcQueryMembershipSummaryBearerToken
+	}
+	v := &querysvc.QueryMembershipSummaryPayload{}
+	v.Version = version
+	v.ProjectUID = projectUID
+	v.B2bOrgUID = b2bOrgUID
+	v.PageToken = pageToken
+	v.BearerToken = bearerToken
+
+	return v, nil
+}
+
 // BuildQueryOrgsPayload builds the payload for the query-svc query-orgs
 // endpoint from CLI flags.
 func BuildQueryOrgsPayload(querySvcQueryOrgsVersion string, querySvcQueryOrgsName string, querySvcQueryOrgsDomain string, querySvcQueryOrgsBearerToken string) (*querysvc.QueryOrgsPayload, error) {
