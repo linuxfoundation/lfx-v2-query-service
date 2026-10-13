@@ -32,12 +32,9 @@ go.work
 .env.test.local
 .env.production.local
 
-# IDE and editor files
+# IDE and editor files (see also the JetBrains/Vim/Emacs/Editor backup
+# sections below for tool-specific patterns)
 .vscode/
-.idea/
-*.swp
-*.swo
-*~
 
 # OS generated files
 .DS_Store

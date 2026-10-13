@@ -264,9 +264,6 @@ paths:
                                     - domain: linuxfoundation.org
                                       logo: https://example.com/logo.png
                                       name: Linux Foundation
-                                    - domain: linuxfoundation.org
-                                      logo: https://example.com/logo.png
-                                      name: Linux Foundation
                 "400":
                     description: 'BadRequest: Bad request'
                     content:
@@ -350,7 +347,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Soluta facere.
+                        example: Exercitationem est deleniti sequi vitae ut.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -366,7 +363,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Numquam consequatur ut est eum.
+                        example: Est eligendi eum id reiciendis quaerat maxime.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -409,7 +406,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Labore minima vitae voluptas eum sequi dolorum.
+                        example: Tempore quas corrupti eveniet magnam illo nihil.
                     description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
                     example:
                         - status:active
@@ -425,7 +422,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Numquam iusto.
+                        example: Reprehenderit consequatur.
                     description: 'Direct field filters with term clauses on data fields using AND logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy all of the provided filters.'
                     example:
                         - status:active
@@ -441,7 +438,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Exercitationem ex vel fuga dolorum.
+                        example: Voluptatem doloribus quis adipisci dolor.
                     description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
                     example:
                         - mailing_list_id:abc
@@ -544,6 +541,12 @@ paths:
                                         description: a committee
                                       id: "123"
                                       type: committee
+                                    - data:
+                                        id: "123"
+                                        name: My committee
+                                        description: a committee
+                                      id: "123"
+                                      type: committee
                 "400":
                     description: 'BadRequest: Bad request'
                     content:
@@ -627,7 +630,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Itaque et eius alias aliquid nihil tempore.
+                        example: Dolor necessitatibus.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -643,7 +646,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Eos velit at cum.
+                        example: Repudiandae dicta sit.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -686,7 +689,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Corporis qui.
+                        example: Ea aspernatur modi.
                     description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
                     example:
                         - status:active
@@ -702,7 +705,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Reprehenderit ea quia eos pariatur.
+                        example: Vero et sequi rerum delectus et molestiae.
                     description: 'Direct field filters with term clauses on data fields using AND logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy all of the provided filters.'
                     example:
                         - status:active
@@ -718,7 +721,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Similique et accusamus et sunt sit non.
+                        example: Tempora alias est enim maiores sequi.
                     description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
                     example:
                         - mailing_list_id:abc
@@ -835,6 +838,7 @@ components:
                     type: string
                     description: Error message
                     example: The request was invalid.
+            description: Bad request
             example:
                 message: The request was invalid.
             required:
@@ -865,6 +869,7 @@ components:
                     type: string
                     description: Error message
                     example: An internal server error occurred.
+            description: Internal server error
             example:
                 message: An internal server error occurred.
             required:
@@ -959,7 +964,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Voluptatem ipsa optio voluptatem nobis.
+                        example: Aut expedita repudiandae placeat saepe.
                     description: Distinct statuses in first appearance order
                     example:
                         - Expired
@@ -990,7 +995,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Ullam sequi.
+                        example: Reprehenderit impedit voluptatum.
                     description: Distinct tier product names in first appearance order
                     example:
                         - Silver Membership
@@ -1043,6 +1048,7 @@ components:
                     type: string
                     description: Error message
                     example: The requested resource was not found.
+            description: Not found
             example:
                 message: The requested resource was not found.
             required:
@@ -1216,20 +1222,18 @@ components:
                           key: a1b2c3d4
                         - count: 30
                           key: a1b2c3d4
-                        - count: 30
-                          key: a1b2c3d4
                 groups_complete:
                     type: boolean
                     description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
-                    example: false
+                    example: true
                 has_more:
                     type: boolean
                     description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
-                    example: false
+                    example: true
                 metric_complete:
                     type: boolean
                     description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
-                    example: false
+                    example: true
                 metric_value:
                     type: integer
                     description: Value of the requested metric
@@ -1256,6 +1260,12 @@ components:
                         $ref: '#/components/schemas/Resource'
                     description: Resources found
                     example:
+                        - data:
+                            id: "123"
+                            name: My committee
+                            description: a committee
+                          id: "123"
+                          type: committee
                         - data:
                             id: "123"
                             name: My committee
@@ -1335,40 +1345,11 @@ components:
                     type: string
                     description: Error message
                     example: The service is unavailable.
+            description: Service unavailable
             example:
                 message: The service is unavailable.
             required:
                 - message
-        Sortable:
-            type: object
-            properties:
-                page_size:
-                    type: integer
-                    description: Number of results per page
-                    default: 50
-                    example: 20
-                    format: int64
-                    minimum: 1
-                    maximum: 1000
-                page_token:
-                    type: string
-                    description: Opaque token for pagination
-                    example: '****'
-                sort:
-                    type: string
-                    description: Sort order for results
-                    default: name_asc
-                    example: updated_desc
-                    enum:
-                        - name_asc
-                        - name_desc
-                        - updated_asc
-                        - updated_desc
-                        - best_match
-            example:
-                page_size: 20
-                page_token: '****'
-                sort: updated_desc
         SuggestOrgsResponseBody:
             type: object
             properties:
@@ -1378,12 +1359,6 @@ components:
                         $ref: '#/components/schemas/OrganizationSuggestion'
                     description: Organization suggestions
                     example:
-                        - domain: linuxfoundation.org
-                          logo: https://example.com/logo.png
-                          name: Linux Foundation
-                        - domain: linuxfoundation.org
-                          logo: https://example.com/logo.png
-                          name: Linux Foundation
                         - domain: linuxfoundation.org
                           logo: https://example.com/logo.png
                           name: Linux Foundation
@@ -1405,6 +1380,7 @@ components:
             type: http
             description: Heimdall authorization
             scheme: bearer
+            bearerFormat: JWT
 tags:
     - name: query-svc
       description: The query service provides resource and user queries.
