@@ -444,9 +444,9 @@ func TestUnsatisfiableFiltersProbeCap(t *testing.T) {
 		wantProbes int
 		message    string
 	}{
-		{name: "just within the cap rejects as before", tagCount: maxCarrierProbesPerRequest - 1, wantProbes: 2, message: `tag prefix "prefix00:" is not carried by any indexed committee document`},
-		{name: "just within the cap passes when carried", tagCount: maxCarrierProbesPerRequest - 1, carried: true, wantProbes: maxCarrierProbesPerRequest},
-		{name: "beyond the cap returns the ordinary result", tagCount: maxCarrierProbesPerRequest + 5, carried: true, wantProbes: maxCarrierProbesPerRequest},
+		{name: "just within the cap rejects as before", tagCount: constants.MaxCarrierProbesPerRequest - 1, wantProbes: 2, message: `tag prefix "prefix00:" is not carried by any indexed committee document`},
+		{name: "just within the cap passes when carried", tagCount: constants.MaxCarrierProbesPerRequest - 1, carried: true, wantProbes: constants.MaxCarrierProbesPerRequest},
+		{name: "beyond the cap returns the ordinary result", tagCount: constants.MaxCarrierProbesPerRequest + 5, carried: true, wantProbes: constants.MaxCarrierProbesPerRequest},
 	} {
 		for _, route := range []string{"search", "count"} {
 			for _, principal := range []string{"caller", constants.AnonymousPrincipal} {
@@ -476,8 +476,8 @@ func TestUnsatisfiableFiltersProbeCap(t *testing.T) {
 					}
 					calls := searcher.CarrierProbeCalls()
 					assert.Len(t, calls, tc.wantProbes)
-					assert.LessOrEqual(t, len(calls), maxCarrierProbesPerRequest)
-					if tc.tagCount+1 > maxCarrierProbesPerRequest {
+					assert.LessOrEqual(t, len(calls), constants.MaxCarrierProbesPerRequest)
+					if tc.tagCount+1 > constants.MaxCarrierProbesPerRequest {
 						assert.Contains(t, logs.String(), "probe cap reached")
 					} else {
 						assert.NotContains(t, logs.String(), "probe cap reached")
@@ -509,7 +509,7 @@ func TestUnsatisfiableFiltersAbortedCheckNeverRejectsLater(t *testing.T) {
 		logLine    string
 	}{
 		{name: "a failed filter probe", tagsAll: []string{"category:board"}, failing: true, wantProbes: 2, logLine: "probe failed"},
-		{name: "the cap reached under the filter rule", tagsAll: prefixes(maxCarrierProbesPerRequest + 3), wantProbes: maxCarrierProbesPerRequest, logLine: "probe cap reached"},
+		{name: "the cap reached under the filter rule", tagsAll: prefixes(constants.MaxCarrierProbesPerRequest + 3), wantProbes: constants.MaxCarrierProbesPerRequest, logLine: "probe cap reached"},
 	} {
 		for _, principal := range []string{"caller", constants.AnonymousPrincipal} {
 			t.Run(tc.name+"/"+principal, func(t *testing.T) {

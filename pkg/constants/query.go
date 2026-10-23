@@ -106,6 +106,15 @@ const (
 	DefaultAccessCheckRetries = 1
 	// MaxAccessCheckRetries is the maximum configurable access-check retry count.
 	MaxAccessCheckRetries = 5
+	// MaxCarrierProbesPerRequest caps the distinct unsatisfiable-filter
+	// probes one request may send. A request names one type probe plus one
+	// probe per bounded date field, parent kind, distinct tag prefix,
+	// distinct filter field, group_by prefix and metric prefix; realistic
+	// requests name a handful, so sixteen covers them with room to spare
+	// while bounding what a request with many distinct prefixes or fields
+	// can cost the index. Once the cap is reached the check stops and the
+	// ordinary result stands, as after a failed probe.
+	MaxCarrierProbesPerRequest = 16
 )
 
 // Membership summary scope: the indexed resource type the read covers and the
