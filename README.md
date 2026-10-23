@@ -548,6 +548,12 @@ This command generated the basic server structure, which was then customized and
 
    # or run go test to set custom flags
    go test ./... -v
+
+   # opt-in: the carrier-probe test against a real OpenSearch engine and the
+   # real resources index mapping (internal/infrastructure/opensearch/testdata);
+   # skipped without the URL and excluded from the gate by its build tag
+   OPENSEARCH_TEST_URL=http://localhost:9200 go test -tags integration \
+     -run TestOpenSearchSearcherTypeCarriesIntegration -v ./internal/infrastructure/opensearch/
    ```
 
 6. **Lint the code**

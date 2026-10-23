@@ -54,6 +54,11 @@ make lint
 
 # Run specific test
 go test -v -run TestResourceSearch ./internal/service/
+
+# Opt-in carrier-probe test against a real OpenSearch engine (build tag
+# `integration`; skipped without OPENSEARCH_TEST_URL; not part of the gate)
+OPENSEARCH_TEST_URL=http://localhost:9200 go test -tags integration \
+  -run TestOpenSearchSearcherTypeCarriesIntegration -v ./internal/infrastructure/opensearch/
 ```
 
 ### Docker Operations
