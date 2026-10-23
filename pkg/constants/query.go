@@ -48,7 +48,8 @@ const (
 	// MaxSummaryRunRecords bounds a summary read with no resumable run
 	// boundary. Reuse the startup-validated cap ceiling, without a new knob:
 	// if the run's end cannot be established within this many raw hits,
-	// fail the read rather than return a partial summary.
+	// fail the read once visible rows were read, or return empty with
+	// complete: false and no cursor when none were; never a partial summary.
 	MaxSummaryRunRecords = MaxSummaryRecordCap
 	// MembershipSummaryTokenVersion identifies the whole-run summary read.
 	// Tokens from the unversioned read may point inside a run and must not
