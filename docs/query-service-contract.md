@@ -282,7 +282,7 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
 | `SEARCH_DENIED_PAGE_WALK` | `10` | Extra raw pages `/query/resources` fetches when a page leaves the caller no visible resource (1–25); see [Page Size](#page-size) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
-| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before returning whole organization runs with `complete: false` (1..50000, validated at startup); normally at most the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK`. With no resumable organization boundary yet, the read continues to finish the first run, bounded by 50000 raw hits (the existing configurable cap ceiling). If neither a boundary nor end-of-results is established within that ceiling, the read fails with `503`, never a partial summary |
+| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before returning whole organization runs with `complete: false` (1..50000, validated at startup); normally at most the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK`. With no resumable organization boundary yet, the read continues to finish the first run, bounded by 50000 raw hits (the existing configurable cap ceiling). If neither a boundary nor end-of-results is established within that ceiling, the outcome depends on what the caller has seen: with visible rows already read, the read fails with `503` and no summaries, never a partial summary; with none, it returns `200` with empty summaries, `complete: false` and no `page_token` |
 | `COUNT_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round-trip pair `QueryResourcesCount` issues combined, on top of (not instead of) each individual call's own timeout (any positive duration up to 5m) |
 | `SEARCH_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round trip `/query/resources` issues combined (the denied-page walk's raw OpenSearch queries plus each page's batched, possibly chunked and retried, access check), on top of each individual call's own timeout (any positive duration up to 5m) |
 | `SUMMARY_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round trip `GET /query/memberships/summary` issues combined (every page's raw OpenSearch query plus its batched, possibly chunked and retried, access check), on top of each individual call's own timeout (any positive duration up to 5m) |
@@ -493,11 +493,12 @@ normalizes them.
    rows already read, the read returns `503` with no summaries: a summary is
    never returned as if whole while part of it is unknown. With none, it
    returns `200` with empty summaries, `complete: false` and no `page_token`,
-   the same shape as any truncated read: access to membership records is per
-   record, so visible records may lie past the ceiling and the read never
-   claims completeness there. The flag can tell a scope larger than the
-   ceiling from an empty one, never which records or how many. A scope the
-   walk actually exhausted reports `complete: true`, visible records or not.
+   the only `complete: false` reply without a `page_token`: access to
+   membership records is per record, so visible records may lie past the
+   ceiling and the read never claims completeness there. The flag can tell a
+   scope larger than the ceiling from an empty one, never which records or
+   how many. A scope the walk actually exhausted reports `complete: true`,
+   visible records or not.
    A full page at the ceiling that still carries a cursor cannot establish
    the end of the run and is treated the same way. Denied and unconvertible
    hits count toward the ceiling.
