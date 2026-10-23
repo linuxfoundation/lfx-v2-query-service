@@ -92,6 +92,8 @@ app:
     ##   value: "524288"
     ## ACCESS_CHECK_RETRIES:      # default 1, 0..5 - retries for a failed access-check chunk; 0 disables retries
     ##   value: "1"
+    ## UNSATISFIABLE_FILTER_REJECTION: # default true - reject filters on dimensions no indexed document of the type carries; false restores silent zeros
+    ##   value: "true"
   # extraEnv allows injecting additional environment variables before OTEL configuration.
   # Supports both simple values and Kubernetes field references.
   extraEnv: []

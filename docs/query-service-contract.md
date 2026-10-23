@@ -135,7 +135,8 @@ metric prefix "<prefix>:" is not carried by any indexed <type> document
 
 The probe is type-wide: it never applies access filtering, never returns a
 record, and never includes parent or tag values in the error. It checks any
-indexed document of the type, not the caller's scoped or visible result set.
+indexed document of the type, not the caller's scoped or visible result set,
+superseded copies included (the `latest` filter is not applied).
 Anonymous callers receive the same dimension checks. If a probe itself fails
 for any reason other than the caller's cancellation, the service logs the
 failure and returns the ordinary result (the empty page, or the count as
@@ -288,6 +289,7 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `SUMMARY_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round trip `GET /query/memberships/summary` issues combined (every page's raw OpenSearch query plus its batched, possibly chunked and retried, access check), on top of each individual call's own timeout (any positive duration up to 5m) |
 | `ACCESS_CHECK_CHUNK_BYTES` | `524288` | Soft ceiling, in bytes, on the size of a single batched access-check message sent to fga-sync; larger messages are split into chunks no bigger than this, never mid-line (1–1048576); clamped to the hard bound — the connection's negotiated NATS `max_payload`, capped at 1MiB and falling back to 1MiB when unknown, less an 8KiB header margin — and a single check line beyond that hard bound is rejected rather than sent oversized |
 | `ACCESS_CHECK_RETRIES` | `1` | Retries for a single access-check chunk that fails outright, on top of the initial attempt (0–5); `0` disables retries entirely; a retry is abandoned early if the request context is already cancelled or past its deadline, or if the failure is a deterministic oversized-payload error |
+| `UNSATISFIABLE_FILTER_REJECTION` | `true` | Rollout-safety switch for the [unsatisfiable-filter checks](#unsatisfiable-filters) on `/query/resources` and `/query/resources/count`; `false` disables every probe and restores the previous silent-zero behavior |
 
 #### Not supported
 
@@ -641,7 +643,7 @@ resource to be discoverable and accessible:
 | `sort_name` | Sorting by name | May sort incorrectly |
 | `updated_at` | Sorting by `updated_asc` / `updated_desc` | Updated-date sorting may be wrong or place records last |
 | `data` | Returned as-is in the response | Missing fields in response |
-| `latest` | Always filtered to `true` | Old versions hidden (correct behavior) |
+| `latest` | Always filtered to `true` in result queries; the [unsatisfiable-filter probes](#unsatisfiable-filters) deliberately omit this filter, so a superseded copy counts as a carrier | Old versions hidden (correct behavior) |
 
 **The most common debugging gotcha**: if a user can't see a resource they should
 have access to, check that the indexed document has current access fields and
