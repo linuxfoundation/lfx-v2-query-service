@@ -17,12 +17,12 @@ HELM_RELEASE_NAME=lfx-v2-query-service
 HELM_NAMESPACE=lfx
 
 # Go
-GO_VERSION := 1.24.2
+GO_VERSION := 1.27.3
 GOOS := linux
 GOARCH := amd64
 
 # Linting
-GOLANGCI_LINT_VERSION := v2.2.2
+GOLANGCI_LINT_VERSION := v2.15.0
 LINT_TIMEOUT := 10m
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
 
