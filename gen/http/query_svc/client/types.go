@@ -238,6 +238,12 @@ type ResourceResponseBody struct {
 	ID *string `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
 	// Resource data snapshot
 	Data any `form:"data,omitempty" json:"data,omitempty" xml:"data,omitempty"`
+	// Time the document was last written to the index (the indexing transaction's
+	// timestamp, RFC 3339). This is index time, not the resource's own update
+	// time, which the owning service may publish inside `data`. A reindex or
+	// backfill moves it on every document it republishes. Absent when the document
+	// carries none.
+	UpdatedAt *string `form:"updated_at,omitempty" json:"updated_at,omitempty" xml:"updated_at,omitempty"`
 }
 
 // CountGroupResponseBody is used to define fields on response body types.
@@ -576,6 +582,13 @@ func ValidateQueryResourcesResponseBody(body *QueryResourcesResponseBody) (err e
 	if body.Resources == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("resources", "body"))
 	}
+	for _, e := range body.Resources {
+		if e != nil {
+			if err2 := ValidateResourceResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+	}
 	return
 }
 
@@ -803,6 +816,15 @@ func ValidateReadyzNotReadyResponseBody(body *ReadyzNotReadyResponseBody) (err e
 	}
 	if body.Fault == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("fault", "body"))
+	}
+	return
+}
+
+// ValidateResourceResponseBody runs the validations defined on
+// ResourceResponseBody
+func ValidateResourceResponseBody(body *ResourceResponseBody) (err error) {
+	if body.UpdatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.updated_at", *body.UpdatedAt, goa.FormatDateTime))
 	}
 	return
 }

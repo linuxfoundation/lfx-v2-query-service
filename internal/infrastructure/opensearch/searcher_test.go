@@ -714,12 +714,13 @@ func TestOpenSearchSearcherConvertSearchResponseCursor(t *testing.T) {
 
 func TestOpenSearchSearcherConvertHit(t *testing.T) {
 	tests := []struct {
-		name          string
-		hit           Hit
-		expectedError bool
-		expectedType  string
-		expectedID    string
-		expectedData  map[string]any
+		name              string
+		hit               Hit
+		expectedError     bool
+		expectedType      string
+		expectedID        string
+		expectedData      map[string]any
+		expectedUpdatedAt string
 	}{
 		{
 			name: "convert hit with complete data",
@@ -782,6 +783,86 @@ func TestOpenSearchSearcherConvertHit(t *testing.T) {
 			expectedError: false,
 			expectedID:    "nil-source",
 		},
+		{
+			name: "convert hit carries a string updated_at unchanged",
+			hit: Hit{
+				ID: "project-3",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-3",
+					"data":        map[string]any{"name": "Stamped Project"},
+					"public":      true,
+					"updated_at":  "2025-01-10T12:34:56.789Z",
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-3",
+			expectedData:      map[string]any{"name": "Stamped Project"},
+			expectedUpdatedAt: "2025-01-10T12:34:56.789Z",
+		},
+		{
+			name: "convert hit without updated_at leaves it empty",
+			hit: Hit{
+				ID: "project-4",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-4",
+					"data":        map[string]any{"name": "Unstamped Project"},
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-4",
+			expectedData:      map[string]any{"name": "Unstamped Project"},
+			expectedUpdatedAt: "",
+		},
+		{
+			name: "convert hit with a numeric updated_at keeps the hit and drops the field",
+			hit: Hit{
+				ID: "project-5",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-5",
+					"data":        map[string]any{"name": "Epoch Project"},
+					"updated_at":  1736512496789,
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-5",
+			expectedData:      map[string]any{"name": "Epoch Project"},
+			expectedUpdatedAt: "",
+		},
+		{
+			name: "convert hit with an object updated_at keeps the hit and drops the field",
+			hit: Hit{
+				ID: "project-6",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-6",
+					"data":        map[string]any{"name": "Odd Project"},
+					"updated_at":  map[string]any{"seconds": 1736512496},
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-6",
+			expectedData:      map[string]any{"name": "Odd Project"},
+			expectedUpdatedAt: "",
+		},
+		{
+			name: "convert hit with a null updated_at keeps the hit and drops the field",
+			hit: Hit{
+				ID: "project-7",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-7",
+					"data":        map[string]any{"name": "Null Project"},
+					"updated_at":  nil,
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-7",
+			expectedData:      map[string]any{"name": "Null Project"},
+			expectedUpdatedAt: "",
+		},
 	}
 
 	assertion := assert.New(t)
@@ -805,6 +886,7 @@ func TestOpenSearchSearcherConvertHit(t *testing.T) {
 
 			assertion.NoError(err)
 			assertion.Equal(tc.expectedID, resource.ID)
+			assertion.Equal(tc.expectedUpdatedAt, resource.UpdatedAt)
 
 			if tc.expectedType != "" {
 				assertion.Equal(tc.expectedType, resource.Type)

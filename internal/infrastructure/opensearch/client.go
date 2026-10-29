@@ -56,6 +56,7 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 				"access_check_object",
 				"access_check_relation",
 				"data",
+				"updated_at",
 			},
 		},
 	}

@@ -902,9 +902,10 @@ func DecodeLivezResponse(decoder func(*http.Response) goahttp.Decoder, restoreBo
 // *querysvc.Resource from a value of type *ResourceResponseBody.
 func unmarshalResourceResponseBodyToQuerysvcResource(v *ResourceResponseBody) *querysvc.Resource {
 	res := &querysvc.Resource{
-		Type: v.Type,
-		ID:   v.ID,
-		Data: v.Data,
+		Type:      v.Type,
+		ID:        v.ID,
+		Data:      v.Data,
+		UpdatedAt: v.UpdatedAt,
 	}
 
 	return res

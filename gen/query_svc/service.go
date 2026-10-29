@@ -369,6 +369,12 @@ type Resource struct {
 	ID *string
 	// Resource data snapshot
 	Data any
+	// Time the document was last written to the index (the indexing transaction's
+	// timestamp, RFC 3339). This is index time, not the resource's own update
+	// time, which the owning service may publish inside `data`. A reindex or
+	// backfill moves it on every document it republishes. Absent when the document
+	// carries none.
+	UpdatedAt *string
 }
 
 type ServiceUnavailableError struct {

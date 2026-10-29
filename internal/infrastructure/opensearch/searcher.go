@@ -697,11 +697,17 @@ func (os *OpenSearchSearcher) convertHit(hit Hit) (model.Resource, error) {
 		var parsed struct {
 			model.TransactionBodyStub
 			Data json.RawMessage `json:"data"`
+			// UpdatedAt shadows the stub's string field of the same name
+			// (encoding/json lets the shallower field win), so a stored
+			// value that is not a JSON string cannot fail the hit: the
+			// field is left empty and the document is still returned.
+			UpdatedAt json.RawMessage `json:"updated_at"`
 		}
 		if err := json.Unmarshal(hit.Source, &parsed); err != nil {
 			return resource, fmt.Errorf("failed to unmarshal source data: %w", err)
 		}
 		resource.TransactionBodyStub = parsed.TransactionBodyStub
+		resource.UpdatedAt = indexTimeString(parsed.UpdatedAt)
 		resource.Type = parsed.ObjectType
 
 		if len(parsed.Data) > 0 {
@@ -721,6 +727,22 @@ func (os *OpenSearchSearcher) convertHit(hit Hit) (model.Resource, error) {
 	}
 
 	return resource, nil
+}
+
+// indexTimeString returns the stored updated_at when it is a JSON string,
+// unchanged, and "" for anything else (absent, null, a number, an object).
+// The index maps the field as date, which also accepts epoch numbers; the
+// indexer writes RFC 3339 strings. Being lenient here keeps an unusual
+// document from costing the caller the whole hit.
+func indexTimeString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return value
 }
 
 func (o *OpenSearchSearcher) IsReady(ctx context.Context) error {

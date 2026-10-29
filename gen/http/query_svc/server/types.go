@@ -238,6 +238,12 @@ type ResourceResponseBody struct {
 	ID *string `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
 	// Resource data snapshot
 	Data any `form:"data,omitempty" json:"data,omitempty" xml:"data,omitempty"`
+	// Time the document was last written to the index (the indexing transaction's
+	// timestamp, RFC 3339). This is index time, not the resource's own update
+	// time, which the owning service may publish inside `data`. A reindex or
+	// backfill moves it on every document it republishes. Absent when the document
+	// carries none.
+	UpdatedAt *string `form:"updated_at,omitempty" json:"updated_at,omitempty" xml:"updated_at,omitempty"`
 }
 
 // CountGroupResponseBody is used to define fields on response body types.

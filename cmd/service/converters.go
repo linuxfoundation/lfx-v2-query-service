@@ -245,6 +245,12 @@ func (s *querySvcsrvc) domainResultToResponse(result *model.SearchResult) *query
 			ID:   &resourceID,
 			Data: domainResource.Data,
 		}
+		// Index time is optional: an empty value leaves the key out of the
+		// JSON entirely rather than sending null or "".
+		if domainResource.UpdatedAt != "" {
+			updatedAt := domainResource.UpdatedAt
+			response.Resources[i].UpdatedAt = &updatedAt
+		}
 	}
 
 	return response

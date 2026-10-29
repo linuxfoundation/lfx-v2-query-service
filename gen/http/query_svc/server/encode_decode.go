@@ -857,9 +857,10 @@ func EncodeLivezResponse(encoder func(context.Context, http.ResponseWriter) goah
 // *ResourceResponseBody from a value of type *querysvc.Resource.
 func marshalQuerysvcResourceToResourceResponseBody(v *querysvc.Resource) *ResourceResponseBody {
 	res := &ResourceResponseBody{
-		Type: v.Type,
-		ID:   v.ID,
-		Data: v.Data,
+		Type:      v.Type,
+		ID:        v.ID,
+		Data:      v.Data,
+		UpdatedAt: v.UpdatedAt,
 	}
 
 	return res

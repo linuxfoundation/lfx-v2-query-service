@@ -962,24 +962,28 @@ definitions:
                         description: a committee
                       id: "123"
                       type: committee
+                      updated_at: "2025-01-10T12:34:56Z"
                     - data:
                         id: "123"
                         name: My committee
                         description: a committee
                       id: "123"
                       type: committee
+                      updated_at: "2025-01-10T12:34:56Z"
                     - data:
                         id: "123"
                         name: My committee
                         description: a committee
                       id: "123"
                       type: committee
+                      updated_at: "2025-01-10T12:34:56Z"
                     - data:
                         id: "123"
                         name: My committee
                         description: a committee
                       id: "123"
                       type: committee
+                      updated_at: "2025-01-10T12:34:56Z"
         example:
             page_token: '****'
             resources:
@@ -989,24 +993,28 @@ definitions:
                     description: a committee
                   id: "123"
                   type: committee
+                  updated_at: "2025-01-10T12:34:56Z"
                 - data:
                     id: "123"
                     name: My committee
                     description: a committee
                   id: "123"
                   type: committee
+                  updated_at: "2025-01-10T12:34:56Z"
                 - data:
                     id: "123"
                     name: My committee
                     description: a committee
                   id: "123"
                   type: committee
+                  updated_at: "2025-01-10T12:34:56Z"
                 - data:
                     id: "123"
                     name: My committee
                     description: a committee
                   id: "123"
                   type: committee
+                  updated_at: "2025-01-10T12:34:56Z"
         required:
             - resources
     QuerySvcSuggestOrgsResponseBody:
@@ -1059,6 +1067,11 @@ definitions:
                 type: string
                 description: Resource type
                 example: committee
+            updated_at:
+                type: string
+                description: Time the document was last written to the index (the indexing transaction's timestamp, RFC 3339). This is index time, not the resource's own update time, which the owning service may publish inside `data`. A reindex or backfill moves it on every document it republishes. Absent when the document carries none.
+                example: "2025-01-10T12:34:56Z"
+                format: date-time
         description: A resource is a universal representation of an LFX API resource for indexing.
         example:
             data:
@@ -1067,6 +1080,7 @@ definitions:
                 description: a committee
             id: "123"
             type: committee
+            updated_at: "2025-01-10T12:34:56Z"
     ServiceUnavailableError:
         title: ServiceUnavailableError
         type: object

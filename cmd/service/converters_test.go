@@ -303,6 +303,40 @@ func TestDomainResultToResponse(t *testing.T) {
 				CacheControl: nil,
 			},
 		},
+		{
+			name: "index time is carried only when the domain resource has one",
+			domainResult: &model.SearchResult{
+				Resources: []model.Resource{
+					{
+						Type:                "project",
+						ID:                  "stamped-project",
+						Data:                map[string]any{"name": "Stamped Project"},
+						TransactionBodyStub: model.TransactionBodyStub{UpdatedAt: "2025-01-10T12:34:56.789Z"},
+					},
+					{
+						Type: "project",
+						ID:   "unstamped-project",
+						Data: map[string]any{"name": "Unstamped Project"},
+					},
+				},
+				Total: 2,
+			},
+			expectedResponse: &querysvc.QueryResourcesResult{
+				Resources: []*querysvc.Resource{
+					{
+						Type:      stringPtr("project"),
+						ID:        stringPtr("stamped-project"),
+						Data:      map[string]any{"name": "Stamped Project"},
+						UpdatedAt: stringPtr("2025-01-10T12:34:56.789Z"),
+					},
+					{
+						Type: stringPtr("project"),
+						ID:   stringPtr("unstamped-project"),
+						Data: map[string]any{"name": "Unstamped Project"},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -318,10 +352,62 @@ func TestDomainResultToResponse(t *testing.T) {
 				assert.Equal(t, expectedResource.Type, result.Resources[i].Type)
 				assert.Equal(t, expectedResource.ID, result.Resources[i].ID)
 				assert.Equal(t, expectedResource.Data, result.Resources[i].Data)
+				assert.Equal(t, expectedResource.UpdatedAt, result.Resources[i].UpdatedAt)
 			}
 
 			assert.Equal(t, tc.expectedResponse.PageToken, result.PageToken)
 			assert.Equal(t, tc.expectedResponse.CacheControl, result.CacheControl)
+		})
+	}
+}
+
+// TestDomainResultToResponseUpdatedAtJSON checks the wire shape of the
+// index-time field through the generated response body: the key is absent
+// (not null, not "") when the resource carries none, and the stored value
+// is carried verbatim when it does. type, id and data are unchanged either
+// way.
+func TestDomainResultToResponseUpdatedAtJSON(t *testing.T) {
+	svc := newTestQuerySvc(t, mock.NewMockResourceSearcher(), mock.NewMockAccessControlChecker(),
+		mock.NewMockOrganizationSearcher(), mock.NewMockAuthService())
+
+	tests := []struct {
+		name         string
+		resource     model.Resource
+		expectedJSON string
+	}{
+		{
+			name: "key omitted when the resource has no index time",
+			resource: model.Resource{
+				Type: "project",
+				ID:   "p-1",
+				Data: map[string]any{"name": "Project"},
+			},
+			expectedJSON: `{"type":"project","id":"p-1","data":{"name":"Project"}}`,
+		},
+		{
+			name: "value carried verbatim when the resource has an index time",
+			resource: model.Resource{
+				Type:                "project",
+				ID:                  "p-1",
+				Data:                map[string]any{"name": "Project"},
+				TransactionBodyStub: model.TransactionBodyStub{UpdatedAt: "2025-01-10T12:34:56.789Z"},
+			},
+			expectedJSON: `{"type":"project","id":"p-1","data":{"name":"Project"},"updated_at":"2025-01-10T12:34:56.789Z"}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := svc.domainResultToResponse(&model.SearchResult{Resources: []model.Resource{tc.resource}})
+			body := server.NewQueryResourcesResponseBody(result)
+			require.Len(t, body.Resources, 1)
+
+			encoded, err := json.Marshal(body.Resources[0])
+			require.NoError(t, err)
+			assert.JSONEq(t, tc.expectedJSON, string(encoded))
+			if tc.resource.UpdatedAt == "" {
+				assert.NotContains(t, string(encoded), "updated_at")
+			}
 		})
 	}
 }
