@@ -23,10 +23,11 @@ func TestOpenSearchSearcherTypeCarries(t *testing.T) {
 		clause string
 	}{
 		{"any document", model.CarrierProbe{Kind: model.AnyDocument}, ""},
-		{"data field", model.CarrierProbe{Kind: model.DataField, Name: "start_time"}, `,{"exists":{"field":"data.start_time"}}`},
+		{"data field", model.CarrierProbe{Kind: model.DataField, Name: "start_time"}, `,{"prefix":{"data.start_time":""}}`},
+		{"nested data field", model.CarrierProbe{Kind: model.DataField, Name: "role.name"}, `,{"prefix":{"data.role.name":""}}`},
 		{"parent kind", model.CarrierProbe{Kind: model.ParentKind, Name: "project"}, `,{"prefix":{"parent_refs":"project:"}}`},
 		{"tag prefix", model.CarrierProbe{Kind: model.TagPrefix, Name: "category"}, `,{"prefix":{"tags":"category:"}}`},
-		{"escaped field", model.CarrierProbe{Kind: model.DataField, Name: "a\"\x01"}, `,{"exists":{"field":"data.a\"\u0001"}}`},
+		{"escaped field", model.CarrierProbe{Kind: model.DataField, Name: "a\"\x01"}, `,{"prefix":{"data.a\"\u0001":""}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, total := range []int{0, 1, 2} {

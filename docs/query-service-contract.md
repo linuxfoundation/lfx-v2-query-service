@@ -150,12 +150,12 @@ switch: setting it to `false` disables all probes and restores the previous
 silent-zero behavior on both routes. Availability follows the indexed data, so
 a newly added field or parent kind may remain rejected until it is indexed.
 
-**Release verification:** unit tests check request bodies and response handling,
-but do not prove `exists` queries on `data.<field>` against a real `flat_object`
-index. After merge and before release, verify on the development index that a
-carried field preserves a valid query and an absent field returns the documented
-`400`. If subfield existence queries fail, stop release rather than silently
-substituting another probe.
+A data-field probe is a `prefix` query on `data.<field>` with an empty value,
+which the engine resolves to the same path-anchored `_valueAndPath` term the
+result queries' `term` filters on `data.<field>` use, so the probe is
+path-aware (`project.id` and `id` are distinct) on every supported engine
+version; an `exists` query is not used because on OpenSearch 2.x it cannot
+match a dotted `flat_object` path.
 
 ### GET /query/resources/count
 

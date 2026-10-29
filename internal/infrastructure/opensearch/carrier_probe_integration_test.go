@@ -33,8 +33,8 @@ import (
 //
 // Run it against every engine version the service must support. The unit
 // tests in carrier_probe_test.go check what the probe sends; this test checks
-// what the engine answers, which for a flat_object field depends on the
-// engine version (see the data-field assertions below).
+// what the engine answers for a flat_object field, which is where the form of
+// the probe matters (see the comment on carrierProbeTemplate).
 
 // carrierProbeIndexMapping is the indexer's index template, copied verbatim;
 // the test substitutes the two Helm values it carries.
@@ -107,10 +107,9 @@ func TestOpenSearchSearcherTypeCarriesIntegration(t *testing.T) {
 		{"tag prefix carried", memberType, model.CarrierProbe{Kind: model.TagPrefix, Name: "committee_uid"}, true},
 		{"tag prefix absent", memberType, model.CarrierProbe{Kind: model.TagPrefix, Name: "project_uid"}, false},
 
-		// Data fields on the flat_object mapping. The top-level and absent
-		// cases hold on every engine; the nested and shared-name cases
-		// hold only where the engine resolves a dotted flat_object path
-		// (OpenSearch 3.0 and newer with an exists probe).
+		// Data fields on the flat_object mapping: a path is carried only when
+		// some document of the type carries that exact path, so two fields
+		// sharing a final name are told apart.
 		{"top-level field carried", memberType, model.CarrierProbe{Kind: model.DataField, Name: "uid"}, true},
 		{"absent field", memberType, model.CarrierProbe{Kind: model.DataField, Name: "missing"}, false},
 		{"nested field carried", memberType, model.CarrierProbe{Kind: model.DataField, Name: "role.name"}, true},
