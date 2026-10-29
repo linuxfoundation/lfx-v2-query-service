@@ -283,13 +283,19 @@ Authorization: Bearer <jwt_token>
         "name": "Technical Advisory Committee",
         "description": "Main technical governance body",
         "status": "active"
-      }
+      },
+      "updated_at": "2025-01-10T12:34:56Z"
     }
   ],
   "page_token": "opaque-token-or-omitted",
   "cache_control": "public, max-age=300"
 }
 ```
+
+`updated_at` is the time the document was last written to the index (index
+time, not the resource's own update time) and is absent when the document
+carries none; see the
+[contract](docs/query-service-contract.md#get-queryresources).
 
 At least one of `name`, `parent`, `type`, `tags`, or `filter_grants` must be
 provided; a request with only `cel_filter`, `date_*`, `filters*`, `sort`, or

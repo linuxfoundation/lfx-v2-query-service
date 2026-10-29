@@ -59,7 +59,7 @@ excluded from results (it does not bypass access filtering).
 ```json
 {
   "resources": [
-    { "type": "committee", "id": "uuid", "data": { ... } }
+    { "type": "committee", "id": "uuid", "data": { ... }, "updated_at": "2025-01-10T12:34:56Z" }
   ],
   "page_token": "opaque-token-or-omitted",
   "cache_control": "public, max-age=300"
@@ -68,6 +68,15 @@ excluded from results (it does not bypass access filtering).
 
 `data` is the full resource object as stored by the indexer: schema-free, no
 migration needed for new fields.
+
+`updated_at` is optional. Time the document was last written to the index
+(the indexing transaction's timestamp, RFC 3339). This is index time, not the
+resource's own update time, which the owning service may publish inside
+`data`. A reindex or backfill moves it on every document it republishes.
+Absent when the document carries none. To read the newest index time of a
+scope, query the same scope with `sort=updated_desc&page_size=1` (the sort
+already orders on this field); a recent value beside a count from the same
+scope means the index may still be filling.
 
 **Required parameters:** at least one of `name`, `parent`, `type`, `tags`, or
 `filter_grants` must be provided. A request that supplies only `cel_filter`,
@@ -638,7 +647,7 @@ resource to be discoverable and accessible:
 | `access_check_relation` | FGA relation to check (e.g. `viewer`) | Non-public resource treated as unauthorized and excluded from results (legacy/malformed document) |
 | `access_check_query` | `{access_check_object}#{access_check_relation}`; the count route's access-bucket walk aggregates on it (field resolved from the mapping, see [Mapping the count route depends on](#mapping-the-count-route-depends-on)) | Authenticated counts can undercount private resources |
 | `sort_name` | Sorting by name | May sort incorrectly |
-| `updated_at` | Sorting by `updated_asc` / `updated_desc` | Updated-date sorting may be wrong or place records last |
+| `updated_at` | Sorting by `updated_asc` / `updated_desc`; also returned with each resource as `updated_at` (index time, see [GET /query/resources](#get-queryresources)) | Updated-date sorting may be wrong or place records last; the resource is returned without `updated_at` |
 | `data` | Returned as-is in the response | Missing fields in response |
 | `latest` | Always filtered to `true` | Old versions hidden (correct behavior) |
 
