@@ -37,7 +37,7 @@ type TransactionBodyStub struct {
 	HistoryCheckQuery    string `json:"history_check_query"`
 	// UpdatedAt is the index time: the indexing transaction's timestamp,
 	// as stored (RFC 3339), not the resource's own update time. Empty when
-	// the document carries none, or carries a value that is not a JSON
+	// the document carries none, or carries a value that is not an RFC 3339
 	// string (the OpenSearch searcher decodes it leniently so such a
 	// document is still returned).
 	UpdatedAt string `json:"updated_at"`

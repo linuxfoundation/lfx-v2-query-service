@@ -863,6 +863,54 @@ func TestOpenSearchSearcherConvertHit(t *testing.T) {
 			expectedData:      map[string]any{"name": "Null Project"},
 			expectedUpdatedAt: "",
 		},
+		{
+			name: "convert hit with a date-only updated_at keeps the hit and drops the field",
+			hit: Hit{
+				ID: "project-8",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-8",
+					"data":        map[string]any{"name": "Date-only Project"},
+					"updated_at":  "2025-01-10",
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-8",
+			expectedData:      map[string]any{"name": "Date-only Project"},
+			expectedUpdatedAt: "",
+		},
+		{
+			name: "convert hit with a quoted epoch updated_at keeps the hit and drops the field",
+			hit: Hit{
+				ID: "project-9",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-9",
+					"data":        map[string]any{"name": "Quoted Epoch Project"},
+					"updated_at":  "1736512496789",
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-9",
+			expectedData:      map[string]any{"name": "Quoted Epoch Project"},
+			expectedUpdatedAt: "",
+		},
+		{
+			name: "convert hit carries an RFC 3339 updated_at with an offset unchanged",
+			hit: Hit{
+				ID: "project-10",
+				Source: mustMarshal(map[string]any{
+					"object_type": "project",
+					"object_id":   "project-10",
+					"data":        map[string]any{"name": "Offset Project"},
+					"updated_at":  "2025-01-10T13:34:56+01:00",
+				}),
+			},
+			expectedType:      "project",
+			expectedID:        "project-10",
+			expectedData:      map[string]any{"name": "Offset Project"},
+			expectedUpdatedAt: "2025-01-10T13:34:56+01:00",
+		},
 	}
 
 	assertion := assert.New(t)

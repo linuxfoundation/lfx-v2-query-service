@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	client "github.com/linuxfoundation/lfx-v2-query-service/gen/http/query_svc/client"
 	server "github.com/linuxfoundation/lfx-v2-query-service/gen/http/query_svc/server"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -365,7 +366,9 @@ func TestDomainResultToResponse(t *testing.T) {
 // index-time field through the generated response body: the key is absent
 // (not null, not "") when the resource carries none, and the stored value
 // is carried verbatim when it does. type, id and data are unchanged either
-// way.
+// way. The page is then decoded and validated through the generated client,
+// which rejects a whole page when one updated_at is not RFC 3339, so what
+// the server sends must be what the client accepts.
 func TestDomainResultToResponseUpdatedAtJSON(t *testing.T) {
 	svc := newTestQuerySvc(t, mock.NewMockResourceSearcher(), mock.NewMockAccessControlChecker(),
 		mock.NewMockOrganizationSearcher(), mock.NewMockAuthService())
@@ -407,6 +410,20 @@ func TestDomainResultToResponseUpdatedAtJSON(t *testing.T) {
 			assert.JSONEq(t, tc.expectedJSON, string(encoded))
 			if tc.resource.UpdatedAt == "" {
 				assert.NotContains(t, string(encoded), "updated_at")
+			}
+
+			// The generated client must accept the page the server sends.
+			page, err := json.Marshal(body)
+			require.NoError(t, err)
+			var decoded client.QueryResourcesResponseBody
+			require.NoError(t, json.Unmarshal(page, &decoded))
+			require.NoError(t, client.ValidateQueryResourcesResponseBody(&decoded))
+			require.Len(t, decoded.Resources, 1)
+			if tc.resource.UpdatedAt == "" {
+				assert.Nil(t, decoded.Resources[0].UpdatedAt)
+			} else {
+				require.NotNil(t, decoded.Resources[0].UpdatedAt)
+				assert.Equal(t, tc.resource.UpdatedAt, *decoded.Resources[0].UpdatedAt)
 			}
 		})
 	}

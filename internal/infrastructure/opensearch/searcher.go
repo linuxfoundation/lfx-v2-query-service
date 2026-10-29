@@ -699,7 +699,7 @@ func (os *OpenSearchSearcher) convertHit(hit Hit) (model.Resource, error) {
 			Data json.RawMessage `json:"data"`
 			// UpdatedAt shadows the stub's string field of the same name
 			// (encoding/json lets the shallower field win), so a stored
-			// value that is not a JSON string cannot fail the hit: the
+			// value that is not an RFC 3339 string cannot fail the hit: the
 			// field is left empty and the document is still returned.
 			UpdatedAt json.RawMessage `json:"updated_at"`
 		}
@@ -729,17 +729,25 @@ func (os *OpenSearchSearcher) convertHit(hit Hit) (model.Resource, error) {
 	return resource, nil
 }
 
-// indexTimeString returns the stored updated_at when it is a JSON string,
-// unchanged, and "" for anything else (absent, null, a number, an object).
-// The index maps the field as date, which also accepts epoch numbers; the
-// indexer writes RFC 3339 strings. Being lenient here keeps an unusual
-// document from costing the caller the whole hit.
+// indexTimeString returns the stored updated_at when it is a JSON string
+// holding an RFC 3339 timestamp, unchanged, and "" for anything else
+// (absent, null, a number, an object, or a string in another date form).
+// The index maps the field as date, which also accepts epoch numbers and
+// date-only strings; the indexer writes RFC 3339 strings. The response
+// declares the field as RFC 3339 (format date-time) and the generated
+// client rejects a whole page when one value is not, so being lenient here
+// keeps an unusual document from costing the caller the hit or the page.
+// The check is the one the generated client runs (time.Parse with
+// time.RFC3339), so what the server lets through the client accepts.
 func indexTimeString(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
 	}
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	if _, err := time.Parse(time.RFC3339, value); err != nil {
 		return ""
 	}
 	return value
