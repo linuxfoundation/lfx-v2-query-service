@@ -144,8 +144,8 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 				// The caller has seen nothing so far. Access to membership
 				// records is per record, so visible ones may still lie past
 				// the ceiling: a scope the caller cannot see beyond the
-				// ceiling answers as any other truncated read does, nothing
-				// visible, not complete, no continuation. The flag alone can
+				// ceiling answers with nothing visible and not complete, and,
+				// unlike a cap stop, with no continuation. The flag alone can
 				// tell a scope larger than the ceiling from an empty one,
 				// never which records or how many.
 				complete = false
@@ -207,13 +207,12 @@ func (s *ResourceSearch) QueryMembershipSummary(ctx context.Context, criteria mo
 			// The cap is checked after a whole page, so pages are never
 			// split and the cap may be overshot by up to one page, or by up
 			// to MaxSummaryRunRecords while the first run has no boundary.
-			// While the
-			// caller has seen nothing, the cap yields to the denied-page
-			// walk: the read keeps going as far as the plain search walks
-			// denied pages before it exposes a continuation, so a scope the
-			// caller cannot see and a scope that does not exist stay
-			// indistinguishable to the same extent. The worst case for such
-			// a read is the larger of the cap rounded up to whole pages
+			// While the caller has seen nothing, the cap yields to the
+			// denied-page walk: the read keeps going as far as the plain
+			// search walks denied pages before it exposes a continuation, so
+			// a scope the caller cannot see and a scope that does not exist
+			// stay indistinguishable to the same extent. The worst case for
+			// such a read is the larger of the cap rounded up to whole pages
 			// and the walk plus one page, extended when necessary to find
 			// the first run boundary within MaxSummaryRunRecords.
 			// Leave out the organization the read stopped inside: its
@@ -333,7 +332,7 @@ func membershipRunKey(sortValues string) string {
 // membershipRunTracker follows the organization runs of a read in index
 // order: which organization the last hit belongs to, and the cursor of the
 // last hit before that organization began. Until a resumable boundary is
-// found, the read must continue to the run's end or fail at the hard ceiling;
+// found, the read must continue to the run's end or stop at the hard ceiling;
 // it must never return a cursor inside that run.
 type membershipRunTracker struct {
 	// current is the run key of the last hit observed.

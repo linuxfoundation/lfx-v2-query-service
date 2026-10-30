@@ -135,7 +135,8 @@ metric prefix "<prefix>:" is not carried by any indexed <type> document
 
 The probe is type-wide: it never applies access filtering, never returns a
 record, and never includes parent or tag values in the error. It checks any
-indexed document of the type, not the caller's scoped or visible result set.
+indexed document of the type, not the caller's scoped or visible result set,
+superseded copies included (the `latest` filter is not applied).
 Anonymous callers receive the same dimension checks. If a probe itself fails
 for any reason other than the caller's cancellation, the service logs the
 failure and returns the ordinary result (the empty page, or the count as
@@ -149,12 +150,12 @@ switch: setting it to `false` disables all probes and restores the previous
 silent-zero behavior on both routes. Availability follows the indexed data, so
 a newly added field or parent kind may remain rejected until it is indexed.
 
-**Release verification:** unit tests check request bodies and response handling,
-but do not prove `exists` queries on `data.<field>` against a real `flat_object`
-index. After merge and before release, verify on the development index that a
-carried field preserves a valid query and an absent field returns the documented
-`400`. If subfield existence queries fail, stop release rather than silently
-substituting another probe.
+A data-field probe is a `prefix` query on `data.<field>` with an empty value,
+which the engine resolves to the same path-anchored `_valueAndPath` term the
+result queries' `term` filters on `data.<field>` use, so the probe is
+path-aware (`project.id` and `id` are distinct) on every supported engine
+version; an `exists` query is not used because on OpenSearch 2.x it cannot
+match a dotted `flat_object` path.
 
 ### GET /query/resources/count
 
@@ -282,12 +283,13 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `COUNT_ACCESS_BUCKET_PAGE` | `100` | Access-key buckets fetched and checked per page (1–1000) |
 | `SEARCH_DENIED_PAGE_WALK` | `10` | Extra raw pages `/query/resources` fetches when a page leaves the caller no visible resource (1–25); see [Page Size](#page-size) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
-| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before returning whole organization runs with `complete: false` (1..50000, validated at startup); normally at most the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK`. With no resumable organization boundary yet, the read continues to finish the first run, bounded by 50000 raw hits (the existing configurable cap ceiling). If neither a boundary nor end-of-results is established within that ceiling, the read fails with `503`, never a partial summary |
+| `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before returning whole organization runs with `complete: false` (1..50000, validated at startup); normally at most the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK`. With no resumable organization boundary yet, the read continues to finish the first run, bounded by 50000 raw hits (the existing configurable cap ceiling). If neither a boundary nor end-of-results is established within that ceiling, the outcome depends on what the caller has seen: with visible rows already read, the read fails with `503` and no summaries, never a partial summary; with none, it returns `200` with empty summaries, `complete: false` and no `page_token` |
 | `COUNT_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round-trip pair `QueryResourcesCount` issues combined, on top of (not instead of) each individual call's own timeout (any positive duration up to 5m) |
 | `SEARCH_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round trip `/query/resources` issues combined (the denied-page walk's raw OpenSearch queries plus each page's batched, possibly chunked and retried, access check), on top of each individual call's own timeout (any positive duration up to 5m) |
 | `SUMMARY_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round trip `GET /query/memberships/summary` issues combined (every page's raw OpenSearch query plus its batched, possibly chunked and retried, access check), on top of each individual call's own timeout (any positive duration up to 5m) |
 | `ACCESS_CHECK_CHUNK_BYTES` | `524288` | Soft ceiling, in bytes, on the size of a single batched access-check message sent to fga-sync; larger messages are split into chunks no bigger than this, never mid-line (1–1048576); clamped to the hard bound — the connection's negotiated NATS `max_payload`, capped at 1MiB and falling back to 1MiB when unknown, less an 8KiB header margin — and a single check line beyond that hard bound is rejected rather than sent oversized |
 | `ACCESS_CHECK_RETRIES` | `1` | Retries for a single access-check chunk that fails outright, on top of the initial attempt (0–5); `0` disables retries entirely; a retry is abandoned early if the request context is already cancelled or past its deadline, or if the failure is a deterministic oversized-payload error |
+| `UNSATISFIABLE_FILTER_REJECTION` | `true` | Rollout-safety switch for the [unsatisfiable-filter checks](#unsatisfiable-filters) on `/query/resources` and `/query/resources/count`; `false` disables every probe and restores the previous silent-zero behavior |
 
 #### Not supported
 
@@ -493,11 +495,12 @@ normalizes them.
    rows already read, the read returns `503` with no summaries: a summary is
    never returned as if whole while part of it is unknown. With none, it
    returns `200` with empty summaries, `complete: false` and no `page_token`,
-   the same shape as any truncated read: access to membership records is per
-   record, so visible records may lie past the ceiling and the read never
-   claims completeness there. The flag can tell a scope larger than the
-   ceiling from an empty one, never which records or how many. A scope the
-   walk actually exhausted reports `complete: true`, visible records or not.
+   the only `complete: false` reply without a `page_token`: access to
+   membership records is per record, so visible records may lie past the
+   ceiling and the read never claims completeness there. The flag can tell a
+   scope larger than the ceiling from an empty one, never which records or
+   how many. A scope the walk actually exhausted reports `complete: true`,
+   visible records or not.
    A full page at the ceiling that still carries a cursor cannot establish
    the end of the run and is treated the same way. Denied and unconvertible
    hits count toward the ceiling.
@@ -640,7 +643,7 @@ resource to be discoverable and accessible:
 | `sort_name` | Sorting by name | May sort incorrectly |
 | `updated_at` | Sorting by `updated_asc` / `updated_desc` | Updated-date sorting may be wrong or place records last |
 | `data` | Returned as-is in the response | Missing fields in response |
-| `latest` | Always filtered to `true` | Old versions hidden (correct behavior) |
+| `latest` | Always filtered to `true` in result queries; the [unsatisfiable-filter probes](#unsatisfiable-filters) deliberately omit this filter, so a superseded copy counts as a carrier | Old versions hidden (correct behavior) |
 
 **The most common debugging gotcha**: if a user can't see a resource they should
 have access to, check that the indexed document has current access fields and
