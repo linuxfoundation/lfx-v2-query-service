@@ -7,7 +7,7 @@ go 1.25.0
 
 require (
 	github.com/auth0/go-jwt-middleware/v2 v2.3.0
-	github.com/go-chi/chi/v5 v5.2.4
+	github.com/go-chi/chi/v5 v5.4.0
 	github.com/google/cel-go v0.30.0
 	github.com/google/uuid v1.6.0
 	github.com/nats-io/nats.go v1.43.0
@@ -48,7 +48,7 @@ require (
 	github.com/gohugoio/hashstructure v0.5.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/manveru/faker v0.0.0-20171103152722-9fbc68a78c4d // indirect
 	github.com/nats-io/nkeys v0.4.11 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
