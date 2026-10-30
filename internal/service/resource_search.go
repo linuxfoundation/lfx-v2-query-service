@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -17,6 +18,15 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 )
+
+// fgaIdentifierPattern mirrors OpenFGA's tuple-key identifier rule
+// (`^[^\s]{1,511}:[^\s]{1,511}$`, enforced by the OpenFGA Read API we call via
+// fga-sync's read_tuples RPC). The "user:" type prefix we add is always valid, so
+// only the principal needs checking against the id half of that pattern. Some
+// Heimdall-issued principals carry a raw Auth0 `username` attribute that contains
+// whitespace (a display name, or a stray space before a username-collision
+// suffix) and fail OpenFGA's check deterministically on every call (GH-4780).
+var fgaIdentifierPattern = regexp.MustCompile(`^\S{1,511}$`)
 
 // ResourceSearcher defines the interface for resource search operations
 // This abstraction allows different search implementations (OpenSearch, etc.)
@@ -266,6 +276,13 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 	if criteria.FilterGrants != nil && *criteria.FilterGrants == "direct" {
 		if principal == constants.AnonymousPrincipal {
 			return nil, errors.NewValidation("filter_grants requires authentication")
+		}
+		if !fgaIdentifierPattern.MatchString(principal) {
+			slog.ErrorContext(ctx, "principal is not a valid FGA identifier, skipping direct grant lookup",
+				"user", principal,
+				"object_type", *criteria.ResourceType,
+			)
+			return nil, errors.NewValidation("authenticated principal is not a valid FGA identifier")
 		}
 		objectRefs, errTuples := s.accessChecker.ReadTuples(ctx, "user:"+principal, *criteria.ResourceType, s.config.ReadTuplesTimeout)
 		if errTuples != nil {
