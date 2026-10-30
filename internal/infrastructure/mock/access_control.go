@@ -45,6 +45,9 @@ type MockAccessControlChecker struct {
 	// an unknown negotiated limit, the same as a client that hasn't
 	// connected yet.
 	MaxPayloadValue int64
+	// ReadTuplesCallCount counts invocations of ReadTuples, so tests can assert
+	// it was skipped entirely (e.g. a caller-side validation short-circuit).
+	ReadTuplesCallCount int
 }
 
 // CheckAccess implements the AccessControlChecker interface with mock behavior
@@ -133,6 +136,7 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 
 // ReadTuples implements the AccessControlChecker interface with mock behavior
 func (m *MockAccessControlChecker) ReadTuples(_ context.Context, _ string, _ string, _ time.Duration) ([]string, error) {
+	m.ReadTuplesCallCount++
 	if m.SimulateTuplesError {
 		return nil, fmt.Errorf("mock read_tuples error")
 	}

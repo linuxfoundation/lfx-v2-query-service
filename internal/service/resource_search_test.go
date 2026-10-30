@@ -1916,12 +1916,13 @@ func TestResourceCountCheckAccess(t *testing.T) {
 
 func TestResourceSearchFilterGrants(t *testing.T) {
 	tests := []struct {
-		name              string
-		criteria          model.SearchCriteria
-		principal         string
-		setupMocks        func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
-		expectedError     bool
-		expectedResources int
+		name                    string
+		criteria                model.SearchCriteria
+		principal               string
+		setupMocks              func(*mock.MockResourceSearcher, *mock.MockAccessControlChecker)
+		expectedError           bool
+		expectedResources       int
+		expectReadTuplesSkipped bool
 	}{
 		{
 			name: "filter_grants=direct returns resources matching grants",
@@ -2008,6 +2009,22 @@ func TestResourceSearchFilterGrants(t *testing.T) {
 			expectedError:     true,
 			expectedResources: 0,
 		},
+		{
+			// GH-4780: some Heimdall-issued principals carry a raw Auth0 `username`
+			// that contains whitespace (a display name, or a stray space before a
+			// username-collision suffix). OpenFGA's Read API rejects any such value
+			// deterministically, so this must fail fast without ever calling it.
+			name: "filter_grants=direct fails fast for a principal containing whitespace",
+			criteria: model.SearchCriteria{
+				FilterGrants: stringPtr("direct"),
+				ResourceType: stringPtr("v1_past_meeting"),
+			},
+			principal:               "Cedric Meury",
+			setupMocks:              func(searcher *mock.MockResourceSearcher, accessChecker *mock.MockAccessControlChecker) {},
+			expectedError:           true,
+			expectedResources:       0,
+			expectReadTuplesSkipped: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -2026,6 +2043,9 @@ func TestResourceSearchFilterGrants(t *testing.T) {
 			if tc.expectedError {
 				assertion.Error(err)
 				assertion.Nil(result)
+				if tc.expectReadTuplesSkipped {
+					assertion.Equal(0, mockAccessChecker.ReadTuplesCallCount)
+				}
 				return
 			}
 			assertion.NoError(err)
