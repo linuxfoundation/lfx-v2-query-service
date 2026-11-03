@@ -24,7 +24,7 @@ GOARCH := amd64
 # Linting
 GOLANGCI_LINT_VERSION := v2.15.0
 LINT_TIMEOUT := 10m
-LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
+LINT_TOOL=$(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)/golangci-lint
 
 GOA_VERSION := v3.22.6
 
