@@ -54,8 +54,8 @@ apigen: deps #@ Generate API code using Goa
 .PHONY: lint
 lint: ## Run golangci-lint (local Go linting)
 	@echo "Running golangci-lint..."
-	@which golangci-lint >/dev/null 2>&1 || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	@golangci-lint run ./... && echo "==> Lint OK"
+	@test -x "$(LINT_TOOL)" || (echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..." && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
+	@$(LINT_TOOL) run ./... && echo "==> Lint OK"
 
 .PHONY: test
 test: ## Run tests
