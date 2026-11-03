@@ -17,14 +17,14 @@ HELM_RELEASE_NAME=lfx-v2-query-service
 HELM_NAMESPACE=lfx
 
 # Go
-GO_VERSION := 1.24.2
+GO_VERSION := 1.27.3
 GOOS := linux
 GOARCH := amd64
 
 # Linting
-GOLANGCI_LINT_VERSION := v2.2.2
+GOLANGCI_LINT_VERSION := v2.15.0
 LINT_TIMEOUT := 10m
-LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
+LINT_TOOL=$(or $(shell go env GOBIN),$(shell go env GOPATH)/bin)/golangci-lint
 
 GOA_VERSION := v3.22.6
 
@@ -54,8 +54,8 @@ apigen: deps #@ Generate API code using Goa
 .PHONY: lint
 lint: ## Run golangci-lint (local Go linting)
 	@echo "Running golangci-lint..."
-	@which golangci-lint >/dev/null 2>&1 || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	@golangci-lint run ./... && echo "==> Lint OK"
+	@test -x "$(LINT_TOOL)" || (echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..." && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION))
+	@$(LINT_TOOL) run ./... && echo "==> Lint OK"
 
 .PHONY: test
 test: ## Run tests
