@@ -18,6 +18,7 @@ import (
 
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	goahttp "goa.design/goa/v3/http"
+	goa "goa.design/goa/v3/pkg"
 )
 
 // BuildQueryResourcesRequest instantiates a HTTP request object with method
@@ -192,6 +193,171 @@ func DecodeQueryResourcesResponse(decoder func(*http.Response) goahttp.Decoder, 
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("query-svc", "query-resources", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildQueryResourcesHistoryRequest instantiates a HTTP request object with
+// method and path set to call the "query-svc" service
+// "query-resources-history" endpoint
+func (c *Client) BuildQueryResourcesHistoryRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: QueryResourcesHistoryQuerySvcPath()}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("query-svc", "query-resources-history", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeQueryResourcesHistoryRequest returns an encoder for requests sent to
+// the query-svc query-resources-history server.
+func EncodeQueryResourcesHistoryRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*querysvc.QueryResourcesHistoryPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("query-svc", "query-resources-history", "*querysvc.QueryResourcesHistoryPayload", v)
+		}
+		{
+			head := p.BearerToken
+			if !strings.Contains(head, " ") {
+				req.Header.Set("Authorization", "Bearer "+head)
+			} else {
+				req.Header.Set("Authorization", head)
+			}
+		}
+		values := req.URL.Query()
+		values.Add("v", p.Version)
+		if p.Type != nil {
+			values.Add("type", *p.Type)
+		}
+		if p.Parent != nil {
+			values.Add("parent", *p.Parent)
+		}
+		for _, value := range p.Filters {
+			values.Add("filters", value)
+		}
+		for _, value := range p.FiltersAll {
+			values.Add("filters_all", value)
+		}
+		for _, value := range p.FiltersOr {
+			values.Add("filters_or", value)
+		}
+		if p.DateField != nil {
+			values.Add("date_field", *p.DateField)
+		}
+		if p.DateFrom != nil {
+			values.Add("date_from", *p.DateFrom)
+		}
+		if p.DateTo != nil {
+			values.Add("date_to", *p.DateTo)
+		}
+		values.Add("page_size", fmt.Sprintf("%v", p.PageSize))
+		if p.PageToken != nil {
+			values.Add("page_token", *p.PageToken)
+		}
+		req.URL.RawQuery = values.Encode()
+		return nil
+	}
+}
+
+// DecodeQueryResourcesHistoryResponse returns a decoder for responses returned
+// by the query-svc query-resources-history endpoint. restoreBody controls
+// whether the response body should be restored after having been read.
+// DecodeQueryResourcesHistoryResponse may return the following errors:
+//   - "BadRequest" (type *querysvc.BadRequestError): http.StatusBadRequest
+//   - "InternalServerError" (type *querysvc.InternalServerError): http.StatusInternalServerError
+//   - "ServiceUnavailable" (type *querysvc.ServiceUnavailableError): http.StatusServiceUnavailable
+//   - error: internal error
+func DecodeQueryResourcesHistoryResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body QueryResourcesHistoryResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-resources-history", err)
+			}
+			err = ValidateQueryResourcesHistoryResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-resources-history", err)
+			}
+			var (
+				cacheControl string
+			)
+			cacheControlRaw := resp.Header.Get("Cache-Control")
+			if cacheControlRaw == "" {
+				err = goa.MergeErrors(err, goa.MissingFieldError("cache_control", "header"))
+			}
+			cacheControl = cacheControlRaw
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-resources-history", err)
+			}
+			res := NewQueryResourcesHistoryResultOK(&body, cacheControl)
+			return res, nil
+		case http.StatusBadRequest:
+			var (
+				body QueryResourcesHistoryBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-resources-history", err)
+			}
+			err = ValidateQueryResourcesHistoryBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-resources-history", err)
+			}
+			return nil, NewQueryResourcesHistoryBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body QueryResourcesHistoryInternalServerErrorResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-resources-history", err)
+			}
+			err = ValidateQueryResourcesHistoryInternalServerErrorResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-resources-history", err)
+			}
+			return nil, NewQueryResourcesHistoryInternalServerError(&body)
+		case http.StatusServiceUnavailable:
+			var (
+				body QueryResourcesHistoryServiceUnavailableResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("query-svc", "query-resources-history", err)
+			}
+			err = ValidateQueryResourcesHistoryServiceUnavailableResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("query-svc", "query-resources-history", err)
+			}
+			return nil, NewQueryResourcesHistoryServiceUnavailable(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("query-svc", "query-resources-history", resp.StatusCode, string(body))
 		}
 	}
 }
@@ -905,6 +1071,34 @@ func unmarshalResourceResponseBodyToQuerysvcResource(v *ResourceResponseBody) *q
 		Type: v.Type,
 		ID:   v.ID,
 		Data: v.Data,
+	}
+
+	return res
+}
+
+// unmarshalHistoryEventResponseBodyToQuerysvcHistoryEvent builds a value of
+// type *querysvc.HistoryEvent from a value of type *HistoryEventResponseBody.
+func unmarshalHistoryEventResponseBodyToQuerysvcHistoryEvent(v *HistoryEventResponseBody) *querysvc.HistoryEvent {
+	res := &querysvc.HistoryEvent{
+		EventID:          *v.EventID,
+		Action:           *v.Action,
+		OccurredAt:       *v.OccurredAt,
+		ResourceRevision: *v.ResourceRevision,
+		Attribution:      v.Attribution,
+		Content:          v.Content,
+	}
+	res.Resource = unmarshalHistoryResourceResponseBodyToQuerysvcHistoryResource(v.Resource)
+
+	return res
+}
+
+// unmarshalHistoryResourceResponseBodyToQuerysvcHistoryResource builds a value
+// of type *querysvc.HistoryResource from a value of type
+// *HistoryResourceResponseBody.
+func unmarshalHistoryResourceResponseBodyToQuerysvcHistoryResource(v *HistoryResourceResponseBody) *querysvc.HistoryResource {
+	res := &querysvc.HistoryResource{
+		Type: *v.Type,
+		UID:  *v.UID,
 	}
 
 	return res

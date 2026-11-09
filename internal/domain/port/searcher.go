@@ -15,6 +15,8 @@ import (
 type ResourceSearcher interface {
 	// QueryResources searches for resources based on the provided criteria
 	QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error)
+	// QueryHistory reads only mutation records from the private history index.
+	QueryHistory(ctx context.Context, criteria model.HistoryCriteria) (*model.HistoryPage, error)
 
 	// TypeCarries reports whether any indexed document of the type carries
 	// the requested capability. It applies no access or caller-value filters.

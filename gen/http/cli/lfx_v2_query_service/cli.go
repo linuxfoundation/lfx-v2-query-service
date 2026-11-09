@@ -22,7 +22,7 @@ import (
 //
 //	command (subcommand1|subcommand2|...)
 func UsageCommands() string {
-	return `query-svc (query-resources|query-resources-count|query-membership-summary|query-orgs|suggest-orgs|readyz|livez)
+	return `query-svc (query-resources|query-resources-history|query-resources-count|query-membership-summary|query-orgs|suggest-orgs|readyz|livez)
 `
 }
 
@@ -79,6 +79,20 @@ func ParseEndpoint(
 		querySvcQueryResourcesPageSizeFlag     = querySvcQueryResourcesFlags.String("page-size", "50", "")
 		querySvcQueryResourcesBearerTokenFlag  = querySvcQueryResourcesFlags.String("bearer-token", "REQUIRED", "")
 
+		querySvcQueryResourcesHistoryFlags           = flag.NewFlagSet("query-resources-history", flag.ExitOnError)
+		querySvcQueryResourcesHistoryVersionFlag     = querySvcQueryResourcesHistoryFlags.String("version", "REQUIRED", "")
+		querySvcQueryResourcesHistoryTypeFlag        = querySvcQueryResourcesHistoryFlags.String("type", "", "")
+		querySvcQueryResourcesHistoryParentFlag      = querySvcQueryResourcesHistoryFlags.String("parent", "", "")
+		querySvcQueryResourcesHistoryFiltersFlag     = querySvcQueryResourcesHistoryFlags.String("filters", "", "")
+		querySvcQueryResourcesHistoryFiltersAllFlag  = querySvcQueryResourcesHistoryFlags.String("filters-all", "", "")
+		querySvcQueryResourcesHistoryFiltersOrFlag   = querySvcQueryResourcesHistoryFlags.String("filters-or", "", "")
+		querySvcQueryResourcesHistoryDateFieldFlag   = querySvcQueryResourcesHistoryFlags.String("date-field", "", "")
+		querySvcQueryResourcesHistoryDateFromFlag    = querySvcQueryResourcesHistoryFlags.String("date-from", "", "")
+		querySvcQueryResourcesHistoryDateToFlag      = querySvcQueryResourcesHistoryFlags.String("date-to", "", "")
+		querySvcQueryResourcesHistoryPageSizeFlag    = querySvcQueryResourcesHistoryFlags.String("page-size", "50", "")
+		querySvcQueryResourcesHistoryPageTokenFlag   = querySvcQueryResourcesHistoryFlags.String("page-token", "", "")
+		querySvcQueryResourcesHistoryBearerTokenFlag = querySvcQueryResourcesHistoryFlags.String("bearer-token", "REQUIRED", "")
+
 		querySvcQueryResourcesCountFlags           = flag.NewFlagSet("query-resources-count", flag.ExitOnError)
 		querySvcQueryResourcesCountVersionFlag     = querySvcQueryResourcesCountFlags.String("version", "REQUIRED", "")
 		querySvcQueryResourcesCountNameFlag        = querySvcQueryResourcesCountFlags.String("name", "", "")
@@ -121,6 +135,7 @@ func ParseEndpoint(
 	)
 	querySvcFlags.Usage = querySvcUsage
 	querySvcQueryResourcesFlags.Usage = querySvcQueryResourcesUsage
+	querySvcQueryResourcesHistoryFlags.Usage = querySvcQueryResourcesHistoryUsage
 	querySvcQueryResourcesCountFlags.Usage = querySvcQueryResourcesCountUsage
 	querySvcQueryMembershipSummaryFlags.Usage = querySvcQueryMembershipSummaryUsage
 	querySvcQueryOrgsFlags.Usage = querySvcQueryOrgsUsage
@@ -164,6 +179,9 @@ func ParseEndpoint(
 			switch epn {
 			case "query-resources":
 				epf = querySvcQueryResourcesFlags
+
+			case "query-resources-history":
+				epf = querySvcQueryResourcesHistoryFlags
 
 			case "query-resources-count":
 				epf = querySvcQueryResourcesCountFlags
@@ -211,6 +229,9 @@ func ParseEndpoint(
 			case "query-resources":
 				endpoint = c.QueryResources()
 				data, err = querysvcc.BuildQueryResourcesPayload(*querySvcQueryResourcesVersionFlag, *querySvcQueryResourcesNameFlag, *querySvcQueryResourcesParentFlag, *querySvcQueryResourcesTypeFlag, *querySvcQueryResourcesTagsFlag, *querySvcQueryResourcesTagsAllFlag, *querySvcQueryResourcesDateFieldFlag, *querySvcQueryResourcesDateFromFlag, *querySvcQueryResourcesDateToFlag, *querySvcQueryResourcesFiltersFlag, *querySvcQueryResourcesFiltersAllFlag, *querySvcQueryResourcesFiltersOrFlag, *querySvcQueryResourcesCelFilterFlag, *querySvcQueryResourcesFilterGrantsFlag, *querySvcQueryResourcesSortFlag, *querySvcQueryResourcesPageTokenFlag, *querySvcQueryResourcesPageSizeFlag, *querySvcQueryResourcesBearerTokenFlag)
+			case "query-resources-history":
+				endpoint = c.QueryResourcesHistory()
+				data, err = querysvcc.BuildQueryResourcesHistoryPayload(*querySvcQueryResourcesHistoryVersionFlag, *querySvcQueryResourcesHistoryTypeFlag, *querySvcQueryResourcesHistoryParentFlag, *querySvcQueryResourcesHistoryFiltersFlag, *querySvcQueryResourcesHistoryFiltersAllFlag, *querySvcQueryResourcesHistoryFiltersOrFlag, *querySvcQueryResourcesHistoryDateFieldFlag, *querySvcQueryResourcesHistoryDateFromFlag, *querySvcQueryResourcesHistoryDateToFlag, *querySvcQueryResourcesHistoryPageSizeFlag, *querySvcQueryResourcesHistoryPageTokenFlag, *querySvcQueryResourcesHistoryBearerTokenFlag)
 			case "query-resources-count":
 				endpoint = c.QueryResourcesCount()
 				data, err = querysvcc.BuildQueryResourcesCountPayload(*querySvcQueryResourcesCountVersionFlag, *querySvcQueryResourcesCountNameFlag, *querySvcQueryResourcesCountParentFlag, *querySvcQueryResourcesCountTypeFlag, *querySvcQueryResourcesCountTagsFlag, *querySvcQueryResourcesCountTagsAllFlag, *querySvcQueryResourcesCountDateFieldFlag, *querySvcQueryResourcesCountDateFromFlag, *querySvcQueryResourcesCountDateToFlag, *querySvcQueryResourcesCountFiltersFlag, *querySvcQueryResourcesCountFiltersAllFlag, *querySvcQueryResourcesCountFiltersOrFlag, *querySvcQueryResourcesCountGroupByFlag, *querySvcQueryResourcesCountGroupBySizeFlag, *querySvcQueryResourcesCountMetricFlag, *querySvcQueryResourcesCountBearerTokenFlag)
@@ -246,6 +267,7 @@ Usage:
 
 COMMAND:
     query-resources: Locate resources by their type or parent, or use typeahead search to query resources by a display name or similar alias.
+    query-resources-history: Search retained resource mutations, checking each event's history permission independently of current-resource visibility.
     query-resources-count: Count matching resources by query.
     query-membership-summary: Summarize the membership records of an organization, a project, or both, into one summary per organization and project.
     query-orgs: Locate a single organization by name or domain.
@@ -297,6 +319,41 @@ Example:
       "mailing_list_id:abc",
       "mailing_list_id:xyz"
    ]' --cel-filter "data.slug == \"tlf\"" --filter-grants "direct" --sort "updated_desc" --page-token "****" --page-size 20 --bearer-token "eyJhbGci..."
+`, os.Args[0])
+}
+
+func querySvcQueryResourcesHistoryUsage() {
+	fmt.Fprintf(os.Stderr, `%[1]s [flags] query-svc query-resources-history -version STRING -type STRING -parent STRING -filters JSON -filters-all JSON -filters-or JSON -date-field STRING -date-from STRING -date-to STRING -page-size INT -page-token STRING -bearer-token STRING
+
+Search retained resource mutations, checking each event's history permission independently of current-resource visibility.
+    -version STRING: 
+    -type STRING: 
+    -parent STRING: 
+    -filters JSON: 
+    -filters-all JSON: 
+    -filters-or JSON: 
+    -date-field STRING: 
+    -date-from STRING: 
+    -date-to STRING: 
+    -page-size INT: 
+    -page-token STRING: 
+    -bearer-token STRING: 
+
+Example:
+    %[1]s query-svc query-resources-history --version "1" --type "Temporibus est." --parent "Sunt fugiat porro dolor." --filters '[
+      "Et ex corrupti eum voluptatum.",
+      "Qui sunt enim praesentium recusandae.",
+      "Dolor impedit at."
+   ]' --filters-all '[
+      "Accusamus id quia ipsam soluta.",
+      "Quae molestiae eos culpa.",
+      "Veniam sed id repellendus saepe nostrum.",
+      "Ut eligendi sit."
+   ]' --filters-or '[
+      "Architecto totam nihil tempora dolorem voluptas possimus.",
+      "Asperiores nesciunt assumenda aut omnis.",
+      "Nobis nihil voluptas nisi voluptatibus molestiae quibusdam."
+   ]' --date-field "Aliquam cumque velit." --date-from "Aliquid ipsam." --date-to "Esse quidem." --page-size 7 --page-token "Nesciunt ad nostrum ratione." --bearer-token "Quibusdam aliquam et maxime."
 `, os.Args[0])
 }
 

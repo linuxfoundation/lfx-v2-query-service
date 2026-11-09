@@ -43,6 +43,12 @@ The examples below use `/query/resources`. All requests require `v=1` and a
 Heimdall principal. Authenticated principals receive FGA-filtered results;
 `_anonymous` principals only receive documents indexed with `public: true`.
 
+For retained **mutation history**, use the separate authenticated-only
+`/query/resources/history` endpoint. Its `parent` scope and `object_id` filters, per-event
+access checks, date/filter field limits, and publisher prerequisites are in
+[audit-history-query.md](audit-history-query.md); current-resource examples
+below must not be used to infer history access or coverage.
+
 ### Find all committees for a project
 
 ```bash

@@ -191,8 +191,9 @@ func SearcherImpl(ctx context.Context) port.ResourceSearcher {
 			"index", opensearchIndex,
 		)
 		opensearchConfig := opensearch.Config{
-			URL:   opensearchURL,
-			Index: opensearchIndex,
+			URL: opensearchURL, Index: opensearchIndex,
+			HistoryIndex: os.Getenv("OPENSEARCH_HISTORY_INDEX"),
+			Username:     os.Getenv("OPENSEARCH_USERNAME"), Password: os.Getenv("OPENSEARCH_PASSWORD"),
 		}
 
 		resourceSearcher, err = opensearch.NewSearcher(ctx, opensearchConfig)

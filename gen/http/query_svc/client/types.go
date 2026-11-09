@@ -21,6 +21,15 @@ type QueryResourcesResponseBody struct {
 	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
 }
 
+// QueryResourcesHistoryResponseBody is the type of the "query-svc" service
+// "query-resources-history" endpoint HTTP response body.
+type QueryResourcesHistoryResponseBody struct {
+	// Authorized mutation events in source-occurrence order
+	Events []*HistoryEventResponseBody `form:"events,omitempty" json:"events,omitempty" xml:"events,omitempty"`
+	// Continue until absent, including after a short authorized page
+	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
+}
+
 // QueryResourcesCountResponseBody is the type of the "query-svc" service
 // "query-resources-count" endpoint HTTP response body.
 type QueryResourcesCountResponseBody struct {
@@ -107,6 +116,30 @@ type QueryResourcesInternalServerErrorResponseBody struct {
 // service "query-resources" endpoint HTTP response body for the
 // "ServiceUnavailable" error.
 type QueryResourcesServiceUnavailableResponseBody struct {
+	// Error message
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryResourcesHistoryBadRequestResponseBody is the type of the "query-svc"
+// service "query-resources-history" endpoint HTTP response body for the
+// "BadRequest" error.
+type QueryResourcesHistoryBadRequestResponseBody struct {
+	// Error message
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryResourcesHistoryInternalServerErrorResponseBody is the type of the
+// "query-svc" service "query-resources-history" endpoint HTTP response body
+// for the "InternalServerError" error.
+type QueryResourcesHistoryInternalServerErrorResponseBody struct {
+	// Error message
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryResourcesHistoryServiceUnavailableResponseBody is the type of the
+// "query-svc" service "query-resources-history" endpoint HTTP response body
+// for the "ServiceUnavailable" error.
+type QueryResourcesHistoryServiceUnavailableResponseBody struct {
 	// Error message
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -240,6 +273,32 @@ type ResourceResponseBody struct {
 	Data any `form:"data,omitempty" json:"data,omitempty" xml:"data,omitempty"`
 }
 
+// HistoryEventResponseBody is used to define fields on response body types.
+type HistoryEventResponseBody struct {
+	// Publisher-qualified stable event identity
+	EventID *string `form:"event_id,omitempty" json:"event_id,omitempty" xml:"event_id,omitempty"`
+	// Resource identity independent of event identity
+	Resource *HistoryResourceResponseBody `form:"resource,omitempty" json:"resource,omitempty" xml:"resource,omitempty"`
+	// created, updated or deleted
+	Action *string `form:"action,omitempty" json:"action,omitempty" xml:"action,omitempty"`
+	// Source occurrence time (RFC3339)
+	OccurredAt *string `form:"occurred_at,omitempty" json:"occurred_at,omitempty" xml:"occurred_at,omitempty"`
+	// Publisher's monotonic resource revision
+	ResourceRevision *uint64 `form:"resource_revision,omitempty" json:"resource_revision,omitempty" xml:"resource_revision,omitempty"`
+	// Captured initiating/effective actor references and approved profile snapshots
+	Attribution any `form:"attribution,omitempty" json:"attribution,omitempty" xml:"attribution,omitempty"`
+	// Approved versioned before/after snapshots; absent sides are omitted
+	Content any `form:"content,omitempty" json:"content,omitempty" xml:"content,omitempty"`
+}
+
+// HistoryResourceResponseBody is used to define fields on response body types.
+type HistoryResourceResponseBody struct {
+	// Resource type
+	Type *string `form:"type,omitempty" json:"type,omitempty" xml:"type,omitempty"`
+	// Resource UID
+	UID *string `form:"uid,omitempty" json:"uid,omitempty" xml:"uid,omitempty"`
+}
+
 // CountGroupResponseBody is used to define fields on response body types.
 type CountGroupResponseBody struct {
 	// Group key: the tag value with the group_by prefix stripped
@@ -354,6 +413,51 @@ func NewQueryResourcesInternalServerError(body *QueryResourcesInternalServerErro
 // NewQueryResourcesServiceUnavailable builds a query-svc service
 // query-resources endpoint ServiceUnavailable error.
 func NewQueryResourcesServiceUnavailable(body *QueryResourcesServiceUnavailableResponseBody) *querysvc.ServiceUnavailableError {
+	v := &querysvc.ServiceUnavailableError{
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewQueryResourcesHistoryResultOK builds a "query-svc" service
+// "query-resources-history" endpoint result from a HTTP "OK" response.
+func NewQueryResourcesHistoryResultOK(body *QueryResourcesHistoryResponseBody, cacheControl string) *querysvc.QueryResourcesHistoryResult {
+	v := &querysvc.QueryResourcesHistoryResult{
+		PageToken: body.PageToken,
+	}
+	v.Events = make([]*querysvc.HistoryEvent, len(body.Events))
+	for i, val := range body.Events {
+		v.Events[i] = unmarshalHistoryEventResponseBodyToQuerysvcHistoryEvent(val)
+	}
+	v.CacheControl = cacheControl
+
+	return v
+}
+
+// NewQueryResourcesHistoryBadRequest builds a query-svc service
+// query-resources-history endpoint BadRequest error.
+func NewQueryResourcesHistoryBadRequest(body *QueryResourcesHistoryBadRequestResponseBody) *querysvc.BadRequestError {
+	v := &querysvc.BadRequestError{
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewQueryResourcesHistoryInternalServerError builds a query-svc service
+// query-resources-history endpoint InternalServerError error.
+func NewQueryResourcesHistoryInternalServerError(body *QueryResourcesHistoryInternalServerErrorResponseBody) *querysvc.InternalServerError {
+	v := &querysvc.InternalServerError{
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewQueryResourcesHistoryServiceUnavailable builds a query-svc service
+// query-resources-history endpoint ServiceUnavailable error.
+func NewQueryResourcesHistoryServiceUnavailable(body *QueryResourcesHistoryServiceUnavailableResponseBody) *querysvc.ServiceUnavailableError {
 	v := &querysvc.ServiceUnavailableError{
 		Message: *body.Message,
 	}
@@ -579,6 +683,22 @@ func ValidateQueryResourcesResponseBody(body *QueryResourcesResponseBody) (err e
 	return
 }
 
+// ValidateQueryResourcesHistoryResponseBody runs the validations defined on
+// Query-Resources-HistoryResponseBody
+func ValidateQueryResourcesHistoryResponseBody(body *QueryResourcesHistoryResponseBody) (err error) {
+	if body.Events == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("events", "body"))
+	}
+	for _, e := range body.Events {
+		if e != nil {
+			if err2 := ValidateHistoryEventResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+	}
+	return
+}
+
 // ValidateQueryResourcesCountResponseBody runs the validations defined on
 // Query-Resources-CountResponseBody
 func ValidateQueryResourcesCountResponseBody(body *QueryResourcesCountResponseBody) (err error) {
@@ -657,6 +777,35 @@ func ValidateQueryResourcesInternalServerErrorResponseBody(body *QueryResourcesI
 // ValidateQueryResourcesServiceUnavailableResponseBody runs the validations
 // defined on query-resources_ServiceUnavailable_response_body
 func ValidateQueryResourcesServiceUnavailableResponseBody(body *QueryResourcesServiceUnavailableResponseBody) (err error) {
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryResourcesHistoryBadRequestResponseBody runs the validations
+// defined on query-resources-history_BadRequest_response_body
+func ValidateQueryResourcesHistoryBadRequestResponseBody(body *QueryResourcesHistoryBadRequestResponseBody) (err error) {
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryResourcesHistoryInternalServerErrorResponseBody runs the
+// validations defined on
+// query-resources-history_InternalServerError_response_body
+func ValidateQueryResourcesHistoryInternalServerErrorResponseBody(body *QueryResourcesHistoryInternalServerErrorResponseBody) (err error) {
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryResourcesHistoryServiceUnavailableResponseBody runs the
+// validations defined on
+// query-resources-history_ServiceUnavailable_response_body
+func ValidateQueryResourcesHistoryServiceUnavailableResponseBody(body *QueryResourcesHistoryServiceUnavailableResponseBody) (err error) {
 	if body.Message == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
 	}
@@ -803,6 +952,50 @@ func ValidateReadyzNotReadyResponseBody(body *ReadyzNotReadyResponseBody) (err e
 	}
 	if body.Fault == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("fault", "body"))
+	}
+	return
+}
+
+// ValidateHistoryEventResponseBody runs the validations defined on
+// HistoryEventResponseBody
+func ValidateHistoryEventResponseBody(body *HistoryEventResponseBody) (err error) {
+	if body.EventID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("event_id", "body"))
+	}
+	if body.Resource == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("resource", "body"))
+	}
+	if body.Action == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("action", "body"))
+	}
+	if body.OccurredAt == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("occurred_at", "body"))
+	}
+	if body.ResourceRevision == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("resource_revision", "body"))
+	}
+	if body.Attribution == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("attribution", "body"))
+	}
+	if body.Content == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("content", "body"))
+	}
+	if body.Resource != nil {
+		if err2 := ValidateHistoryResourceResponseBody(body.Resource); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	return
+}
+
+// ValidateHistoryResourceResponseBody runs the validations defined on
+// HistoryResourceResponseBody
+func ValidateHistoryResourceResponseBody(body *HistoryResourceResponseBody) (err error) {
+	if body.Type == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("type", "body"))
+	}
+	if body.UID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("uid", "body"))
 	}
 	return
 }

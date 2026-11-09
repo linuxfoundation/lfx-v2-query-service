@@ -124,6 +124,53 @@ func (c *httpClient) Search(ctx context.Context, index string, query []byte, pag
 	return result, nil
 }
 
+// SearchHistory fetches only approved public event fields and the private
+// history-check key. Never log the query or the response: filters and actor
+// snapshots can identify people. Unlike ordinary search, no current-resource
+// fields (including public) are read.
+func (c *httpClient) SearchHistory(ctx context.Context, index string, query []byte) (*SearchResponse, error) {
+	allowPartial := false
+	response, err := c.client.Search(ctx, &opensearchapi.SearchReq{
+		Indices: []string{index}, Body: bytes.NewReader(query),
+		Params: opensearchapi.SearchParams{
+			AllowPartialSearchResults: &allowPartial,
+			Source:                    true,
+			SourceIncludes: []string{
+				"publisher", "event_id", "object_type", "object_id", "action",
+				"occurred_at", "resource_revision", "history_check_object",
+				"history_check_relation", "audit.attribution", "audit.content",
+			},
+		},
+	})
+	if err != nil {
+		var structured *opensearch.StructError
+		if stderrors.As(err, &structured) {
+			if hasTooManyClauses(structured) {
+				return nil, errors.NewValidation("history query exceeds the OpenSearch maximum clause limit: reduce filter values")
+			}
+			slog.ErrorContext(ctx, "private history search failed", "status", structured.Status)
+		} else {
+			slog.ErrorContext(ctx, "private history search failed", "error_type", fmt.Sprintf("%T", err))
+		}
+		return nil, errors.NewServiceUnavailable("private history search unavailable")
+	}
+	if response.Errors || response.Timeout || response.Shards.Failed > 0 {
+		return nil, errors.NewServiceUnavailable("private history search returned partial results")
+	}
+	result := &SearchResponse{Hits: Hits{Hits: make([]Hit, 0, len(response.Hits.Hits))}}
+	for _, hit := range response.Hits.Hits {
+		if len(hit.Sort) != 3 {
+			return nil, errors.NewServiceUnavailable("private history sort cursor missing")
+		}
+		cursor, err := json.Marshal(hit.Sort)
+		if err != nil {
+			return nil, errors.NewServiceUnavailable("private history sort cursor invalid")
+		}
+		result.Hits.Hits = append(result.Hits.Hits, Hit{Source: hit.Source, Sort: cursor})
+	}
+	return result, nil
+}
+
 // AggregationSearch runs a size-0 search and returns the aggregations
 // member of the response as raw JSON so each caller can unmarshal the
 // aggregation shape it asked for.

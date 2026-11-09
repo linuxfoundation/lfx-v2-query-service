@@ -12,6 +12,11 @@ func QueryResourcesQuerySvcPath() string {
 	return "/query/resources"
 }
 
+// QueryResourcesHistoryQuerySvcPath returns the URL path to the query-svc service query-resources-history HTTP endpoint.
+func QueryResourcesHistoryQuerySvcPath() string {
+	return "/query/resources/history"
+}
+
 // QueryResourcesCountQuerySvcPath returns the URL path to the query-svc service query-resources-count HTTP endpoint.
 func QueryResourcesCountQuerySvcPath() string {
 	return "/query/resources/count"

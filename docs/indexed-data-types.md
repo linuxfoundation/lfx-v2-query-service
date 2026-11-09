@@ -15,6 +15,10 @@ The query service queries a shared OpenSearch index populated by
 `lfx-v2-indexer-service`, which subscribes to all `lfx.index.*` NATS subjects
 using a wildcard (`lfx.index.>`).
 
+Retained audit events are **not** current indexed resource types. They use a
+separate private history index; see [audit-history-query.md](audit-history-query.md)
+for the read contract and rollout prerequisites.
+
 **How to discover all types**: check each backend service's
 `pkg/constants/subjects.go` (or equivalent) for constants of the form
 `"lfx.index.<type>"`. Do NOT rely solely on the indexer service's `ObjectType*`

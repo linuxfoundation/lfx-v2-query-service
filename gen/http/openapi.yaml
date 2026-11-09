@@ -514,6 +514,121 @@ paths:
                 - http
             security:
                 - jwt_header_Authorization: []
+    /query/resources/history:
+        get:
+            tags:
+                - query-svc
+            summary: query-resources-history query-svc
+            description: Search retained resource mutations, checking each event's history permission independently of current-resource visibility.
+            operationId: query-svc#query-resources-history
+            parameters:
+                - name: v
+                  in: query
+                  description: API version
+                  required: true
+                  type: string
+                  enum:
+                    - "1"
+                - name: type
+                  in: query
+                  description: Resource type; at least one of type or parent is required
+                  required: false
+                  type: string
+                - name: parent
+                  in: query
+                  description: 'Resource reference (type:uid): events for this resource or whose before/after ownership scope includes it'
+                  required: false
+                  type: string
+                - name: filters
+                  in: query
+                  description: AND field:value filters; action and object_id are supported
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: filters_all
+                  in: query
+                  description: AND field:value filters; action and object_id are supported
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: filters_or
+                  in: query
+                  description: OR field:value filters; action and object_id are supported
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: date_field
+                  in: query
+                  description: Date field; only occurred_at is supported
+                  required: false
+                  type: string
+                - name: date_from
+                  in: query
+                  description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD lower bound; requires date_field
+                  required: false
+                  type: string
+                - name: date_to
+                  in: query
+                  description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD upper bound; requires date_field
+                  required: false
+                  type: string
+                - name: page_size
+                  in: query
+                  description: Number of raw events per page
+                  required: false
+                  type: integer
+                  default: 50
+                  maximum: 100
+                  minimum: 1
+                - name: page_token
+                  in: query
+                  description: Opaque continuation bound to these filters and this principal
+                  required: false
+                  type: string
+                - name: Authorization
+                  in: header
+                  description: Heimdall JWT
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/QuerySvcQueryResourcesHistoryResponseBody'
+                        required:
+                            - events
+                    headers:
+                        Cache-Control:
+                            description: Private, non-cacheable response
+                            type: string
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/BadRequestError'
+                        required:
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/InternalServerError'
+                        required:
+                            - message
+                "503":
+                    description: Service Unavailable response.
+                    schema:
+                        $ref: '#/definitions/ServiceUnavailableError'
+                        required:
+                            - message
+            schemes:
+                - http
+            security:
+                - jwt_header_Authorization: []
 definitions:
     BadRequestError:
         title: BadRequestError
@@ -548,6 +663,71 @@ definitions:
         required:
             - key
             - count
+    HistoryEvent:
+        title: HistoryEvent
+        type: object
+        properties:
+            action:
+                type: string
+                description: created, updated or deleted
+                example: Consequuntur odio provident aut.
+            attribution:
+                description: Captured initiating/effective actor references and approved profile snapshots
+                example: Laboriosam libero omnis voluptate delectus.
+            content:
+                description: Approved versioned before/after snapshots; absent sides are omitted
+                example: Recusandae harum.
+            event_id:
+                type: string
+                description: Publisher-qualified stable event identity
+                example: Ea at quis.
+            occurred_at:
+                type: string
+                description: Source occurrence time (RFC3339)
+                example: Molestiae facere libero.
+            resource:
+                $ref: '#/definitions/HistoryResource'
+            resource_revision:
+                type: integer
+                description: Publisher's monotonic resource revision
+                example: 13811651100688428772
+                format: int64
+        example:
+            action: Beatae placeat dicta.
+            attribution: Eveniet eveniet ipsa.
+            content: Porro culpa eum.
+            event_id: Velit nihil repellat id vero eius.
+            occurred_at: Quia molestiae at necessitatibus et molestias.
+            resource:
+                type: Quo autem.
+                uid: Eius impedit suscipit.
+            resource_revision: 7373296719172128829
+        required:
+            - event_id
+            - resource
+            - action
+            - occurred_at
+            - resource_revision
+            - attribution
+            - content
+    HistoryResource:
+        title: HistoryResource
+        type: object
+        properties:
+            type:
+                type: string
+                description: Resource type
+                example: Non molestiae temporibus iste iste sed.
+            uid:
+                type: string
+                description: Resource UID
+                example: Perspiciatis enim.
+        example:
+            type: Quisquam possimus maiores sint.
+            uid: Ipsam est similique.
+        required:
+            - type
+            - uid
     InternalServerError:
         title: InternalServerError
         type: object
@@ -653,7 +833,7 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Itaque repellendus sint commodi nemo labore.
+                    example: Delectus ut eaque.
                 description: Distinct statuses in first appearance order
                 example:
                     - Expired
@@ -684,7 +864,7 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Harum in animi aspernatur id.
+                    example: Rerum consequatur asperiores autem itaque aut.
                 description: Distinct tier product names in first appearance order
                 example:
                     - Silver Membership
@@ -942,6 +1122,79 @@ definitions:
         required:
             - count
             - has_more
+    QuerySvcQueryResourcesHistoryResponseBody:
+        title: QuerySvcQueryResourcesHistoryResponseBody
+        type: object
+        properties:
+            events:
+                type: array
+                items:
+                    $ref: '#/definitions/HistoryEvent'
+                description: Authorized mutation events in source-occurrence order
+                example:
+                    - action: Cupiditate sed officia suscipit.
+                      attribution: Ipsam ut quae quaerat.
+                      content: Neque nesciunt odio quis voluptas.
+                      event_id: Eos voluptatum est eius voluptas voluptas.
+                      occurred_at: Provident explicabo illo.
+                      resource:
+                        type: Quo autem.
+                        uid: Eius impedit suscipit.
+                      resource_revision: 2480254008700663206
+                    - action: Cupiditate sed officia suscipit.
+                      attribution: Ipsam ut quae quaerat.
+                      content: Neque nesciunt odio quis voluptas.
+                      event_id: Eos voluptatum est eius voluptas voluptas.
+                      occurred_at: Provident explicabo illo.
+                      resource:
+                        type: Quo autem.
+                        uid: Eius impedit suscipit.
+                      resource_revision: 2480254008700663206
+                    - action: Cupiditate sed officia suscipit.
+                      attribution: Ipsam ut quae quaerat.
+                      content: Neque nesciunt odio quis voluptas.
+                      event_id: Eos voluptatum est eius voluptas voluptas.
+                      occurred_at: Provident explicabo illo.
+                      resource:
+                        type: Quo autem.
+                        uid: Eius impedit suscipit.
+                      resource_revision: 2480254008700663206
+                    - action: Cupiditate sed officia suscipit.
+                      attribution: Ipsam ut quae quaerat.
+                      content: Neque nesciunt odio quis voluptas.
+                      event_id: Eos voluptatum est eius voluptas voluptas.
+                      occurred_at: Provident explicabo illo.
+                      resource:
+                        type: Quo autem.
+                        uid: Eius impedit suscipit.
+                      resource_revision: 2480254008700663206
+            page_token:
+                type: string
+                description: Continue until absent, including after a short authorized page
+                example: Repudiandae quia voluptas ad laborum rerum.
+        example:
+            events:
+                - action: Cupiditate sed officia suscipit.
+                  attribution: Ipsam ut quae quaerat.
+                  content: Neque nesciunt odio quis voluptas.
+                  event_id: Eos voluptatum est eius voluptas voluptas.
+                  occurred_at: Provident explicabo illo.
+                  resource:
+                    type: Quo autem.
+                    uid: Eius impedit suscipit.
+                  resource_revision: 2480254008700663206
+                - action: Cupiditate sed officia suscipit.
+                  attribution: Ipsam ut quae quaerat.
+                  content: Neque nesciunt odio quis voluptas.
+                  event_id: Eos voluptatum est eius voluptas voluptas.
+                  occurred_at: Provident explicabo illo.
+                  resource:
+                    type: Quo autem.
+                    uid: Eius impedit suscipit.
+                  resource_revision: 2480254008700663206
+            page_token: Est aut blanditiis sit ut.
+        required:
+            - events
     QuerySvcQueryResourcesResponseBody:
         title: QuerySvcQueryResourcesResponseBody
         type: object
@@ -956,18 +1209,6 @@ definitions:
                     $ref: '#/definitions/Resource'
                 description: Resources found
                 example:
-                    - data:
-                        id: "123"
-                        name: My committee
-                        description: a committee
-                      id: "123"
-                      type: committee
-                    - data:
-                        id: "123"
-                        name: My committee
-                        description: a committee
-                      id: "123"
-                      type: committee
                     - data:
                         id: "123"
                         name: My committee
@@ -1019,6 +1260,12 @@ definitions:
                     $ref: '#/definitions/OrganizationSuggestion'
                 description: Organization suggestions
                 example:
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation
