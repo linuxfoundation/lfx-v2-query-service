@@ -211,6 +211,124 @@ func BuildQueryResourcesPayload(querySvcQueryResourcesVersion string, querySvcQu
 	return v, nil
 }
 
+// BuildQueryResourcesHistoryPayload builds the payload for the query-svc
+// query-resources-history endpoint from CLI flags.
+func BuildQueryResourcesHistoryPayload(querySvcQueryResourcesHistoryVersion string, querySvcQueryResourcesHistoryType string, querySvcQueryResourcesHistoryParent string, querySvcQueryResourcesHistoryFilters string, querySvcQueryResourcesHistoryFiltersAll string, querySvcQueryResourcesHistoryFiltersOr string, querySvcQueryResourcesHistoryDateField string, querySvcQueryResourcesHistoryDateFrom string, querySvcQueryResourcesHistoryDateTo string, querySvcQueryResourcesHistoryPageSize string, querySvcQueryResourcesHistoryPageToken string, querySvcQueryResourcesHistoryBearerToken string) (*querysvc.QueryResourcesHistoryPayload, error) {
+	var err error
+	var version string
+	{
+		version = querySvcQueryResourcesHistoryVersion
+		if !(version == "1") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("version", version, []any{"1"}))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	var type_ *string
+	{
+		if querySvcQueryResourcesHistoryType != "" {
+			type_ = &querySvcQueryResourcesHistoryType
+		}
+	}
+	var parent *string
+	{
+		if querySvcQueryResourcesHistoryParent != "" {
+			parent = &querySvcQueryResourcesHistoryParent
+		}
+	}
+	var filters []string
+	{
+		if querySvcQueryResourcesHistoryFilters != "" {
+			err = json.Unmarshal([]byte(querySvcQueryResourcesHistoryFilters), &filters)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON for filters, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Et ex corrupti eum voluptatum.\",\n      \"Qui sunt enim praesentium recusandae.\",\n      \"Dolor impedit at.\"\n   ]'")
+			}
+		}
+	}
+	var filtersAll []string
+	{
+		if querySvcQueryResourcesHistoryFiltersAll != "" {
+			err = json.Unmarshal([]byte(querySvcQueryResourcesHistoryFiltersAll), &filtersAll)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON for filtersAll, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Accusamus id quia ipsam soluta.\",\n      \"Quae molestiae eos culpa.\",\n      \"Veniam sed id repellendus saepe nostrum.\",\n      \"Ut eligendi sit.\"\n   ]'")
+			}
+		}
+	}
+	var filtersOr []string
+	{
+		if querySvcQueryResourcesHistoryFiltersOr != "" {
+			err = json.Unmarshal([]byte(querySvcQueryResourcesHistoryFiltersOr), &filtersOr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid JSON for filtersOr, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Architecto totam nihil tempora dolorem voluptas possimus.\",\n      \"Asperiores nesciunt assumenda aut omnis.\",\n      \"Nobis nihil voluptas nisi voluptatibus molestiae quibusdam.\"\n   ]'")
+			}
+		}
+	}
+	var dateField *string
+	{
+		if querySvcQueryResourcesHistoryDateField != "" {
+			dateField = &querySvcQueryResourcesHistoryDateField
+		}
+	}
+	var dateFrom *string
+	{
+		if querySvcQueryResourcesHistoryDateFrom != "" {
+			dateFrom = &querySvcQueryResourcesHistoryDateFrom
+		}
+	}
+	var dateTo *string
+	{
+		if querySvcQueryResourcesHistoryDateTo != "" {
+			dateTo = &querySvcQueryResourcesHistoryDateTo
+		}
+	}
+	var pageSize int
+	{
+		if querySvcQueryResourcesHistoryPageSize != "" {
+			var v int64
+			v, err = strconv.ParseInt(querySvcQueryResourcesHistoryPageSize, 10, strconv.IntSize)
+			pageSize = int(v)
+			if err != nil {
+				return nil, fmt.Errorf("invalid value for pageSize, must be INT")
+			}
+			if pageSize < 1 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 1, true))
+			}
+			if pageSize > 100 {
+				err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 100, false))
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	var pageToken *string
+	{
+		if querySvcQueryResourcesHistoryPageToken != "" {
+			pageToken = &querySvcQueryResourcesHistoryPageToken
+		}
+	}
+	var bearerToken string
+	{
+		bearerToken = querySvcQueryResourcesHistoryBearerToken
+	}
+	v := &querysvc.QueryResourcesHistoryPayload{}
+	v.Version = version
+	v.Type = type_
+	v.Parent = parent
+	v.Filters = filters
+	v.FiltersAll = filtersAll
+	v.FiltersOr = filtersOr
+	v.DateField = dateField
+	v.DateFrom = dateFrom
+	v.DateTo = dateTo
+	v.PageSize = pageSize
+	v.PageToken = pageToken
+	v.BearerToken = bearerToken
+
+	return v, nil
+}
+
 // BuildQueryResourcesCountPayload builds the payload for the query-svc
 // query-resources-count endpoint from CLI flags.
 func BuildQueryResourcesCountPayload(querySvcQueryResourcesCountVersion string, querySvcQueryResourcesCountName string, querySvcQueryResourcesCountParent string, querySvcQueryResourcesCountType string, querySvcQueryResourcesCountTags string, querySvcQueryResourcesCountTagsAll string, querySvcQueryResourcesCountDateField string, querySvcQueryResourcesCountDateFrom string, querySvcQueryResourcesCountDateTo string, querySvcQueryResourcesCountFilters string, querySvcQueryResourcesCountFiltersAll string, querySvcQueryResourcesCountFiltersOr string, querySvcQueryResourcesCountGroupBy string, querySvcQueryResourcesCountGroupBySize string, querySvcQueryResourcesCountMetric string, querySvcQueryResourcesCountBearerToken string) (*querysvc.QueryResourcesCountPayload, error) {

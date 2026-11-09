@@ -86,6 +86,12 @@ app:
     ##   value: 30s
     ## SEARCH_REQUEST_TIMEOUT:    # default 30s, up to 5m - total deadline for /query/resources
     ##   value: 30s
+    ## OPENSEARCH_HISTORY_INDEX:   # default resource-history-v1; private history index, not resources
+    ##   value: resource-history-v1
+    ## OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD must come from a restricted
+    ## reader Secret if the cluster enforces index roles. Never set cleartext
+    ## credentials in deployed values; the query role may read resources and
+    ## resource-history-v1, but not resource-audit-deliveries-v1.
     ## SUMMARY_REQUEST_TIMEOUT:   # default 30s, up to 5m - total deadline for /query/memberships/summary
     ##   value: 30s
     ## ACCESS_CHECK_CHUNK_BYTES:  # default 524288, 1..1048576 - soft ceiling on a batched access-check message

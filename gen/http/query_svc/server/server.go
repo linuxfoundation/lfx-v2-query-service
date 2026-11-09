@@ -21,6 +21,7 @@ import (
 type Server struct {
 	Mounts                 []*MountPoint
 	QueryResources         http.Handler
+	QueryResourcesHistory  http.Handler
 	QueryResourcesCount    http.Handler
 	QueryMembershipSummary http.Handler
 	QueryOrgs              http.Handler
@@ -81,6 +82,7 @@ func New(
 	return &Server{
 		Mounts: []*MountPoint{
 			{"QueryResources", "GET", "/query/resources"},
+			{"QueryResourcesHistory", "GET", "/query/resources/history"},
 			{"QueryResourcesCount", "GET", "/query/resources/count"},
 			{"QueryMembershipSummary", "GET", "/query/memberships/summary"},
 			{"QueryOrgs", "GET", "/query/orgs"},
@@ -93,6 +95,7 @@ func New(
 			{"Serve gen/http/openapi3.yaml", "GET", "/_query/openapi3.yaml"},
 		},
 		QueryResources:         NewQueryResourcesHandler(e.QueryResources, mux, decoder, encoder, errhandler, formatter),
+		QueryResourcesHistory:  NewQueryResourcesHistoryHandler(e.QueryResourcesHistory, mux, decoder, encoder, errhandler, formatter),
 		QueryResourcesCount:    NewQueryResourcesCountHandler(e.QueryResourcesCount, mux, decoder, encoder, errhandler, formatter),
 		QueryMembershipSummary: NewQueryMembershipSummaryHandler(e.QueryMembershipSummary, mux, decoder, encoder, errhandler, formatter),
 		QueryOrgs:              NewQueryOrgsHandler(e.QueryOrgs, mux, decoder, encoder, errhandler, formatter),
@@ -112,6 +115,7 @@ func (s *Server) Service() string { return "query-svc" }
 // Use wraps the server handlers with the given middleware.
 func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.QueryResources = m(s.QueryResources)
+	s.QueryResourcesHistory = m(s.QueryResourcesHistory)
 	s.QueryResourcesCount = m(s.QueryResourcesCount)
 	s.QueryMembershipSummary = m(s.QueryMembershipSummary)
 	s.QueryOrgs = m(s.QueryOrgs)
@@ -126,6 +130,7 @@ func (s *Server) MethodNames() []string { return querysvc.MethodNames[:] }
 // Mount configures the mux to serve the query-svc endpoints.
 func Mount(mux goahttp.Muxer, h *Server) {
 	MountQueryResourcesHandler(mux, h.QueryResources)
+	MountQueryResourcesHistoryHandler(mux, h.QueryResourcesHistory)
 	MountQueryResourcesCountHandler(mux, h.QueryResourcesCount)
 	MountQueryMembershipSummaryHandler(mux, h.QueryMembershipSummary)
 	MountQueryOrgsHandler(mux, h.QueryOrgs)
@@ -173,6 +178,57 @@ func NewQueryResourcesHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "query-resources")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "query-svc")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			errhandler(ctx, w, err)
+		}
+	})
+}
+
+// MountQueryResourcesHistoryHandler configures the mux to serve the
+// "query-svc" service "query-resources-history" endpoint.
+func MountQueryResourcesHistoryHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/query/resources/history", f)
+}
+
+// NewQueryResourcesHistoryHandler creates a HTTP handler which loads the HTTP
+// request and calls the "query-svc" service "query-resources-history" endpoint.
+func NewQueryResourcesHistoryHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeQueryResourcesHistoryRequest(mux, decoder)
+		encodeResponse = EncodeQueryResourcesHistoryResponse(encoder)
+		encodeError    = EncodeQueryResourcesHistoryError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "query-resources-history")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "query-svc")
 		payload, err := decodeRequest(r)
 		if err != nil {

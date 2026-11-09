@@ -19,6 +19,9 @@ type Service interface {
 	// Locate resources by their type or parent, or use typeahead search to query
 	// resources by a display name or similar alias.
 	QueryResources(context.Context, *QueryResourcesPayload) (res *QueryResourcesResult, err error)
+	// Search retained resource mutations, checking each event's history permission
+	// independently of current-resource visibility.
+	QueryResourcesHistory(context.Context, *QueryResourcesHistoryPayload) (res *QueryResourcesHistoryResult, err error)
 	// Count matching resources by query.
 	QueryResourcesCount(context.Context, *QueryResourcesCountPayload) (res *QueryResourcesCountResult, err error)
 	// Summarize the membership records of an organization, a project, or both,
@@ -54,7 +57,7 @@ const ServiceName = "query-svc"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [7]string{"query-resources", "query-resources-count", "query-membership-summary", "query-orgs", "suggest-orgs", "readyz", "livez"}
+var MethodNames = [8]string{"query-resources", "query-resources-history", "query-resources-count", "query-membership-summary", "query-orgs", "suggest-orgs", "readyz", "livez"}
 
 type BadRequestError struct {
 	// Error message
@@ -67,6 +70,30 @@ type CountGroup struct {
 	Key string
 	// Number of authorized resources in the group
 	Count uint64
+}
+
+type HistoryEvent struct {
+	// Publisher-qualified stable event identity
+	EventID string
+	// Resource identity independent of event identity
+	Resource *HistoryResource
+	// created, updated or deleted
+	Action string
+	// Source occurrence time (RFC3339)
+	OccurredAt string
+	// Publisher's monotonic resource revision
+	ResourceRevision uint64
+	// Captured initiating/effective actor references and approved profile snapshots
+	Attribution any
+	// Approved versioned before/after snapshots; absent sides are omitted
+	Content any
+}
+
+type HistoryResource struct {
+	// Resource type
+	Type string
+	// Resource UID
+	UID string
 }
 
 type InternalServerError struct {
@@ -293,6 +320,49 @@ type QueryResourcesCountResult struct {
 	MetricComplete *bool
 	// Cache control header
 	CacheControl *string
+}
+
+// QueryResourcesHistoryPayload is the payload type of the query-svc service
+// query-resources-history method.
+type QueryResourcesHistoryPayload struct {
+	// Heimdall JWT
+	BearerToken string
+	// API version
+	Version string
+	// Resource type; at least one of type or parent is required
+	Type *string
+	// Resource reference (type:uid): events for this resource or whose
+	// before/after ownership scope includes it
+	Parent *string
+	// AND field:value filters; action and object_id are supported
+	Filters []string
+	// AND field:value filters; action and object_id are supported
+	FiltersAll []string
+	// OR field:value filters; action and object_id are supported
+	FiltersOr []string
+	// Date field; only occurred_at is supported
+	DateField *string
+	// Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD lower bound; requires
+	// date_field
+	DateFrom *string
+	// Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD upper bound; requires
+	// date_field
+	DateTo *string
+	// Number of raw events per page
+	PageSize int
+	// Opaque continuation bound to these filters and this principal
+	PageToken *string
+}
+
+// QueryResourcesHistoryResult is the result type of the query-svc service
+// query-resources-history method.
+type QueryResourcesHistoryResult struct {
+	// Authorized mutation events in source-occurrence order
+	Events []*HistoryEvent
+	// Continue until absent, including after a short authorized page
+	PageToken *string
+	// Private, non-cacheable response
+	CacheControl string
 }
 
 // QueryResourcesPayload is the payload type of the query-svc service

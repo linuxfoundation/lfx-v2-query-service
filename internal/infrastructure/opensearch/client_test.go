@@ -8,6 +8,7 @@ import (
 	stderrors "errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
@@ -16,6 +17,75 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHTTPClientSearchHistory(t *testing.T) {
+	query := []byte(`{"size":1,"query":{"match_all":{}}}`)
+	const complete = `{"took":1,"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":1},"hits":[{"_id":"source:event-1","_source":{"publisher":"source","event_id":"event-1"},"sort":[1794253800000,"source","event-1"]}]}}`
+
+	t.Run("reads private source fields and keeps the three-part cursor", func(t *testing.T) {
+		var path, sourceIncludes, rawQuery string
+		client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+			path, rawQuery = r.URL.Path, r.URL.RawQuery
+			sourceIncludes = r.URL.Query().Get("_source_includes")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(complete))
+		})
+		result, err := client.SearchHistory(context.Background(), "resource-history-v1", query)
+		require.NoError(t, err)
+		require.Equal(t, "/resource-history-v1/_search", path)
+		require.Contains(t, rawQuery, "allow_partial_search_results=false")
+		require.ElementsMatch(t, []string{
+			"publisher", "event_id", "object_type", "object_id", "action", "occurred_at",
+			"resource_revision", "history_check_object", "history_check_relation", "audit.attribution", "audit.content",
+		}, strings.Split(sourceIncludes, ","), "unexpected source field would widen the private history read")
+		require.Len(t, result.Hits.Hits, 1)
+		require.JSONEq(t, `[1794253800000,"source","event-1"]`, string(result.Hits.Hits[0].Sort))
+	})
+
+	for _, tc := range []struct {
+		name string
+		body string
+	}{
+		{"failed shard", `{"took":1,"timed_out":false,"_shards":{"total":2,"successful":1,"failed":1},"hits":{"total":{"value":0},"hits":[]}}`},
+		{"timed out", `{"took":1,"timed_out":true,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":0},"hits":[]}}`},
+		{"missing cursor", `{"took":1,"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":1},"hits":[{"_source":{"publisher":"source"}}]}}`},
+		{"short cursor", `{"took":1,"timed_out":false,"_shards":{"total":1,"successful":1,"failed":0},"hits":{"total":{"value":1},"hits":[{"_source":{"publisher":"source"},"sort":[1794253800000,"source"]}]}}`},
+	} {
+		t.Run(tc.name+" fails closed", func(t *testing.T) {
+			client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.body))
+			})
+			_, err := client.SearchHistory(context.Background(), "resource-history-v1", query)
+			var unavailable errors.ServiceUnavailable
+			require.ErrorAs(t, err, &unavailable)
+		})
+	}
+
+	t.Run("clause limit is a safe validation error", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"root_cause":[{"type":"too_many_nested_clauses","reason":"private search input"}],"type":"search_phase_execution_exception","reason":"all shards failed"},"status":400}`))
+		})
+		_, err := client.SearchHistory(context.Background(), "resource-history-v1", query)
+		var validation errors.Validation
+		require.ErrorAs(t, err, &validation)
+		require.NotContains(t, err.Error(), "private search input")
+	})
+
+	t.Run("index permission failure is a privacy-safe 503", func(t *testing.T) {
+		client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"type":"security_exception","reason":"private search input"},"status":403}`))
+		})
+		_, err := client.SearchHistory(context.Background(), "resource-history-v1", query)
+		var unavailable errors.ServiceUnavailable
+		require.ErrorAs(t, err, &unavailable)
+		require.NotContains(t, err.Error(), "private search input")
+	})
+}
 
 // newTestClient points an httpClient at an httptest server.
 func newTestClient(t *testing.T, handler http.HandlerFunc) (*httpClient, *httptest.Server) {

@@ -21,6 +21,15 @@ type QueryResourcesResponseBody struct {
 	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
 }
 
+// QueryResourcesHistoryResponseBody is the type of the "query-svc" service
+// "query-resources-history" endpoint HTTP response body.
+type QueryResourcesHistoryResponseBody struct {
+	// Authorized mutation events in source-occurrence order
+	Events []*HistoryEventResponseBody `form:"events" json:"events" xml:"events"`
+	// Continue until absent, including after a short authorized page
+	PageToken *string `form:"page_token,omitempty" json:"page_token,omitempty" xml:"page_token,omitempty"`
+}
+
 // QueryResourcesCountResponseBody is the type of the "query-svc" service
 // "query-resources-count" endpoint HTTP response body.
 type QueryResourcesCountResponseBody struct {
@@ -107,6 +116,30 @@ type QueryResourcesInternalServerErrorResponseBody struct {
 // service "query-resources" endpoint HTTP response body for the
 // "ServiceUnavailable" error.
 type QueryResourcesServiceUnavailableResponseBody struct {
+	// Error message
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryResourcesHistoryBadRequestResponseBody is the type of the "query-svc"
+// service "query-resources-history" endpoint HTTP response body for the
+// "BadRequest" error.
+type QueryResourcesHistoryBadRequestResponseBody struct {
+	// Error message
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryResourcesHistoryInternalServerErrorResponseBody is the type of the
+// "query-svc" service "query-resources-history" endpoint HTTP response body
+// for the "InternalServerError" error.
+type QueryResourcesHistoryInternalServerErrorResponseBody struct {
+	// Error message
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryResourcesHistoryServiceUnavailableResponseBody is the type of the
+// "query-svc" service "query-resources-history" endpoint HTTP response body
+// for the "ServiceUnavailable" error.
+type QueryResourcesHistoryServiceUnavailableResponseBody struct {
 	// Error message
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -240,6 +273,32 @@ type ResourceResponseBody struct {
 	Data any `form:"data,omitempty" json:"data,omitempty" xml:"data,omitempty"`
 }
 
+// HistoryEventResponseBody is used to define fields on response body types.
+type HistoryEventResponseBody struct {
+	// Publisher-qualified stable event identity
+	EventID string `form:"event_id" json:"event_id" xml:"event_id"`
+	// Resource identity independent of event identity
+	Resource *HistoryResourceResponseBody `form:"resource" json:"resource" xml:"resource"`
+	// created, updated or deleted
+	Action string `form:"action" json:"action" xml:"action"`
+	// Source occurrence time (RFC3339)
+	OccurredAt string `form:"occurred_at" json:"occurred_at" xml:"occurred_at"`
+	// Publisher's monotonic resource revision
+	ResourceRevision uint64 `form:"resource_revision" json:"resource_revision" xml:"resource_revision"`
+	// Captured initiating/effective actor references and approved profile snapshots
+	Attribution any `form:"attribution" json:"attribution" xml:"attribution"`
+	// Approved versioned before/after snapshots; absent sides are omitted
+	Content any `form:"content" json:"content" xml:"content"`
+}
+
+// HistoryResourceResponseBody is used to define fields on response body types.
+type HistoryResourceResponseBody struct {
+	// Resource type
+	Type string `form:"type" json:"type" xml:"type"`
+	// Resource UID
+	UID string `form:"uid" json:"uid" xml:"uid"`
+}
+
 // CountGroupResponseBody is used to define fields on response body types.
 type CountGroupResponseBody struct {
 	// Group key: the tag value with the group_by prefix stripped
@@ -329,6 +388,23 @@ func NewQueryResourcesResponseBody(res *querysvc.QueryResourcesResult) *QueryRes
 		}
 	} else {
 		body.Resources = []*ResourceResponseBody{}
+	}
+	return body
+}
+
+// NewQueryResourcesHistoryResponseBody builds the HTTP response body from the
+// result of the "query-resources-history" endpoint of the "query-svc" service.
+func NewQueryResourcesHistoryResponseBody(res *querysvc.QueryResourcesHistoryResult) *QueryResourcesHistoryResponseBody {
+	body := &QueryResourcesHistoryResponseBody{
+		PageToken: res.PageToken,
+	}
+	if res.Events != nil {
+		body.Events = make([]*HistoryEventResponseBody, len(res.Events))
+		for i, val := range res.Events {
+			body.Events[i] = marshalQuerysvcHistoryEventToHistoryEventResponseBody(val)
+		}
+	} else {
+		body.Events = []*HistoryEventResponseBody{}
 	}
 	return body
 }
@@ -424,6 +500,36 @@ func NewQueryResourcesInternalServerErrorResponseBody(res *querysvc.InternalServ
 // service.
 func NewQueryResourcesServiceUnavailableResponseBody(res *querysvc.ServiceUnavailableError) *QueryResourcesServiceUnavailableResponseBody {
 	body := &QueryResourcesServiceUnavailableResponseBody{
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewQueryResourcesHistoryBadRequestResponseBody builds the HTTP response body
+// from the result of the "query-resources-history" endpoint of the "query-svc"
+// service.
+func NewQueryResourcesHistoryBadRequestResponseBody(res *querysvc.BadRequestError) *QueryResourcesHistoryBadRequestResponseBody {
+	body := &QueryResourcesHistoryBadRequestResponseBody{
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewQueryResourcesHistoryInternalServerErrorResponseBody builds the HTTP
+// response body from the result of the "query-resources-history" endpoint of
+// the "query-svc" service.
+func NewQueryResourcesHistoryInternalServerErrorResponseBody(res *querysvc.InternalServerError) *QueryResourcesHistoryInternalServerErrorResponseBody {
+	body := &QueryResourcesHistoryInternalServerErrorResponseBody{
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewQueryResourcesHistoryServiceUnavailableResponseBody builds the HTTP
+// response body from the result of the "query-resources-history" endpoint of
+// the "query-svc" service.
+func NewQueryResourcesHistoryServiceUnavailableResponseBody(res *querysvc.ServiceUnavailableError) *QueryResourcesHistoryServiceUnavailableResponseBody {
+	body := &QueryResourcesHistoryServiceUnavailableResponseBody{
 		Message: res.Message,
 	}
 	return body
@@ -587,6 +693,26 @@ func NewQueryResourcesPayload(version string, name *string, parent *string, type
 	v.Sort = sort
 	v.PageToken = pageToken
 	v.PageSize = pageSize
+	v.BearerToken = bearerToken
+
+	return v
+}
+
+// NewQueryResourcesHistoryPayload builds a query-svc service
+// query-resources-history endpoint payload.
+func NewQueryResourcesHistoryPayload(version string, type_ *string, parent *string, filters []string, filtersAll []string, filtersOr []string, dateField *string, dateFrom *string, dateTo *string, pageSize int, pageToken *string, bearerToken string) *querysvc.QueryResourcesHistoryPayload {
+	v := &querysvc.QueryResourcesHistoryPayload{}
+	v.Version = version
+	v.Type = type_
+	v.Parent = parent
+	v.Filters = filters
+	v.FiltersAll = filtersAll
+	v.FiltersOr = filtersOr
+	v.DateField = dateField
+	v.DateFrom = dateFrom
+	v.DateTo = dateTo
+	v.PageSize = pageSize
+	v.PageToken = pageToken
 	v.BearerToken = bearerToken
 
 	return v

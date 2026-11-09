@@ -58,6 +58,25 @@ var Resource = dsl.Type("Resource", func() {
 	})
 })
 
+// HistoryEvent is the public, deliberately narrow projection of one retained mutation.
+var HistoryEvent = dsl.Type("HistoryEvent", func() {
+	dsl.Attribute("event_id", dsl.String, "Publisher-qualified stable event identity")
+	dsl.Attribute("resource", HistoryResource, "Resource identity independent of event identity")
+	dsl.Attribute("action", dsl.String, "created, updated or deleted")
+	dsl.Attribute("occurred_at", dsl.String, "Source occurrence time (RFC3339)")
+	dsl.Attribute("resource_revision", dsl.UInt64, "Publisher's monotonic resource revision")
+	dsl.Attribute("attribution", dsl.Any, "Captured initiating/effective actor references and approved profile snapshots")
+	dsl.Attribute("content", dsl.Any, "Approved versioned before/after snapshots; absent sides are omitted")
+	dsl.Required("event_id", "resource", "action", "occurred_at", "resource_revision", "attribution", "content")
+})
+
+// HistoryResource identifies the subject of one retained audit event.
+var HistoryResource = dsl.Type("HistoryResource", func() {
+	dsl.Attribute("type", dsl.String, "Resource type")
+	dsl.Attribute("uid", dsl.String, "Resource UID")
+	dsl.Required("type", "uid")
+})
+
 // CountGroup is one group of a grouped count.
 var CountGroup = dsl.Type("CountGroup", func() {
 	dsl.Description("One group of a grouped resource count.")

@@ -52,6 +52,10 @@ func (m *MockOpenSearchClient) Search(ctx context.Context, index string, query [
 	return m.searchResponse, nil
 }
 
+func (m *MockOpenSearchClient) SearchHistory(ctx context.Context, index string, query []byte) (*SearchResponse, error) {
+	return m.Search(ctx, index, query, 0)
+}
+
 func (m *MockOpenSearchClient) Count(ctx context.Context, index string, query []byte) (*CountResponse, error) {
 	if m.countError != nil {
 		return nil, m.countError

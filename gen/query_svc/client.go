@@ -16,6 +16,7 @@ import (
 // Client is the "query-svc" service client.
 type Client struct {
 	QueryResourcesEndpoint         goa.Endpoint
+	QueryResourcesHistoryEndpoint  goa.Endpoint
 	QueryResourcesCountEndpoint    goa.Endpoint
 	QueryMembershipSummaryEndpoint goa.Endpoint
 	QueryOrgsEndpoint              goa.Endpoint
@@ -25,9 +26,10 @@ type Client struct {
 }
 
 // NewClient initializes a "query-svc" service client given the endpoints.
-func NewClient(queryResources, queryResourcesCount, queryMembershipSummary, queryOrgs, suggestOrgs, readyz, livez goa.Endpoint) *Client {
+func NewClient(queryResources, queryResourcesHistory, queryResourcesCount, queryMembershipSummary, queryOrgs, suggestOrgs, readyz, livez goa.Endpoint) *Client {
 	return &Client{
 		QueryResourcesEndpoint:         queryResources,
+		QueryResourcesHistoryEndpoint:  queryResourcesHistory,
 		QueryResourcesCountEndpoint:    queryResourcesCount,
 		QueryMembershipSummaryEndpoint: queryMembershipSummary,
 		QueryOrgsEndpoint:              queryOrgs,
@@ -52,6 +54,23 @@ func (c *Client) QueryResources(ctx context.Context, p *QueryResourcesPayload) (
 		return
 	}
 	return ires.(*QueryResourcesResult), nil
+}
+
+// QueryResourcesHistory calls the "query-resources-history" endpoint of the
+// "query-svc" service.
+// QueryResourcesHistory may return the following errors:
+//   - "BadRequest" (type *BadRequestError): Bad request
+//   - "NotFound" (type *NotFoundError): Not found
+//   - "InternalServerError" (type *InternalServerError): Internal server error
+//   - "ServiceUnavailable" (type *ServiceUnavailableError): Service unavailable
+//   - error: internal error
+func (c *Client) QueryResourcesHistory(ctx context.Context, p *QueryResourcesHistoryPayload) (res *QueryResourcesHistoryResult, err error) {
+	var ires any
+	ires, err = c.QueryResourcesHistoryEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(*QueryResourcesHistoryResult), nil
 }
 
 // QueryResourcesCount calls the "query-resources-count" endpoint of the

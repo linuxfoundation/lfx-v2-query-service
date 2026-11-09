@@ -227,6 +227,164 @@ func EncodeQueryResourcesError(encoder func(context.Context, http.ResponseWriter
 	}
 }
 
+// EncodeQueryResourcesHistoryResponse returns an encoder for responses
+// returned by the query-svc query-resources-history endpoint.
+func EncodeQueryResourcesHistoryResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*querysvc.QueryResourcesHistoryResult)
+		enc := encoder(ctx, w)
+		body := NewQueryResourcesHistoryResponseBody(res)
+		w.Header().Set("Cache-Control", res.CacheControl)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeQueryResourcesHistoryRequest returns a decoder for requests sent to
+// the query-svc query-resources-history endpoint.
+func DecodeQueryResourcesHistoryRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (any, error) {
+	return func(r *http.Request) (any, error) {
+		var (
+			version     string
+			type_       *string
+			parent      *string
+			filters     []string
+			filtersAll  []string
+			filtersOr   []string
+			dateField   *string
+			dateFrom    *string
+			dateTo      *string
+			pageSize    int
+			pageToken   *string
+			bearerToken string
+			err         error
+		)
+		qp := r.URL.Query()
+		version = qp.Get("v")
+		if version == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("version", "query string"))
+		}
+		if !(version == "1") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("version", version, []any{"1"}))
+		}
+		type_Raw := qp.Get("type")
+		if type_Raw != "" {
+			type_ = &type_Raw
+		}
+		parentRaw := qp.Get("parent")
+		if parentRaw != "" {
+			parent = &parentRaw
+		}
+		filters = qp["filters"]
+		filtersAll = qp["filters_all"]
+		filtersOr = qp["filters_or"]
+		dateFieldRaw := qp.Get("date_field")
+		if dateFieldRaw != "" {
+			dateField = &dateFieldRaw
+		}
+		dateFromRaw := qp.Get("date_from")
+		if dateFromRaw != "" {
+			dateFrom = &dateFromRaw
+		}
+		dateToRaw := qp.Get("date_to")
+		if dateToRaw != "" {
+			dateTo = &dateToRaw
+		}
+		{
+			pageSizeRaw := qp.Get("page_size")
+			if pageSizeRaw == "" {
+				pageSize = 50
+			} else {
+				v, err2 := strconv.ParseInt(pageSizeRaw, 10, strconv.IntSize)
+				if err2 != nil {
+					err = goa.MergeErrors(err, goa.InvalidFieldTypeError("page_size", pageSizeRaw, "integer"))
+				}
+				pageSize = int(v)
+			}
+		}
+		if pageSize < 1 {
+			err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 1, true))
+		}
+		if pageSize > 100 {
+			err = goa.MergeErrors(err, goa.InvalidRangeError("page_size", pageSize, 100, false))
+		}
+		pageTokenRaw := qp.Get("page_token")
+		if pageTokenRaw != "" {
+			pageToken = &pageTokenRaw
+		}
+		bearerToken = r.Header.Get("Authorization")
+		if bearerToken == "" {
+			err = goa.MergeErrors(err, goa.MissingFieldError("bearer_token", "header"))
+		}
+		if err != nil {
+			return nil, err
+		}
+		payload := NewQueryResourcesHistoryPayload(version, type_, parent, filters, filtersAll, filtersOr, dateField, dateFrom, dateTo, pageSize, pageToken, bearerToken)
+		if strings.Contains(payload.BearerToken, " ") {
+			// Remove authorization scheme prefix (e.g. "Bearer")
+			cred := strings.SplitN(payload.BearerToken, " ", 2)[1]
+			payload.BearerToken = cred
+		}
+
+		return payload, nil
+	}
+}
+
+// EncodeQueryResourcesHistoryError returns an encoder for errors returned by
+// the query-resources-history query-svc endpoint.
+func EncodeQueryResourcesHistoryError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *querysvc.BadRequestError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryResourcesHistoryBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "InternalServerError":
+			var res *querysvc.InternalServerError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryResourcesHistoryInternalServerErrorResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "ServiceUnavailable":
+			var res *querysvc.ServiceUnavailableError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryResourcesHistoryServiceUnavailableResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
 // EncodeQueryResourcesCountResponse returns an encoder for responses returned
 // by the query-svc query-resources-count endpoint.
 func EncodeQueryResourcesCountResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
@@ -860,6 +1018,36 @@ func marshalQuerysvcResourceToResourceResponseBody(v *querysvc.Resource) *Resour
 		Type: v.Type,
 		ID:   v.ID,
 		Data: v.Data,
+	}
+
+	return res
+}
+
+// marshalQuerysvcHistoryEventToHistoryEventResponseBody builds a value of type
+// *HistoryEventResponseBody from a value of type *querysvc.HistoryEvent.
+func marshalQuerysvcHistoryEventToHistoryEventResponseBody(v *querysvc.HistoryEvent) *HistoryEventResponseBody {
+	res := &HistoryEventResponseBody{
+		EventID:          v.EventID,
+		Action:           v.Action,
+		OccurredAt:       v.OccurredAt,
+		ResourceRevision: v.ResourceRevision,
+		Attribution:      v.Attribution,
+		Content:          v.Content,
+	}
+	if v.Resource != nil {
+		res.Resource = marshalQuerysvcHistoryResourceToHistoryResourceResponseBody(v.Resource)
+	}
+
+	return res
+}
+
+// marshalQuerysvcHistoryResourceToHistoryResourceResponseBody builds a value
+// of type *HistoryResourceResponseBody from a value of type
+// *querysvc.HistoryResource.
+func marshalQuerysvcHistoryResourceToHistoryResourceResponseBody(v *querysvc.HistoryResource) *HistoryResourceResponseBody {
+	res := &HistoryResourceResponseBody{
+		Type: v.Type,
+		UID:  v.UID,
 	}
 
 	return res

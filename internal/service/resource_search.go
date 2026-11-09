@@ -24,6 +24,8 @@ import (
 type ResourceSearcher interface {
 	// QueryResources searches for resources based on the provided criteria
 	QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error)
+	// QueryResourcesHistory reads mutation history with per-event authorization.
+	QueryResourcesHistory(ctx context.Context, criteria model.HistoryCriteria) (*model.HistoryResult, error)
 
 	// QueryResourcesCount counts the resources matching the criteria that the
 	// caller may see, optionally grouped or reduced to a metric.

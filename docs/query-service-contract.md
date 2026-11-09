@@ -8,6 +8,11 @@ about individual resource types: it queries a shared `resources` index and deleg
 access control to fga-sync. Indexer-service populates that index from NATS events
 published by resource services.
 
+Retained mutations use a **separate, private** `resource-history-v1` index and
+`GET /query/resources/history`, not the current-resource search/count pipeline.
+See [the history-read contract](audit-history-query.md) for the API, privacy,
+per-event authorization, indexed-field limits, pagination and rollout gates.
+
 ## How the Three Services Connect
 
 ```text
@@ -32,6 +37,19 @@ access-check message for it and treats it as unauthorized: the resource is
 excluded from results (it does not bypass access filtering).
 
 ## HTTP API
+
+### GET /query/resources/history
+
+History reads are authenticated-only and never use the `public: true` bypass.
+They share `type`, `parent`, `filters`, `filters_all`, `filters_or`,
+`date_field`, `date_from`, `date_to`, `page_size` and `page_token` names with
+resource search, but operate on the private history mapping, not `data.*`.
+Only `action` and `object_id` are supported in history field filters, and
+`occurred_at` in date filters; other history fields return 400. `parent` matches
+before/after scope **or the referenced resource itself**, unlike the current
+resource `parent` filter. At least one of `type` or `parent` is required. No
+`tags`, `tags_all`, `id` or committee-only parameter is exposed.
+See [audit-history-query.md](audit-history-query.md) for the full contract.
 
 ### GET /query/resources
 

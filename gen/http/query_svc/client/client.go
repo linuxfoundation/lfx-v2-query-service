@@ -21,6 +21,10 @@ type Client struct {
 	// query-resources endpoint.
 	QueryResourcesDoer goahttp.Doer
 
+	// QueryResourcesHistory Doer is the HTTP client used to make requests to the
+	// query-resources-history endpoint.
+	QueryResourcesHistoryDoer goahttp.Doer
+
 	// QueryResourcesCount Doer is the HTTP client used to make requests to the
 	// query-resources-count endpoint.
 	QueryResourcesCountDoer goahttp.Doer
@@ -64,6 +68,7 @@ func NewClient(
 ) *Client {
 	return &Client{
 		QueryResourcesDoer:         doer,
+		QueryResourcesHistoryDoer:  doer,
 		QueryResourcesCountDoer:    doer,
 		QueryMembershipSummaryDoer: doer,
 		QueryOrgsDoer:              doer,
@@ -97,6 +102,30 @@ func (c *Client) QueryResources() goa.Endpoint {
 		resp, err := c.QueryResourcesDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("query-svc", "query-resources", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// QueryResourcesHistory returns an endpoint that makes HTTP requests to the
+// query-svc service query-resources-history server.
+func (c *Client) QueryResourcesHistory() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeQueryResourcesHistoryRequest(c.encoder)
+		decodeResponse = DecodeQueryResourcesHistoryResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildQueryResourcesHistoryRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.QueryResourcesHistoryDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("query-svc", "query-resources-history", err)
 		}
 		return decodeResponse(resp)
 	}

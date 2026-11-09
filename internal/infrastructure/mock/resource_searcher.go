@@ -151,6 +151,11 @@ func NewMockResourceSearcher() *MockResourceSearcher {
 	}
 }
 
+// QueryHistory returns no history in mock mode; it never falls back to current resources.
+func (m *MockResourceSearcher) QueryHistory(context.Context, model.HistoryCriteria) (*model.HistoryPage, error) {
+	return &model.HistoryPage{Events: []model.HistoryEvent{}}, nil
+}
+
 // QueryResources implements the ResourceSearcher interface with mock data
 func (m *MockResourceSearcher) QueryResources(ctx context.Context, criteria model.SearchCriteria) (*model.SearchResult, error) {
 	slog.DebugContext(ctx, "executing mock search", "criteria", criteria)
