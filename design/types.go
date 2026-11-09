@@ -56,7 +56,7 @@ var Resource = dsl.Type("Resource", func() {
 			Description: "a committee",
 		})
 	})
-	dsl.Attribute("updated_at", dsl.String, "Time the document was last written to the index (the indexing transaction's timestamp, RFC 3339). This is index time, not the resource's own update time, which the owning service may publish inside `data`. A reindex or backfill moves it on every document it republishes. Absent when the document carries none.", func() {
+	dsl.Attribute("updated_at", dsl.String, "Time the document was last written to the index (the indexing transaction's timestamp, RFC 3339). This is index time, not the resource's own update time, which the owning service may publish inside `data`. A reindex or backfill moves it on every document it republishes. Absent when the document carries none, or carries a value that is not an RFC 3339 string (such a document is still returned).", func() {
 		dsl.Format(dsl.FormatDateTime)
 		dsl.Example("2025-01-10T12:34:56Z")
 	})

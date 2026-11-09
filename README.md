@@ -294,7 +294,7 @@ Authorization: Bearer <jwt_token>
 
 `updated_at` is the time the document was last written to the index (index
 time, not the resource's own update time) and is absent when the document
-carries none; see the
+carries none, or carries a value that is not an RFC 3339 string; see the
 [contract](docs/query-service-contract.md#get-queryresources).
 
 At least one of `name`, `parent`, `type`, `tags`, or `filter_grants` must be

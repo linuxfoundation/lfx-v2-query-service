@@ -373,7 +373,8 @@ type Resource struct {
 	// timestamp, RFC 3339). This is index time, not the resource's own update
 	// time, which the owning service may publish inside `data`. A reindex or
 	// backfill moves it on every document it republishes. Absent when the document
-	// carries none.
+	// carries none, or carries a value that is not an RFC 3339 string (such a
+	// document is still returned).
 	UpdatedAt *string
 }
 

@@ -73,10 +73,12 @@ migration needed for new fields.
 (the indexing transaction's timestamp, RFC 3339). This is index time, not the
 resource's own update time, which the owning service may publish inside
 `data`. A reindex or backfill moves it on every document it republishes.
-Absent when the document carries none. To read the newest index time of a
-scope, query the same scope with `sort=updated_desc&page_size=1` (the sort
-already orders on this field); a recent value beside a count from the same
-scope means the index may still be filling.
+Absent when the document carries none, or carries a value that is not an
+RFC 3339 string (such a document is still returned). To read the newest
+index time of a scope, query the same scope with
+`sort=updated_desc&page_size=1` (the sort already orders on this field); a
+recent value beside a count from the same scope means the index may still be
+filling.
 
 **Required parameters:** at least one of `name`, `parent`, `type`, `tags`, or
 `filter_grants` must be provided. A request that supplies only `cel_filter`,
