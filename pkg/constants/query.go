@@ -48,7 +48,8 @@ const (
 	// MaxSummaryRunRecords bounds a summary read with no resumable run
 	// boundary. Reuse the startup-validated cap ceiling, without a new knob:
 	// if the run's end cannot be established within this many raw hits,
-	// fail the read rather than return a partial summary.
+	// fail the read once visible rows were read, or return empty with
+	// complete: false and no cursor when none were; never a partial summary.
 	MaxSummaryRunRecords = MaxSummaryRecordCap
 	// MembershipSummaryTokenVersion identifies the whole-run summary read.
 	// Tokens from the unversioned read may point inside a run and must not
@@ -105,6 +106,15 @@ const (
 	DefaultAccessCheckRetries = 1
 	// MaxAccessCheckRetries is the maximum configurable access-check retry count.
 	MaxAccessCheckRetries = 5
+	// MaxCarrierProbesPerRequest caps the distinct unsatisfiable-filter
+	// probes one request may send. A request names one type probe plus one
+	// probe per bounded date field, parent kind, distinct tag prefix,
+	// distinct filter field, group_by prefix and metric prefix; realistic
+	// requests name a handful, so sixteen covers them with room to spare
+	// while bounding what a request with many distinct prefixes or fields
+	// can cost the index. Once the cap is reached the check stops and the
+	// ordinary result stands, as after a failed probe.
+	MaxCarrierProbesPerRequest = 16
 )
 
 // Membership summary scope: the indexed resource type the read covers and the

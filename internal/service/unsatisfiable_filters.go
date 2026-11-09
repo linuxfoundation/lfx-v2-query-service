@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 )
 
@@ -19,15 +20,6 @@ import (
 // request that succeeds today cannot start failing because the check could
 // not run. Only a successful probe that finds a dimension absent rejects.
 var errProbeFailed = stderrors.New("indexed filter support probe failed")
-
-// maxCarrierProbesPerRequest caps the distinct probes one request may send.
-// A request names one type probe plus one probe per bounded date field,
-// parent kind, distinct tag prefix, distinct filter field, group_by prefix
-// and metric prefix; realistic requests name a handful, so sixteen covers
-// them with room to spare while bounding what a request with many distinct
-// prefixes or fields can cost the index. Once the cap is reached the check
-// stops and the ordinary result stands, as after a failed probe.
-const maxCarrierProbesPerRequest = 16
 
 // probeOutcome is the remembered answer of one probe.
 type probeOutcome int
@@ -102,7 +94,7 @@ func (c *carrierCheck) carries(ctx context.Context, probe model.CarrierProbe) (b
 		}
 		return outcome == probeCarried, nil
 	}
-	if c.sent >= maxCarrierProbesPerRequest {
+	if c.sent >= constants.MaxCarrierProbesPerRequest {
 		slog.InfoContext(ctx, "indexed filter support probe cap reached; returning the ordinary result",
 			"object_type", c.resourceType,
 			"probes_sent", c.sent,
