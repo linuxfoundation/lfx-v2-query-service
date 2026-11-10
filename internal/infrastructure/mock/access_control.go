@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
@@ -45,6 +46,11 @@ type MockAccessControlChecker struct {
 	// an unknown negotiated limit, the same as a client that hasn't
 	// connected yet.
 	MaxPayloadValue int64
+	// ReadTuplesCallCount counts invocations of ReadTuples, so tests can assert
+	// it was skipped entirely (e.g. a caller-side validation short-circuit).
+	// atomic because ACCESS_CONTROL_SOURCE=mock shares a single checker instance
+	// across concurrent HTTP requests (cmd/service/providers.go).
+	ReadTuplesCallCount atomic.Int64
 }
 
 // CheckAccess implements the AccessControlChecker interface with mock behavior
@@ -133,6 +139,7 @@ func (m *MockAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 
 // ReadTuples implements the AccessControlChecker interface with mock behavior
 func (m *MockAccessControlChecker) ReadTuples(_ context.Context, _ string, _ string, _ time.Duration) ([]string, error) {
+	m.ReadTuplesCallCount.Add(1)
 	if m.SimulateTuplesError {
 		return nil, fmt.Errorf("mock read_tuples error")
 	}

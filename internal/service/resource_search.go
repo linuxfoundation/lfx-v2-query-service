@@ -10,13 +10,25 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 )
+
+// fgaIdentifierPattern mirrors OpenFGA's tuple-key identifier rule
+// (`^[^\s]{1,511}:[^\s]{1,511}$`, enforced by the OpenFGA Read API we call via
+// fga-sync's read_tuples RPC). The "user:" type prefix we add is always valid, so
+// only the principal needs checking against the id half of that pattern. Some
+// Heimdall-issued principals carry a raw Auth0 `username` attribute that contains
+// whitespace (a display name, or a stray space before a username-collision
+// suffix) and fail OpenFGA's check deterministically on every call (GH-4780).
+var fgaIdentifierPattern = regexp.MustCompile(`^\S{1,511}$`)
 
 // ResourceSearcher defines the interface for resource search operations
 // This abstraction allows different search implementations (OpenSearch, etc.)
@@ -269,7 +281,25 @@ func (s *ResourceSearch) QueryResources(ctx context.Context, criteria model.Sear
 		if principal == constants.AnonymousPrincipal {
 			return nil, errors.NewValidation("filter_grants requires authentication")
 		}
-		objectRefs, errTuples := s.accessChecker.ReadTuples(ctx, "user:"+principal, *criteria.ResourceType, s.config.ReadTuplesTimeout)
+		// Validated only on this synchronous ReadTuples path. The same principal also
+		// reaches fga-sync via BuildMessage/BuildCountMessage below, but CheckAccess
+		// resolves those through a KV cache lookup that treats an unparseable key as a
+		// cache miss (deny) rather than erroring loudly -- a malformed principal there
+		// degrades silently instead of producing the guaranteed-to-fail round trip this
+		// check exists to avoid, so it doesn't need the same fail-fast guard.
+		fgaUser := "user:" + principal
+		if !fgaIdentifierPattern.MatchString(principal) || len(fgaUser) > 512 {
+			// Do not log the principal itself: for the malformed-username accounts this
+			// guards against, it can be a real display name (GH-4780) rather than an
+			// opaque ID.
+			slog.ErrorContext(ctx, "principal is not a valid FGA identifier, skipping direct grant lookup",
+				"principal_len", len(principal),
+				"principal_has_whitespace", strings.ContainsFunc(principal, unicode.IsSpace),
+				"object_type", *criteria.ResourceType,
+			)
+			return nil, errors.NewValidation("authenticated principal is not a valid FGA identifier")
+		}
+		objectRefs, errTuples := s.accessChecker.ReadTuples(ctx, fgaUser, *criteria.ResourceType, s.config.ReadTuplesTimeout)
 		if errTuples != nil {
 			slog.ErrorContext(ctx, "failed to read FGA tuples for filter_grants",
 				"error", errTuples,
