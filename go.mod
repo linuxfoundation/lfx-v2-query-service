@@ -3,7 +3,7 @@
 
 module github.com/linuxfoundation/lfx-v2-query-service
 
-go 1.25.0
+go 1.27.3
 
 require (
 	github.com/auth0/go-jwt-middleware/v2 v2.3.0
