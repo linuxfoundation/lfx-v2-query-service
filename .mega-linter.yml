@@ -17,8 +17,9 @@ DISABLE_LINTERS:
   - SPELL_CSPELL
   # yamllint is sufficient for us.
   - YAML_PRETTIER
-  # Go version compatibility issue with MegaLinter Docker container
-  ## stderr: go: go.mod requires go >= 1.24.2 (running go 1.23.8; GOTOOLCHAIN=local)
+  # MegaLinter's default golangci-lint config enables gocritic, which reports
+  # findings in existing code. Re-enable once those are fixed or the repo adds
+  # its own .golangci.yml.
   - GO_GOLANGCI_LINT
 DISABLE_ERRORS_LINTERS:
   # This may be informative but doesn't need to break the build.
@@ -30,8 +31,10 @@ DISABLE_ERRORS_LINTERS:
   # Pre-existing dependency vulnerabilities; tracked separately.
   - REPOSITORY_GRYPE
 YAML_YAMLLINT_CONFIG_FILE: .yamllint
-REPOSITORY_KICS_ARGUMENTS: >-
-  scan --no-progress --exclude-severities="medium,low,info,trace" --exclude-paths="gen/*"
+# zizmor's "artipacked" audit needs the GitHub API (to verify
+# SHA-pinned action tags), which requires GITHUB_TOKEN.
+ACTION_ZIZMOR_UNSECURED_ENV_VARIABLES:
+  - GITHUB_TOKEN
 REPOSITORY_CHECKOV_ARGUMENTS: >-
   --skip-check CKV_OPENAPI_4,CKV_OPENAPI_7,CKV_OPENAPI_16,CKV_OPENAPI_20,CKV_OPENAPI_21
 SPELL_CSPELL_ANALYZE_FILE_NAMES: false
