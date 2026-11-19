@@ -3,14 +3,18 @@
 
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // HistoryCriteria contains only the indexed, approved history search dimensions.
 type HistoryCriteria struct {
 	SearchCriteria
 }
 
-// HistoryProfile is a source-captured user profile, never a live lookup.
+// HistoryProfile combines live display fields with retained event identity.
+// Lookup failure never changes the retained email or username.
 type HistoryProfile struct {
 	Availability string  `json:"availability"`
 	Name         *string `json:"name"`
@@ -21,10 +25,44 @@ type HistoryProfile struct {
 
 // HistoryAttribution records initiating and effective actors at mutation time.
 type HistoryAttribution struct {
-	ActorRef              string          `json:"actor_ref"`
-	EffectiveActorRef     string          `json:"effective_actor_ref"`
-	ActorProfile          *HistoryProfile `json:"actor_profile,omitempty"`
-	EffectiveActorProfile *HistoryProfile `json:"effective_actor_profile,omitempty"`
+	ActorRef               string          `json:"actor_ref"`
+	EffectiveActorRef      string          `json:"effective_actor_ref"`
+	ActorProfile           *HistoryProfile `json:"actor_profile,omitempty"`
+	EffectiveActorProfile  *HistoryProfile `json:"effective_actor_profile,omitempty"`
+	ActorVerified          bool            `json:"actor_verified"`
+	EffectiveActorVerified bool            `json:"effective_actor_verified"`
+	// Retained identities are storage input, not additional public API fields.
+	ActorIdentity          *HistoryIdentity `json:"-"`
+	EffectiveActorIdentity *HistoryIdentity `json:"-"`
+}
+
+// HistoryIdentity is the indexer-owned data-governance record, never refreshed.
+type HistoryIdentity struct {
+	Username *string `json:"username"`
+	Email    *string `json:"email"`
+}
+
+// HistoryDisplayProfile contains only live directory display data. Found=false
+// means an explicit user-not-found result; errors must not be cached as deletion.
+type HistoryDisplayProfile struct {
+	Found     bool
+	Name      *string
+	AvatarURL *string
+}
+
+// HistoryActorPrincipal parses the indexer's bounded user/service actor grammar.
+// This validates syntax only; an actor reference never grants history access.
+func HistoryActorPrincipal(ref string) (kind, principal string, valid bool) {
+	kind, principal, ok := strings.Cut(ref, ":")
+	if !ok || (kind != "user" && kind != "service") || len(principal) == 0 || len(principal) > 256 {
+		return "", "", false
+	}
+	for _, r := range principal {
+		if r < 0x21 || r > 0x7e || strings.ContainsRune(":#@{}", r) {
+			return "", "", false
+		}
+	}
+	return kind, principal, true
 }
 
 // HistoryContent contains only approved publisher snapshot fields.

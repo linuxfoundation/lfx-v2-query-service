@@ -51,6 +51,13 @@ resource `parent` filter. At least one of `type` or `parent` is required. No
 `tags`, `tags_all`, `id` or committee-only parameter is exposed.
 See [audit-history-query.md](audit-history-query.md) for the full contract.
 
+History attribution combines retained actor refs, verification and username/email
+with live auth-service name/avatar enrichment **after authorization**. Directory
+failure changes only profile availability, never event visibility or request
+success. The existing user profile response shape is preserved; service actors
+have no profile. Metadata lookup uses a bounded in-process display cache and
+never refreshes retained identity.
+
 ### GET /query/resources
 
 | Parameter | Type | Description |

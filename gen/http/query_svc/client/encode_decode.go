@@ -1084,10 +1084,10 @@ func unmarshalHistoryEventResponseBodyToQuerysvcHistoryEvent(v *HistoryEventResp
 		Action:           *v.Action,
 		OccurredAt:       *v.OccurredAt,
 		ResourceRevision: *v.ResourceRevision,
-		Attribution:      v.Attribution,
 		Content:          v.Content,
 	}
 	res.Resource = unmarshalHistoryResourceResponseBodyToQuerysvcHistoryResource(v.Resource)
+	res.Attribution = unmarshalHistoryAttributionResponseBodyToQuerysvcHistoryAttribution(v.Attribution)
 
 	return res
 }
@@ -1099,6 +1099,44 @@ func unmarshalHistoryResourceResponseBodyToQuerysvcHistoryResource(v *HistoryRes
 	res := &querysvc.HistoryResource{
 		Type: *v.Type,
 		UID:  *v.UID,
+	}
+
+	return res
+}
+
+// unmarshalHistoryAttributionResponseBodyToQuerysvcHistoryAttribution builds a
+// value of type *querysvc.HistoryAttribution from a value of type
+// *HistoryAttributionResponseBody.
+func unmarshalHistoryAttributionResponseBodyToQuerysvcHistoryAttribution(v *HistoryAttributionResponseBody) *querysvc.HistoryAttribution {
+	res := &querysvc.HistoryAttribution{
+		ActorRef:               *v.ActorRef,
+		EffectiveActorRef:      *v.EffectiveActorRef,
+		ActorVerified:          *v.ActorVerified,
+		EffectiveActorVerified: *v.EffectiveActorVerified,
+	}
+	if v.ActorProfile != nil {
+		res.ActorProfile = unmarshalHistoryActorProfileResponseBodyToQuerysvcHistoryActorProfile(v.ActorProfile)
+	}
+	if v.EffectiveActorProfile != nil {
+		res.EffectiveActorProfile = unmarshalHistoryActorProfileResponseBodyToQuerysvcHistoryActorProfile(v.EffectiveActorProfile)
+	}
+
+	return res
+}
+
+// unmarshalHistoryActorProfileResponseBodyToQuerysvcHistoryActorProfile builds
+// a value of type *querysvc.HistoryActorProfile from a value of type
+// *HistoryActorProfileResponseBody.
+func unmarshalHistoryActorProfileResponseBodyToQuerysvcHistoryActorProfile(v *HistoryActorProfileResponseBody) *querysvc.HistoryActorProfile {
+	if v == nil {
+		return nil
+	}
+	res := &querysvc.HistoryActorProfile{
+		Availability: *v.Availability,
+		Name:         v.Name,
+		AvatarURL:    v.AvatarURL,
+		Email:        v.Email,
+		Username:     v.Username,
 	}
 
 	return res

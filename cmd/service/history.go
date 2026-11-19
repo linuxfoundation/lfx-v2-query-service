@@ -57,7 +57,7 @@ func (s *querySvcsrvc) QueryResourcesHistory(ctx context.Context, p *querysvc.Qu
 			Resource: &querysvc.HistoryResource{Type: event.ObjectType, UID: event.ObjectID},
 			Action:   event.Action, OccurredAt: event.OccurredAt,
 			ResourceRevision: event.ResourceRevision,
-			Attribution:      event.Attribution, Content: event.Content,
+			Attribution:      historyAttributionToResponse(event.Attribution), Content: event.Content,
 		})
 	}
 	if result.SearchAfter != nil {
@@ -68,6 +68,21 @@ func (s *querySvcsrvc) QueryResourcesHistory(ctx context.Context, p *querysvc.Qu
 		response.PageToken = &token
 	}
 	return response, nil
+}
+
+func historyAttributionToResponse(a model.HistoryAttribution) *querysvc.HistoryAttribution {
+	return &querysvc.HistoryAttribution{
+		ActorRef: a.ActorRef, EffectiveActorRef: a.EffectiveActorRef,
+		ActorVerified: a.ActorVerified, EffectiveActorVerified: a.EffectiveActorVerified,
+		ActorProfile: historyProfileToResponse(a.ActorProfile), EffectiveActorProfile: historyProfileToResponse(a.EffectiveActorProfile),
+	}
+}
+
+func historyProfileToResponse(profile *model.HistoryProfile) *querysvc.HistoryActorProfile {
+	if profile == nil {
+		return nil
+	}
+	return &querysvc.HistoryActorProfile{Availability: profile.Availability, Name: profile.Name, AvatarURL: profile.AvatarURL, Email: profile.Email, Username: profile.Username}
 }
 
 // historyCriteria validates history-only indexed dimensions, then binds the

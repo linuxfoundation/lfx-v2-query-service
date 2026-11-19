@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
-	"github.com/stretchr/testify/require"
 )
 
 type historySearchClient struct {
@@ -146,4 +148,29 @@ func stringMustMarshal(t *testing.T, data any) string {
 	encoded, err := json.Marshal(data)
 	require.NoError(t, err)
 	return string(encoded)
+}
+
+func TestDecodeHistoryAttribution_RetainedIdentity(t *testing.T) {
+	valid := `{"actor_ref":"user:testuser01","effective_actor_ref":"service:worker","actor_verified":true,"effective_actor_verified":false,"actor_identity":{"username":"testuser01","email":"user-1@example.com"}}`
+	attribution, err := decodeHistoryAttribution([]byte(valid))
+	require.NoError(t, err)
+	require.True(t, attribution.ActorVerified)
+	require.False(t, attribution.EffectiveActorVerified)
+	require.Equal(t, "testuser01", *attribution.ActorIdentity.Username)
+	require.Equal(t, "user-1@example.com", *attribution.ActorIdentity.Email)
+	require.Nil(t, attribution.ActorProfile, "display must never be reconstructed from stored snapshots")
+	require.Nil(t, attribution.EffectiveActorIdentity)
+	for _, raw := range []string{
+		`{"actor_ref":"user:testuser01","effective_actor_ref":"service:worker"}`,
+		`{"actor_ref":"user:testuser01","effective_actor_ref":"service:worker","actor_identity":{"username":"other","email":null}}`,
+		`{"actor_ref":"service:worker","effective_actor_ref":"service:worker","actor_identity":{"username":null,"email":null}}`,
+		`{"actor_ref":"user:","effective_actor_ref":"service:worker"}`,
+		strings.Replace(valid, `"actor_verified":true`, `"actor_verified":true,"actor_profile":null`, 1),
+		strings.Replace(valid, `"actor_verified":true`, `"actor_verified":true,"actor_jwt":"private-marker"`, 1),
+		strings.Replace(valid, `"username":"testuser01"`, `"username":"testuser01","name":"private-marker"`, 1),
+	} {
+		_, err := decodeHistoryAttribution([]byte(raw))
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "private-marker")
+	}
 }

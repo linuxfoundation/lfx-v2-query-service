@@ -340,20 +340,20 @@ Search retained resource mutations, checking each event's history permission ind
     -bearer-token STRING: 
 
 Example:
-    %[1]s query-svc query-resources-history --version "1" --type "Temporibus est." --parent "Sunt fugiat porro dolor." --filters '[
-      "Et ex corrupti eum voluptatum.",
-      "Qui sunt enim praesentium recusandae.",
-      "Dolor impedit at."
+    %[1]s query-svc query-resources-history --version "1" --type "Est et ex corrupti eum voluptatum." --parent "Qui sunt enim praesentium recusandae." --filters '[
+      "Impedit at delectus similique accusamus id quia.",
+      "Soluta laborum quae molestiae eos.",
+      "Vel veniam."
    ]' --filters-all '[
-      "Accusamus id quia ipsam soluta.",
-      "Quae molestiae eos culpa.",
-      "Veniam sed id repellendus saepe nostrum.",
-      "Ut eligendi sit."
-   ]' --filters-or '[
+      "Repellendus saepe.",
+      "Quia ut eligendi sit omnis.",
       "Architecto totam nihil tempora dolorem voluptas possimus.",
-      "Asperiores nesciunt assumenda aut omnis.",
-      "Nobis nihil voluptas nisi voluptatibus molestiae quibusdam."
-   ]' --date-field "Aliquam cumque velit." --date-from "Aliquid ipsam." --date-to "Esse quidem." --page-size 7 --page-token "Nesciunt ad nostrum ratione." --bearer-token "Quibusdam aliquam et maxime."
+      "Asperiores nesciunt assumenda aut omnis."
+   ]' --filters-or '[
+      "Nihil voluptas nisi voluptatibus.",
+      "Quibusdam dolore aliquam.",
+      "Velit delectus aliquid ipsam architecto."
+   ]' --date-field "Quidem omnis voluptas." --date-from "Ad nostrum ratione et quibusdam." --date-to "Et maxime hic pariatur iusto." --page-size 2 --page-token "Et eos voluptatum." --bearer-token "Eius voluptas."
 `, os.Args[0])
 }
 

@@ -347,7 +347,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: In dolorum ut illo omnis.
+                        example: Ab commodi eum officiis animi.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -363,7 +363,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Labore atque nobis magni minus et.
+                        example: Totam aut consequatur mollitia.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -406,7 +406,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Odit mollitia fugiat enim.
+                        example: Unde quas fugit nesciunt quam et.
                     description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
                     example:
                         - status:active
@@ -422,7 +422,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Ullam eligendi placeat dolores.
+                        example: Earum dignissimos commodi odio culpa placeat.
                     description: 'Direct field filters with term clauses on data fields using AND logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy all of the provided filters.'
                     example:
                         - status:active
@@ -438,7 +438,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Dolores enim excepturi id deleniti fugiat quia.
+                        example: Asperiores rem sit blanditiis.
                     description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
                     example:
                         - mailing_list_id:abc
@@ -535,6 +535,18 @@ paths:
                                         description: a committee
                                       id: "123"
                                       type: committee
+                                    - data:
+                                        id: "123"
+                                        name: My committee
+                                        description: a committee
+                                      id: "123"
+                                      type: committee
+                                    - data:
+                                        id: "123"
+                                        name: My committee
+                                        description: a committee
+                                      id: "123"
+                                      type: committee
                 "400":
                     description: 'BadRequest: Bad request'
                     content:
@@ -618,7 +630,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Eum autem itaque quia voluptatum ut.
+                        example: Soluta cum et qui.
                     description: Tags to search with OR logic - matches resources with any of these tags
                     example:
                         - active
@@ -634,7 +646,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Eius quas.
+                        example: Consequatur aut voluptatem blanditiis et iste.
                     description: Tags to search with AND logic - matches resources that have all of these tags
                     example:
                         - governance
@@ -677,7 +689,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Iure perferendis sit non.
+                        example: Reprehenderit ex cum voluptas et et.
                     description: 'Direct field filters with term clauses on data fields - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.'''
                     example:
                         - status:active
@@ -693,7 +705,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Voluptatibus esse adipisci molestias sed doloribus.
+                        example: Voluptatibus et et impedit velit.
                     description: 'Direct field filters with term clauses on data fields using AND logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy all of the provided filters.'
                     example:
                         - status:active
@@ -709,7 +721,7 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Molestiae rerum laboriosam doloremque.
+                        example: Excepturi aut.
                     description: 'Direct field filters with term clauses on data fields using OR logic - format: ''field:value'' (e.g., ''status:active''). Fields are automatically prefixed with ''data.''. Matches resources that satisfy at least one of the provided filters.'
                     example:
                         - mailing_list_id:abc
@@ -844,8 +856,8 @@ paths:
                   schema:
                     type: string
                     description: Resource type; at least one of type or parent is required
-                    example: Doloremque quis debitis atque.
-                  example: Provident aliquam porro corporis vel nulla.
+                    example: Occaecati aut et ut.
+                  example: Sit adipisci autem sequi animi omnis.
                 - name: parent
                   in: query
                   description: 'Resource reference (type:uid): events for this resource or whose before/after ownership scope includes it'
@@ -853,8 +865,8 @@ paths:
                   schema:
                     type: string
                     description: 'Resource reference (type:uid): events for this resource or whose before/after ownership scope includes it'
-                    example: Ut ut commodi laudantium rerum.
-                  example: Esse deserunt odio ut cumque.
+                    example: Est veritatis maxime.
+                  example: Dolorum vero architecto suscipit facilis laudantium qui.
                 - name: filters
                   in: query
                   description: AND field:value filters; action and object_id are supported
@@ -863,15 +875,15 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Culpa est.
+                        example: Ut enim nulla.
                     description: AND field:value filters; action and object_id are supported
                     example:
-                        - Qui sit sit.
-                        - Odio voluptatem.
+                        - Voluptas aperiam aut porro.
+                        - Non possimus aliquid perspiciatis et et.
                   example:
-                    - Ea quibusdam ab commodi eum officiis animi.
-                    - Totam aut consequatur mollitia.
-                    - Unde quas fugit nesciunt quam et.
+                    - Corporis aut asperiores quae voluptatem.
+                    - Voluptatem eligendi iure.
+                    - Et similique.
                 - name: filters_all
                   in: query
                   description: AND field:value filters; action and object_id are supported
@@ -880,14 +892,16 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Earum dignissimos commodi odio culpa placeat.
+                        example: Rerum dolore qui consectetur consequatur excepturi.
                     description: AND field:value filters; action and object_id are supported
                     example:
-                        - Rem sit blanditiis.
-                        - Et sequi occaecati aut et.
+                        - Veniam facere suscipit minima fuga est dolorem.
+                        - Consequuntur laborum necessitatibus hic ratione expedita rerum.
+                        - Atque hic consequuntur sed.
+                        - Tempora non eaque impedit quibusdam porro.
                   example:
-                    - Sit adipisci autem sequi animi omnis.
-                    - Est veritatis maxime.
+                    - Aperiam soluta aut assumenda.
+                    - Dicta a qui quos temporibus deleniti.
                 - name: filters_or
                   in: query
                   description: OR field:value filters; action and object_id are supported
@@ -896,17 +910,17 @@ paths:
                     type: array
                     items:
                         type: string
-                        example: Dolorum vero architecto suscipit facilis laudantium qui.
+                        example: Sapiente neque.
                     description: OR field:value filters; action and object_id are supported
                     example:
-                        - Enim nulla non.
-                        - Voluptas aperiam aut porro.
-                        - Non possimus aliquid perspiciatis et et.
-                        - Molestias corporis aut asperiores quae.
+                        - Qui alias nam vel eos eligendi tempora.
+                        - Similique mollitia rerum.
+                        - Ad hic voluptas.
+                        - Eum autem itaque quia voluptatum ut.
                   example:
-                    - Voluptatem eligendi iure.
-                    - Et similique.
-                    - Rerum dolore qui consectetur consequatur excepturi.
+                    - Quas quis iure perferendis sit.
+                    - Ex voluptatibus esse.
+                    - Molestias sed doloribus numquam molestiae.
                 - name: date_field
                   in: query
                   description: Date field; only occurred_at is supported
@@ -914,8 +928,8 @@ paths:
                   schema:
                     type: string
                     description: Date field; only occurred_at is supported
-                    example: In veniam facere suscipit minima fuga.
-                  example: Dolorem voluptas consequuntur.
+                    example: Laboriosam doloremque laborum saepe ut officiis.
+                  example: Architecto consequatur.
                 - name: date_from
                   in: query
                   description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD lower bound; requires date_field
@@ -923,8 +937,8 @@ paths:
                   schema:
                     type: string
                     description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD lower bound; requires date_field
-                    example: Necessitatibus hic ratione expedita rerum vitae atque.
-                  example: Consequuntur sed aut tempora.
+                    example: Id quia veritatis et.
+                  example: Fugit id dignissimos occaecati quia eius.
                 - name: date_to
                   in: query
                   description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD upper bound; requires date_field
@@ -932,8 +946,8 @@ paths:
                   schema:
                     type: string
                     description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD upper bound; requires date_field
-                    example: Eaque impedit.
-                  example: Porro et.
+                    example: Ullam perspiciatis repellendus harum quae illum.
+                  example: Ut rem voluptatem.
                 - name: page_size
                   in: query
                   description: Number of raw events per page
@@ -942,11 +956,11 @@ paths:
                     type: integer
                     description: Number of raw events per page
                     default: 50
-                    example: 62
+                    example: 12
                     format: int64
                     minimum: 1
                     maximum: 100
-                  example: 15
+                  example: 20
                 - name: page_token
                   in: query
                   description: Opaque continuation bound to these filters and this principal
@@ -954,8 +968,8 @@ paths:
                   schema:
                     type: string
                     description: Opaque continuation bound to these filters and this principal
-                    example: Aut assumenda eveniet dicta a qui.
-                  example: Temporibus deleniti tenetur sapiente neque quia eum.
+                    example: Quibusdam laborum deserunt quis consectetur assumenda beatae.
+                  example: Voluptatibus aut magnam occaecati amet.
             responses:
                 "200":
                     description: OK response.
@@ -965,33 +979,65 @@ paths:
                             schema:
                                 type: string
                                 description: Private, non-cacheable response
-                                example: Alias nam vel eos eligendi tempora.
-                            example: Ad hic voluptas.
+                                example: Dolore porro nam corporis repellat exercitationem.
+                            example: Dolor ut debitis excepturi.
                     content:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/QueryResourcesHistoryResponseBody'
                             example:
                                 events:
-                                    - action: Cupiditate sed officia suscipit.
-                                      attribution: Ipsam ut quae quaerat.
-                                      content: Neque nesciunt odio quis voluptas.
-                                      event_id: Eos voluptatum est eius voluptas voluptas.
-                                      occurred_at: Provident explicabo illo.
+                                    - action: Odio quis.
+                                      attribution:
+                                        actor_profile:
+                                            availability: deleted
+                                            avatar_url: https://example.com/avatar.png
+                                            email: user-1@example.com
+                                            name: Test User 1
+                                            username: testuser01
+                                        actor_ref: Aut exercitationem eos numquam.
+                                        actor_verified: false
+                                        effective_actor_profile:
+                                            availability: deleted
+                                            avatar_url: https://example.com/avatar.png
+                                            email: user-1@example.com
+                                            name: Test User 1
+                                            username: testuser01
+                                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                                        effective_actor_verified: true
+                                      content: Non molestiae temporibus iste iste sed.
+                                      event_id: Cupiditate sed officia suscipit.
+                                      occurred_at: Et consequuntur quia itaque.
                                       resource:
-                                        type: Quo autem.
-                                        uid: Eius impedit suscipit.
-                                      resource_revision: 2480254008700663206
-                                    - action: Cupiditate sed officia suscipit.
-                                      attribution: Ipsam ut quae quaerat.
-                                      content: Neque nesciunt odio quis voluptas.
-                                      event_id: Eos voluptatum est eius voluptas voluptas.
-                                      occurred_at: Provident explicabo illo.
+                                        type: Provident explicabo illo.
+                                        uid: Vitae ipsam ut quae quaerat ab neque.
+                                      resource_revision: 8018637725149082057
+                                    - action: Odio quis.
+                                      attribution:
+                                        actor_profile:
+                                            availability: deleted
+                                            avatar_url: https://example.com/avatar.png
+                                            email: user-1@example.com
+                                            name: Test User 1
+                                            username: testuser01
+                                        actor_ref: Aut exercitationem eos numquam.
+                                        actor_verified: false
+                                        effective_actor_profile:
+                                            availability: deleted
+                                            avatar_url: https://example.com/avatar.png
+                                            email: user-1@example.com
+                                            name: Test User 1
+                                            username: testuser01
+                                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                                        effective_actor_verified: true
+                                      content: Non molestiae temporibus iste iste sed.
+                                      event_id: Cupiditate sed officia suscipit.
+                                      occurred_at: Et consequuntur quia itaque.
                                       resource:
-                                        type: Quo autem.
-                                        uid: Eius impedit suscipit.
-                                      resource_revision: 2480254008700663206
-                                page_token: Quia itaque ab sed aut exercitationem.
+                                        type: Provident explicabo illo.
+                                        uid: Vitae ipsam ut quae quaerat ab neque.
+                                      resource_revision: 8018637725149082057
+                                page_token: Enim ullam quisquam possimus maiores.
                 "400":
                     description: 'BadRequest: Bad request'
                     content:
@@ -1050,44 +1096,135 @@ components:
             required:
                 - key
                 - count
+        HistoryActorProfile:
+            type: object
+            properties:
+                availability:
+                    type: string
+                    description: 'available: live lookup succeeded; deleted: user not found; unavailable: lookup failed'
+                    example: unavailable
+                    enum:
+                        - available
+                        - deleted
+                        - unavailable
+                avatar_url:
+                    description: 'Live avatar URL: string or null; image bytes are never fetched'
+                    example: https://example.com/avatar.png
+                email:
+                    description: 'Retained event email: string or null; never refreshed from live profile'
+                    example: user-1@example.com
+                name:
+                    description: 'Live display name: string or null when unavailable'
+                    example: Test User 1
+                username:
+                    description: 'Retained event username: string or null; never refreshed'
+                    example: testuser01
+            example:
+                availability: deleted
+                avatar_url: https://example.com/avatar.png
+                email: user-1@example.com
+                name: Test User 1
+                username: testuser01
+            required:
+                - availability
+        HistoryAttribution:
+            type: object
+            properties:
+                actor_profile:
+                    $ref: '#/components/schemas/HistoryActorProfile'
+                actor_ref:
+                    type: string
+                    description: 'Initiating actor: user:<principal> or service:<client name>'
+                    example: Eum et aut adipisci quibusdam distinctio et.
+                actor_verified:
+                    type: boolean
+                    description: Indexer-verified initiating actor evidence at first append
+                    example: false
+                effective_actor_profile:
+                    $ref: '#/components/schemas/HistoryActorProfile'
+                effective_actor_ref:
+                    type: string
+                    description: Effective actor, equal to actor_ref without delegation
+                    example: Iure iure.
+                effective_actor_verified:
+                    type: boolean
+                    description: Indexer-verified effective actor evidence at first append
+                    example: false
+            example:
+                actor_profile:
+                    availability: unavailable
+                    avatar_url: https://example.com/avatar.png
+                    email: user-1@example.com
+                    name: Test User 1
+                    username: testuser01
+                actor_ref: Qui suscipit ullam ullam et.
+                actor_verified: true
+                effective_actor_profile:
+                    availability: unavailable
+                    avatar_url: https://example.com/avatar.png
+                    email: user-1@example.com
+                    name: Test User 1
+                    username: testuser01
+                effective_actor_ref: Ea et beatae sint delectus.
+                effective_actor_verified: true
+            required:
+                - actor_ref
+                - effective_actor_ref
+                - actor_verified
+                - effective_actor_verified
         HistoryEvent:
             type: object
             properties:
                 action:
                     type: string
                     description: created, updated or deleted
-                    example: Possimus et nobis sit exercitationem adipisci voluptatem.
+                    example: Libero sit eos tenetur in dolorum ut.
                 attribution:
-                    description: Captured initiating/effective actor references and approved profile snapshots
-                    example: Non hic facilis sed.
+                    $ref: '#/components/schemas/HistoryAttribution'
                 content:
                     description: Approved versioned before/after snapshots; absent sides are omitted
-                    example: Ut suscipit asperiores atque autem eligendi ut.
+                    example: Magni minus et deleniti.
                 event_id:
                     type: string
                     description: Publisher-qualified stable event identity
-                    example: Dolores exercitationem ut.
+                    example: Non et amet.
                 occurred_at:
                     type: string
                     description: Source occurrence time (RFC3339)
-                    example: Ea et iusto sit.
+                    example: Omnis sed labore.
                 resource:
                     $ref: '#/components/schemas/HistoryResource'
                 resource_revision:
                     type: integer
                     description: Publisher's monotonic resource revision
-                    example: 1132100082881198041
+                    example: 7644097580506080808
                     format: int64
             example:
-                action: Quibusdam distinctio.
-                attribution: Qui suscipit ullam ullam et.
-                content: Ea et beatae sint delectus.
-                event_id: Voluptatem officia eum et aut.
-                occurred_at: Est iure iure at.
+                action: Officia dolores enim excepturi id.
+                attribution:
+                    actor_profile:
+                        availability: unavailable
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: Test User 1
+                        username: testuser01
+                    actor_ref: Amet nihil et dolores.
+                    actor_verified: true
+                    effective_actor_profile:
+                        availability: unavailable
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: Test User 1
+                        username: testuser01
+                    effective_actor_ref: Nihil dolor excepturi ab.
+                    effective_actor_verified: true
+                content: Quis debitis atque eos provident aliquam.
+                event_id: Mollitia fugiat enim sed ullam eligendi placeat.
+                occurred_at: Fugiat quia exercitationem harum.
                 resource:
                     type: Neque consequatur voluptas cum iusto vel at.
                     uid: Inventore quo rerum voluptas facere.
-                resource_revision: 13530306692721200345
+                resource_revision: 2178312014688962853
             required:
                 - event_id
                 - resource
@@ -1102,14 +1239,14 @@ components:
                 type:
                     type: string
                     description: Resource type
-                    example: Quis aut nesciunt.
+                    example: Quia rerum expedita.
                 uid:
                     type: string
                     description: Resource UID
-                    example: Temporibus dignissimos ipsa in quod.
+                    example: Rerum tempore eos non doloribus.
             example:
-                type: Mollitia quo nostrum quod libero facere quibusdam.
-                uid: Quisquam suscipit quo.
+                type: Ea nemo et odit quod quisquam minus.
+                uid: Et accusamus soluta possimus earum cum.
             required:
                 - type
                 - uid
@@ -1214,7 +1351,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Eos non doloribus aut.
+                        example: Laudantium rerum.
                     description: Distinct statuses in first appearance order
                     example:
                         - Expired
@@ -1245,7 +1382,7 @@ components:
                     type: array
                     items:
                         type: string
-                        example: Unde pariatur quia rerum expedita id rerum.
+                        example: Corporis vel nulla adipisci ut ut.
                     description: Distinct tier product names in first appearance order
                     example:
                         - Silver Membership
@@ -1476,7 +1613,7 @@ components:
                 groups_complete:
                     type: boolean
                     description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
-                    example: true
+                    example: false
                 has_more:
                     type: boolean
                     description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
@@ -1484,7 +1621,7 @@ components:
                 metric_complete:
                     type: boolean
                     description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
-                    example: false
+                    example: true
                 metric_value:
                     type: integer
                     description: Value of the requested metric
@@ -1507,58 +1644,163 @@ components:
                         $ref: '#/components/schemas/HistoryEvent'
                     description: Authorized mutation events in source-occurrence order
                     example:
-                        - action: Cupiditate sed officia suscipit.
-                          attribution: Ipsam ut quae quaerat.
-                          content: Neque nesciunt odio quis voluptas.
-                          event_id: Eos voluptatum est eius voluptas voluptas.
-                          occurred_at: Provident explicabo illo.
+                        - action: Odio quis.
+                          attribution:
+                            actor_profile:
+                                availability: deleted
+                                avatar_url: https://example.com/avatar.png
+                                email: user-1@example.com
+                                name: Test User 1
+                                username: testuser01
+                            actor_ref: Aut exercitationem eos numquam.
+                            actor_verified: false
+                            effective_actor_profile:
+                                availability: deleted
+                                avatar_url: https://example.com/avatar.png
+                                email: user-1@example.com
+                                name: Test User 1
+                                username: testuser01
+                            effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                            effective_actor_verified: true
+                          content: Non molestiae temporibus iste iste sed.
+                          event_id: Cupiditate sed officia suscipit.
+                          occurred_at: Et consequuntur quia itaque.
                           resource:
-                            type: Quo autem.
-                            uid: Eius impedit suscipit.
-                          resource_revision: 2480254008700663206
-                        - action: Cupiditate sed officia suscipit.
-                          attribution: Ipsam ut quae quaerat.
-                          content: Neque nesciunt odio quis voluptas.
-                          event_id: Eos voluptatum est eius voluptas voluptas.
-                          occurred_at: Provident explicabo illo.
+                            type: Provident explicabo illo.
+                            uid: Vitae ipsam ut quae quaerat ab neque.
+                          resource_revision: 8018637725149082057
+                        - action: Odio quis.
+                          attribution:
+                            actor_profile:
+                                availability: deleted
+                                avatar_url: https://example.com/avatar.png
+                                email: user-1@example.com
+                                name: Test User 1
+                                username: testuser01
+                            actor_ref: Aut exercitationem eos numquam.
+                            actor_verified: false
+                            effective_actor_profile:
+                                availability: deleted
+                                avatar_url: https://example.com/avatar.png
+                                email: user-1@example.com
+                                name: Test User 1
+                                username: testuser01
+                            effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                            effective_actor_verified: true
+                          content: Non molestiae temporibus iste iste sed.
+                          event_id: Cupiditate sed officia suscipit.
+                          occurred_at: Et consequuntur quia itaque.
                           resource:
-                            type: Quo autem.
-                            uid: Eius impedit suscipit.
-                          resource_revision: 2480254008700663206
-                        - action: Cupiditate sed officia suscipit.
-                          attribution: Ipsam ut quae quaerat.
-                          content: Neque nesciunt odio quis voluptas.
-                          event_id: Eos voluptatum est eius voluptas voluptas.
-                          occurred_at: Provident explicabo illo.
-                          resource:
-                            type: Quo autem.
-                            uid: Eius impedit suscipit.
-                          resource_revision: 2480254008700663206
+                            type: Provident explicabo illo.
+                            uid: Vitae ipsam ut quae quaerat ab neque.
+                          resource_revision: 8018637725149082057
                 page_token:
                     type: string
                     description: Continue until absent, including after a short authorized page
-                    example: Quod quisquam minus esse et accusamus soluta.
+                    example: Ut cumque corporis.
             example:
                 events:
-                    - action: Cupiditate sed officia suscipit.
-                      attribution: Ipsam ut quae quaerat.
-                      content: Neque nesciunt odio quis voluptas.
-                      event_id: Eos voluptatum est eius voluptas voluptas.
-                      occurred_at: Provident explicabo illo.
+                    - action: Odio quis.
+                      attribution:
+                        actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        actor_ref: Aut exercitationem eos numquam.
+                        actor_verified: false
+                        effective_actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                        effective_actor_verified: true
+                      content: Non molestiae temporibus iste iste sed.
+                      event_id: Cupiditate sed officia suscipit.
+                      occurred_at: Et consequuntur quia itaque.
                       resource:
-                        type: Quo autem.
-                        uid: Eius impedit suscipit.
-                      resource_revision: 2480254008700663206
-                    - action: Cupiditate sed officia suscipit.
-                      attribution: Ipsam ut quae quaerat.
-                      content: Neque nesciunt odio quis voluptas.
-                      event_id: Eos voluptatum est eius voluptas voluptas.
-                      occurred_at: Provident explicabo illo.
+                        type: Provident explicabo illo.
+                        uid: Vitae ipsam ut quae quaerat ab neque.
+                      resource_revision: 8018637725149082057
+                    - action: Odio quis.
+                      attribution:
+                        actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        actor_ref: Aut exercitationem eos numquam.
+                        actor_verified: false
+                        effective_actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                        effective_actor_verified: true
+                      content: Non molestiae temporibus iste iste sed.
+                      event_id: Cupiditate sed officia suscipit.
+                      occurred_at: Et consequuntur quia itaque.
                       resource:
-                        type: Quo autem.
-                        uid: Eius impedit suscipit.
-                      resource_revision: 2480254008700663206
-                page_token: Cum non.
+                        type: Provident explicabo illo.
+                        uid: Vitae ipsam ut quae quaerat ab neque.
+                      resource_revision: 8018637725149082057
+                    - action: Odio quis.
+                      attribution:
+                        actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        actor_ref: Aut exercitationem eos numquam.
+                        actor_verified: false
+                        effective_actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                        effective_actor_verified: true
+                      content: Non molestiae temporibus iste iste sed.
+                      event_id: Cupiditate sed officia suscipit.
+                      occurred_at: Et consequuntur quia itaque.
+                      resource:
+                        type: Provident explicabo illo.
+                        uid: Vitae ipsam ut quae quaerat ab neque.
+                      resource_revision: 8018637725149082057
+                    - action: Odio quis.
+                      attribution:
+                        actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        actor_ref: Aut exercitationem eos numquam.
+                        actor_verified: false
+                        effective_actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: Test User 1
+                            username: testuser01
+                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                        effective_actor_verified: true
+                      content: Non molestiae temporibus iste iste sed.
+                      event_id: Cupiditate sed officia suscipit.
+                      occurred_at: Et consequuntur quia itaque.
+                      resource:
+                        type: Provident explicabo illo.
+                        uid: Vitae ipsam ut quae quaerat ab neque.
+                      resource_revision: 8018637725149082057
+                page_token: Qui voluptatem qui sit.
             required:
                 - events
         QueryResourcesResponseBody:
@@ -1698,6 +1940,9 @@ components:
                           name: Linux Foundation
             example:
                 suggestions:
+                    - domain: linuxfoundation.org
+                      logo: https://example.com/logo.png
+                      name: Linux Foundation
                     - domain: linuxfoundation.org
                       logo: https://example.com/logo.png
                       name: Linux Foundation

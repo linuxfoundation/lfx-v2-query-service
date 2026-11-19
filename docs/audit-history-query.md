@@ -62,7 +62,9 @@ GET /query/resources/history?v=1&parent=committee:committee-uuid&filters=action:
     "resource_revision": 4,
     "attribution": {
       "actor_ref": "service:example",
-      "effective_actor_ref": "service:example"
+      "effective_actor_ref": "service:example",
+      "actor_verified": true,
+      "effective_actor_verified": true
     },
     "content": {
       "schema": "example.audit.v1",
@@ -75,14 +77,37 @@ GET /query/resources/history?v=1&parent=committee:committee-uuid&filters=action:
 }
 ```
 
-Only mutation events have history records. The response includes the indexer's
-approved captured actor refs/profiles (name, avatar URL, email, username, with
-explicit nulls for unavailable attributes) and publisher-allowlisted snapshots.
-Creates have only `after`; deletes only `before`. Never resolve actor profiles
-against live accounts or return transport headers, relay JWTs, `fingerprint`,
-ingestion time, private history-check fields, or raw current-resource `data`.
-Erased events are excluded. Render captured strings as text, not trusted HTML;
-profile email is private history data, not a public-search field.
+Only mutation events have history records. Actor refs and the two verification
+booleans come from the retained event; read-time lookup does not authenticate
+actors or change first-append verification. Service actors have no profile.
+User actors retain the existing `actor_profile` / `effective_actor_profile`
+response shape, with five fields:
+
+| Field | Source |
+| --- | --- |
+| `availability` | `available` for a successful live lookup; `deleted` only for explicit user-not-found; `unavailable` for lookup/transport/timeout/malformed-response failure |
+| `name` | Current auth-service display name, nullable |
+| `avatar_url` | Current auth-service picture URL, nullable; image bytes are never fetched |
+| `email` | Retained event identity, nullable; never refreshed from live metadata |
+| `username` | Retained event identity, nullable; never refreshed from live metadata |
+
+For `deleted` and `unavailable`, name/avatar are explicitly null while the stored
+email/username remain. Successful partial metadata still has `available` status
+and nulls for absent display fields. Nullable attributes are serialized as null,
+not silently omitted. All strings must be rendered as text, not trusted HTML.
+
+The OpenSearch adapter reads `actor_identity` and `effective_actor_identity`
+(username/email only), not the superseded publisher profile snapshots. Private
+attribution with JWT/profile fields, invalid actor refs, missing user identity,
+or a service identity record is malformed and fails the read with 503. Ref-only
+service records without flags are safely unverified; new indexer records emit
+both flags explicitly. The indexer's owner-approved pre-adoption v2 correction
+is described in its [audit contract](https://github.com/linuxfoundation/lfx-v2-indexer-service/blob/main/docs/audit-v2-contract.md).
+
+Creates have only `after`; deletes only `before`. Never return transport headers,
+relay/actor JWTs, `fingerprint`, ingestion time, private history-check fields,
+internal identity fields or raw current-resource `data`. Erased events are
+excluded. Profile email is private history data, not a public-search field.
 
 Sort by `occurred_at` ascending then `publisher` and `event_id` ascending.
 Source time is not necessarily ingestion order. Equal timestamps remain distinct;
@@ -110,6 +135,37 @@ The body is always `Cache-Control: private, no-store`; debug payload/body
 logging is not installed, and HTTP request tracing is disabled on this route
 until URL query attributes can be scrubbed. Invalid parameters/tokens return 400.
 
+### Optional live-profile enrichment
+
+After per-event authorization, resolve each distinct **user actor** at most once
+per returned page across both roles using `lfx.auth-service.user_metadata.read`.
+The NATS body is the raw Heimdall principal, not a JWT or a JSON wrapper. Read
+only `data.name` and `data.picture`; ignore directory email/username and other
+personal fields. There is no additional per-user privacy gate beyond the
+existing event-level history authorization. Denied/anonymous events never cause
+metadata lookups.
+
+Enrichment reuses the NATS access adapter's connection and shutdown lifecycle.
+It is not a readiness dependency, and mock/other backends without metadata
+support return unavailable profiles. Failures never fail the history request,
+change authorization, or alter the raw page cursor.
+
+The process-local, LRU-bounded cache holds at most 4096 display profiles, with
+10-minute found and 1-minute explicit-not-found TTLs. Failures are not cached as
+deletion; repeated failures within a page still cause at most one lookup per
+actor. Retained email/username and access decisions are not cached here. Expired
+entries are discarded on read and pruned on insertion; cached values and response
+values are independent copies.
+Directory names over 1024 bytes or avatar URLs over 2048 bytes are treated as
+unavailable and not cached, bounding personal-data memory as well as entry count.
+
+The whole optional enrichment phase has a 2-second ceiling, bounded further by
+the existing search/request deadline. At most eight directory requests are in
+flight across all history requests. Actors still queued when the deadline
+expires receive unavailable display fields; successful cached results remain
+usable. No metadata payloads, actor identifiers, profile values or raw upstream
+errors are added to application logs or tracing.
+
 This uses current grants and thus reflects revocation on the next read. It
 does not infer access from the stored scope, grant a project auditor based on a
 matching parent, or special-case deleted resources: a check is evaluated against
@@ -120,8 +176,10 @@ its approved policy; the query service cannot infer that policy from scope.
 ## Deployment and producer handoff
 
 The indexer's [`resource-history-v1` mapping and `HistoryRecord`](https://github.com/linuxfoundation/lfx-v2-indexer-service/blob/main/docs/audit-history-design.md)
-already index `object_type`, `object_id`, `scope.before`, and `scope.after`.
-No history tag field or indexer mapping change is required. The publisher must
+index `object_type`, `object_id`, `scope.before`, `scope.after` and the four actor
+ref/verification fields. This read-side revision requires the retained-identity
+indexer contract merged in indexer-service PR #93, plus the auth-service metadata
+subject. No additional history tag field is required. The publisher must
 include `committee:<uid>` in the **before and/or after audit scope** of settings
 and member events for the combined `parent=committee:<uid>` timeline; the
 committee's own events match by resource identity. A move remains searchable
@@ -143,3 +201,8 @@ rule is OIDC-only, but the service still checks every event. Set
 but it cannot return history until the private index and reader role exist.
 Verify publisher snapshot schemas/scope, authorization anchors, and outbox
 coverage before claiming that any timeline is complete.
+
+The query-service NATS account must be allowed to request the trusted internal
+metadata subject before profiles can be available. Do not expose that subject to
+end users or forward their bearer tokens. Missing responders/permissions degrade
+display availability rather than history authorization or readiness.

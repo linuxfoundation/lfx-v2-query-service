@@ -4,8 +4,10 @@
 package opensearch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -100,17 +102,20 @@ func (os *OpenSearchSearcher) QueryHistory(ctx context.Context, criteria model.H
 			HistoryCheckObject   string `json:"history_check_object"`
 			HistoryCheckRelation string `json:"history_check_relation"`
 			Audit                struct {
-				Attribution model.HistoryAttribution `json:"attribution"`
-				Content     model.HistoryContent     `json:"content"`
+				Attribution json.RawMessage      `json:"attribution"`
+				Content     model.HistoryContent `json:"content"`
 			} `json:"audit"`
 		}
 		if len(hit.Source) == 0 || json.Unmarshal(hit.Source, &source) != nil ||
 			source.Publisher == "" || source.EventID == "" || source.ObjectType == "" || source.ObjectID == "" ||
-			source.ResourceRevision == 0 || source.Audit.Attribution.ActorRef == "" ||
-			source.Audit.Attribution.EffectiveActorRef == "" || source.Audit.Content.Schema == "" ||
+			source.ResourceRevision == 0 || source.Audit.Content.Schema == "" ||
 			source.Audit.Content.Representation != "snapshots" ||
 			(source.Action != "created" && source.Action != "updated" && source.Action != "deleted") {
 			return nil, errors.NewServiceUnavailable("private history document is incomplete")
+		}
+		attribution, err := decodeHistoryAttribution(source.Audit.Attribution)
+		if err != nil {
+			return nil, err
 		}
 		if _, err := time.Parse(time.RFC3339Nano, source.OccurredAt); err != nil {
 			return nil, errors.NewServiceUnavailable("private history occurrence time is invalid")
@@ -120,7 +125,7 @@ func (os *OpenSearchSearcher) QueryHistory(ctx context.Context, criteria model.H
 			ObjectType: source.ObjectType, ObjectID: source.ObjectID,
 			Action: source.Action, OccurredAt: source.OccurredAt,
 			ResourceRevision: source.ResourceRevision,
-			Attribution:      source.Audit.Attribution, Content: source.Audit.Content,
+			Attribution:      attribution, Content: source.Audit.Content,
 			HistoryCheckObject:   source.HistoryCheckObject,
 			HistoryCheckRelation: source.HistoryCheckRelation,
 		})
@@ -134,6 +139,41 @@ func (os *OpenSearchSearcher) QueryHistory(ctx context.Context, criteria model.H
 		page.SearchAfter = &cursor
 	}
 	return page, nil
+}
+
+func decodeHistoryAttribution(payload []byte) (model.HistoryAttribution, error) {
+	// Storage and presentation deliberately use separate shapes. Never restore
+	// superseded name/avatar snapshots or accept JWT fields from stored history.
+	var stored struct {
+		ActorRef               string                 `json:"actor_ref"`
+		EffectiveActorRef      string                 `json:"effective_actor_ref"`
+		ActorVerified          bool                   `json:"actor_verified"`
+		EffectiveActorVerified bool                   `json:"effective_actor_verified"`
+		ActorIdentity          *model.HistoryIdentity `json:"actor_identity"`
+		EffectiveActorIdentity *model.HistoryIdentity `json:"effective_actor_identity"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&stored) != nil || decoder.Decode(new(any)) != io.EOF ||
+		!validHistoryIdentity(stored.ActorRef, stored.ActorIdentity) || !validHistoryIdentity(stored.EffectiveActorRef, stored.EffectiveActorIdentity) {
+		return model.HistoryAttribution{}, errors.NewServiceUnavailable("private history attribution is invalid")
+	}
+	return model.HistoryAttribution{
+		ActorRef: stored.ActorRef, EffectiveActorRef: stored.EffectiveActorRef,
+		ActorVerified: stored.ActorVerified, EffectiveActorVerified: stored.EffectiveActorVerified,
+		ActorIdentity: stored.ActorIdentity, EffectiveActorIdentity: stored.EffectiveActorIdentity,
+	}, nil
+}
+
+func validHistoryIdentity(ref string, identity *model.HistoryIdentity) bool {
+	kind, principal, ok := model.HistoryActorPrincipal(ref)
+	if !ok {
+		return false
+	}
+	if kind == "service" {
+		return identity == nil
+	}
+	return identity != nil && (identity.Username == nil || *identity.Username == principal)
 }
 
 func historyTerm(field string, value any) map[string]any {

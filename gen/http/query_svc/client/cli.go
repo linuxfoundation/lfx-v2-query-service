@@ -242,7 +242,7 @@ func BuildQueryResourcesHistoryPayload(querySvcQueryResourcesHistoryVersion stri
 		if querySvcQueryResourcesHistoryFilters != "" {
 			err = json.Unmarshal([]byte(querySvcQueryResourcesHistoryFilters), &filters)
 			if err != nil {
-				return nil, fmt.Errorf("invalid JSON for filters, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Et ex corrupti eum voluptatum.\",\n      \"Qui sunt enim praesentium recusandae.\",\n      \"Dolor impedit at.\"\n   ]'")
+				return nil, fmt.Errorf("invalid JSON for filters, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Impedit at delectus similique accusamus id quia.\",\n      \"Soluta laborum quae molestiae eos.\",\n      \"Vel veniam.\"\n   ]'")
 			}
 		}
 	}
@@ -251,7 +251,7 @@ func BuildQueryResourcesHistoryPayload(querySvcQueryResourcesHistoryVersion stri
 		if querySvcQueryResourcesHistoryFiltersAll != "" {
 			err = json.Unmarshal([]byte(querySvcQueryResourcesHistoryFiltersAll), &filtersAll)
 			if err != nil {
-				return nil, fmt.Errorf("invalid JSON for filtersAll, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Accusamus id quia ipsam soluta.\",\n      \"Quae molestiae eos culpa.\",\n      \"Veniam sed id repellendus saepe nostrum.\",\n      \"Ut eligendi sit.\"\n   ]'")
+				return nil, fmt.Errorf("invalid JSON for filtersAll, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Repellendus saepe.\",\n      \"Quia ut eligendi sit omnis.\",\n      \"Architecto totam nihil tempora dolorem voluptas possimus.\",\n      \"Asperiores nesciunt assumenda aut omnis.\"\n   ]'")
 			}
 		}
 	}
@@ -260,7 +260,7 @@ func BuildQueryResourcesHistoryPayload(querySvcQueryResourcesHistoryVersion stri
 		if querySvcQueryResourcesHistoryFiltersOr != "" {
 			err = json.Unmarshal([]byte(querySvcQueryResourcesHistoryFiltersOr), &filtersOr)
 			if err != nil {
-				return nil, fmt.Errorf("invalid JSON for filtersOr, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Architecto totam nihil tempora dolorem voluptas possimus.\",\n      \"Asperiores nesciunt assumenda aut omnis.\",\n      \"Nobis nihil voluptas nisi voluptatibus molestiae quibusdam.\"\n   ]'")
+				return nil, fmt.Errorf("invalid JSON for filtersOr, \nerror: %s, \nexample of valid JSON:\n%s", err, "'[\n      \"Nihil voluptas nisi voluptatibus.\",\n      \"Quibusdam dolore aliquam.\",\n      \"Velit delectus aliquid ipsam architecto.\"\n   ]'")
 			}
 		}
 	}

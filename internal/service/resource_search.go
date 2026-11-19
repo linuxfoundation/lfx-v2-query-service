@@ -219,6 +219,7 @@ type ResourceSearch struct {
 	accessChecker    port.AccessControlChecker
 	resourceFilter   port.ResourceFilter
 	config           Config
+	historyProfiles  *HistoryProfiles
 }
 
 // QueryResources performs resource search with business logic validation
@@ -1034,15 +1035,20 @@ func (s *ResourceSearch) IsReady(ctx context.Context) error {
 
 // NewResourceSearch creates a new ResourceSearch instance. Zero values in
 // config are replaced by DefaultConfig; an invalid config is an error.
-func NewResourceSearch(resourceSearcher port.ResourceSearcher, accessChecker port.AccessControlChecker, resourceFilter port.ResourceFilter, config Config) (ResourceSearcher, error) {
+func NewResourceSearch(resourceSearcher port.ResourceSearcher, accessChecker port.AccessControlChecker, resourceFilter port.ResourceFilter, config Config, options ...ResourceSearchOption) (ResourceSearcher, error) {
 	config = config.withDefaults()
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid resource search config: %w", err)
 	}
-	return &ResourceSearch{
+	search := &ResourceSearch{
 		resourceSearcher: resourceSearcher,
 		accessChecker:    accessChecker,
 		resourceFilter:   resourceFilter,
 		config:           config,
-	}, nil
+		historyProfiles:  NewHistoryProfiles(nil),
+	}
+	for _, option := range options {
+		option(search)
+	}
+	return search, nil
 }

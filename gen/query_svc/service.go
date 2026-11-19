@@ -72,6 +72,35 @@ type CountGroup struct {
 	Count uint64
 }
 
+type HistoryActorProfile struct {
+	// available: live lookup succeeded; deleted: user not found; unavailable:
+	// lookup failed
+	Availability string
+	// Live display name: string or null when unavailable
+	Name any `json:"name"`
+	// Live avatar URL: string or null; image bytes are never fetched
+	AvatarURL any `json:"avatar_url"`
+	// Retained event email: string or null; never refreshed from live profile
+	Email any `json:"email"`
+	// Retained event username: string or null; never refreshed
+	Username any `json:"username"`
+}
+
+type HistoryAttribution struct {
+	// Initiating actor: user:<principal> or service:<client name>
+	ActorRef string
+	// Effective actor, equal to actor_ref without delegation
+	EffectiveActorRef string
+	// Indexer-verified initiating actor evidence at first append
+	ActorVerified bool
+	// Indexer-verified effective actor evidence at first append
+	EffectiveActorVerified bool
+	// Present for users only; never a source-captured display snapshot
+	ActorProfile *HistoryActorProfile
+	// Present for effective users only
+	EffectiveActorProfile *HistoryActorProfile
+}
+
 type HistoryEvent struct {
 	// Publisher-qualified stable event identity
 	EventID string
@@ -83,8 +112,8 @@ type HistoryEvent struct {
 	OccurredAt string
 	// Publisher's monotonic resource revision
 	ResourceRevision uint64
-	// Captured initiating/effective actor references and approved profile snapshots
-	Attribution any
+	// Retained actor identity and verification, with live display profiles
+	Attribution *HistoryAttribution
 	// Approved versioned before/after snapshots; absent sides are omitted
 	Content any
 }
