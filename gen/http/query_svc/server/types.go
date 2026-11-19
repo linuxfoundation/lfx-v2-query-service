@@ -285,8 +285,8 @@ type HistoryEventResponseBody struct {
 	OccurredAt string `form:"occurred_at" json:"occurred_at" xml:"occurred_at"`
 	// Publisher's monotonic resource revision
 	ResourceRevision uint64 `form:"resource_revision" json:"resource_revision" xml:"resource_revision"`
-	// Captured initiating/effective actor references and approved profile snapshots
-	Attribution any `form:"attribution" json:"attribution" xml:"attribution"`
+	// Retained actor identity and verification, with live display profiles
+	Attribution *HistoryAttributionResponseBody `form:"attribution" json:"attribution" xml:"attribution"`
 	// Approved versioned before/after snapshots; absent sides are omitted
 	Content any `form:"content" json:"content" xml:"content"`
 }
@@ -297,6 +297,39 @@ type HistoryResourceResponseBody struct {
 	Type string `form:"type" json:"type" xml:"type"`
 	// Resource UID
 	UID string `form:"uid" json:"uid" xml:"uid"`
+}
+
+// HistoryAttributionResponseBody is used to define fields on response body
+// types.
+type HistoryAttributionResponseBody struct {
+	// Initiating actor: user:<principal> or service:<client name>
+	ActorRef string `form:"actor_ref" json:"actor_ref" xml:"actor_ref"`
+	// Effective actor, equal to actor_ref without delegation
+	EffectiveActorRef string `form:"effective_actor_ref" json:"effective_actor_ref" xml:"effective_actor_ref"`
+	// Indexer-verified initiating actor evidence at first append
+	ActorVerified bool `form:"actor_verified" json:"actor_verified" xml:"actor_verified"`
+	// Indexer-verified effective actor evidence at first append
+	EffectiveActorVerified bool `form:"effective_actor_verified" json:"effective_actor_verified" xml:"effective_actor_verified"`
+	// Present for users only; never a source-captured display snapshot
+	ActorProfile *HistoryActorProfileResponseBody `form:"actor_profile,omitempty" json:"actor_profile,omitempty" xml:"actor_profile,omitempty"`
+	// Present for effective users only
+	EffectiveActorProfile *HistoryActorProfileResponseBody `form:"effective_actor_profile,omitempty" json:"effective_actor_profile,omitempty" xml:"effective_actor_profile,omitempty"`
+}
+
+// HistoryActorProfileResponseBody is used to define fields on response body
+// types.
+type HistoryActorProfileResponseBody struct {
+	// available: live lookup succeeded; deleted: user not found; unavailable:
+	// lookup failed
+	Availability string `form:"availability" json:"availability" xml:"availability"`
+	// Live display name: string or null when unavailable
+	Name any `json:"name"`
+	// Live avatar URL: string or null; image bytes are never fetched
+	AvatarURL any `json:"avatar_url"`
+	// Retained event email: string or null; never refreshed from live profile
+	Email any `json:"email"`
+	// Retained event username: string or null; never refreshed
+	Username any `json:"username"`
 }
 
 // CountGroupResponseBody is used to define fields on response body types.

@@ -285,8 +285,8 @@ type HistoryEventResponseBody struct {
 	OccurredAt *string `form:"occurred_at,omitempty" json:"occurred_at,omitempty" xml:"occurred_at,omitempty"`
 	// Publisher's monotonic resource revision
 	ResourceRevision *uint64 `form:"resource_revision,omitempty" json:"resource_revision,omitempty" xml:"resource_revision,omitempty"`
-	// Captured initiating/effective actor references and approved profile snapshots
-	Attribution any `form:"attribution,omitempty" json:"attribution,omitempty" xml:"attribution,omitempty"`
+	// Retained actor identity and verification, with live display profiles
+	Attribution *HistoryAttributionResponseBody `form:"attribution,omitempty" json:"attribution,omitempty" xml:"attribution,omitempty"`
 	// Approved versioned before/after snapshots; absent sides are omitted
 	Content any `form:"content,omitempty" json:"content,omitempty" xml:"content,omitempty"`
 }
@@ -297,6 +297,39 @@ type HistoryResourceResponseBody struct {
 	Type *string `form:"type,omitempty" json:"type,omitempty" xml:"type,omitempty"`
 	// Resource UID
 	UID *string `form:"uid,omitempty" json:"uid,omitempty" xml:"uid,omitempty"`
+}
+
+// HistoryAttributionResponseBody is used to define fields on response body
+// types.
+type HistoryAttributionResponseBody struct {
+	// Initiating actor: user:<principal> or service:<client name>
+	ActorRef *string `form:"actor_ref,omitempty" json:"actor_ref,omitempty" xml:"actor_ref,omitempty"`
+	// Effective actor, equal to actor_ref without delegation
+	EffectiveActorRef *string `form:"effective_actor_ref,omitempty" json:"effective_actor_ref,omitempty" xml:"effective_actor_ref,omitempty"`
+	// Indexer-verified initiating actor evidence at first append
+	ActorVerified *bool `form:"actor_verified,omitempty" json:"actor_verified,omitempty" xml:"actor_verified,omitempty"`
+	// Indexer-verified effective actor evidence at first append
+	EffectiveActorVerified *bool `form:"effective_actor_verified,omitempty" json:"effective_actor_verified,omitempty" xml:"effective_actor_verified,omitempty"`
+	// Present for users only; never a source-captured display snapshot
+	ActorProfile *HistoryActorProfileResponseBody `form:"actor_profile,omitempty" json:"actor_profile,omitempty" xml:"actor_profile,omitempty"`
+	// Present for effective users only
+	EffectiveActorProfile *HistoryActorProfileResponseBody `form:"effective_actor_profile,omitempty" json:"effective_actor_profile,omitempty" xml:"effective_actor_profile,omitempty"`
+}
+
+// HistoryActorProfileResponseBody is used to define fields on response body
+// types.
+type HistoryActorProfileResponseBody struct {
+	// available: live lookup succeeded; deleted: user not found; unavailable:
+	// lookup failed
+	Availability *string `form:"availability,omitempty" json:"availability,omitempty" xml:"availability,omitempty"`
+	// Live display name: string or null when unavailable
+	Name any `json:"name"`
+	// Live avatar URL: string or null; image bytes are never fetched
+	AvatarURL any `json:"avatar_url"`
+	// Retained event email: string or null; never refreshed from live profile
+	Email any `json:"email"`
+	// Retained event username: string or null; never refreshed
+	Username any `json:"username"`
 }
 
 // CountGroupResponseBody is used to define fields on response body types.
@@ -985,6 +1018,11 @@ func ValidateHistoryEventResponseBody(body *HistoryEventResponseBody) (err error
 			err = goa.MergeErrors(err, err2)
 		}
 	}
+	if body.Attribution != nil {
+		if err2 := ValidateHistoryAttributionResponseBody(body.Attribution); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
 	return
 }
 
@@ -996,6 +1034,48 @@ func ValidateHistoryResourceResponseBody(body *HistoryResourceResponseBody) (err
 	}
 	if body.UID == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("uid", "body"))
+	}
+	return
+}
+
+// ValidateHistoryAttributionResponseBody runs the validations defined on
+// HistoryAttributionResponseBody
+func ValidateHistoryAttributionResponseBody(body *HistoryAttributionResponseBody) (err error) {
+	if body.ActorRef == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("actor_ref", "body"))
+	}
+	if body.EffectiveActorRef == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("effective_actor_ref", "body"))
+	}
+	if body.ActorVerified == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("actor_verified", "body"))
+	}
+	if body.EffectiveActorVerified == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("effective_actor_verified", "body"))
+	}
+	if body.ActorProfile != nil {
+		if err2 := ValidateHistoryActorProfileResponseBody(body.ActorProfile); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	if body.EffectiveActorProfile != nil {
+		if err2 := ValidateHistoryActorProfileResponseBody(body.EffectiveActorProfile); err2 != nil {
+			err = goa.MergeErrors(err, err2)
+		}
+	}
+	return
+}
+
+// ValidateHistoryActorProfileResponseBody runs the validations defined on
+// HistoryActorProfileResponseBody
+func ValidateHistoryActorProfileResponseBody(body *HistoryActorProfileResponseBody) (err error) {
+	if body.Availability == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("availability", "body"))
+	}
+	if body.Availability != nil {
+		if !(*body.Availability == "available" || *body.Availability == "deleted" || *body.Availability == "unavailable") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.availability", *body.Availability, []any{"available", "deleted", "unavailable"}))
+		}
 	}
 	return
 }

@@ -82,6 +82,9 @@ func (s *ResourceSearch) QueryResourcesHistory(ctx context.Context, criteria mod
 		}
 		result.SearchAfter = page.SearchAfter
 		if len(result.Events) > 0 || page.SearchAfter == nil || fetched >= s.config.DeniedPageWalk {
+			if s.historyProfiles != nil {
+				s.historyProfiles.Enrich(ctx, result.Events)
+			}
 			return result, nil
 		}
 		if criteria.SearchAfter != nil && *criteria.SearchAfter == *page.SearchAfter {

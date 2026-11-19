@@ -9,6 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
+	httpclient "github.com/linuxfoundation/lfx-v2-query-service/gen/http/query_svc/client"
+	httpserver "github.com/linuxfoundation/lfx-v2-query-service/gen/http/query_svc/server"
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
@@ -18,7 +22,6 @@ import (
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/global"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/paging"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHistoryCriteria(t *testing.T) {
@@ -193,4 +196,46 @@ func TestQueryResourcesHistoryResponse(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(encoded), `"before"`)
 	require.NotContains(t, string(encoded), `"after"`)
+}
+
+func TestHistoryAttributionResponseWireShape(t *testing.T) {
+	for _, status := range []string{"available", "deleted", "unavailable"} {
+		t.Run(status, func(t *testing.T) {
+			a := model.HistoryAttribution{
+				ActorRef: "user:testuser01", EffectiveActorRef: "service:worker", ActorVerified: true, EffectiveActorVerified: false,
+				ActorProfile:  &model.HistoryProfile{Availability: status, Email: stringPtr("retained@example.com"), Username: stringPtr("testuser01")},
+				ActorIdentity: &model.HistoryIdentity{Email: stringPtr("retained@example.com")},
+			}
+			response := &querysvc.QueryResourcesHistoryResult{Events: []*querysvc.HistoryEvent{{
+				EventID: "fixture:event", Resource: &querysvc.HistoryResource{Type: "fixture_resource", UID: "fixture-resource"}, Action: "updated", OccurredAt: "2026-11-19T12:00:00Z", ResourceRevision: 1,
+				Attribution: historyAttributionToResponse(a), Content: map[string]any{"schema": "fixture.audit.v1"},
+			}}}
+			payload, err := json.Marshal(httpserver.NewQueryResourcesHistoryResponseBody(response))
+			require.NoError(t, err)
+			var clientBody httpclient.QueryResourcesHistoryResponseBody
+			require.NoError(t, json.Unmarshal(payload, &clientBody))
+			require.NoError(t, httpclient.ValidateQueryResourcesHistoryResponseBody(&clientBody), "generated clients must accept nullable profile attributes")
+			var wire struct {
+				Events []struct {
+					Attribution map[string]any `json:"attribution"`
+				} `json:"events"`
+			}
+			require.NoError(t, json.Unmarshal(payload, &wire))
+			attribution := wire.Events[0].Attribution
+			require.Equal(t, true, attribution["actor_verified"])
+			require.Contains(t, attribution, "effective_actor_verified")
+			require.Equal(t, false, attribution["effective_actor_verified"])
+			profile := attribution["actor_profile"].(map[string]any)
+			require.Len(t, profile, 5)
+			require.Equal(t, status, profile["availability"])
+			require.Contains(t, profile, "name")
+			require.Nil(t, profile["name"])
+			require.Contains(t, profile, "avatar_url")
+			require.Nil(t, profile["avatar_url"])
+			require.Equal(t, "retained@example.com", profile["email"])
+			require.NotContains(t, attribution, "effective_actor_profile")
+			require.NotContains(t, string(payload), "actor_identity")
+			require.NotContains(t, string(payload), "actor_jwt")
+		})
+	}
 }

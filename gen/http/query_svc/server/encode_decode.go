@@ -1031,11 +1031,13 @@ func marshalQuerysvcHistoryEventToHistoryEventResponseBody(v *querysvc.HistoryEv
 		Action:           v.Action,
 		OccurredAt:       v.OccurredAt,
 		ResourceRevision: v.ResourceRevision,
-		Attribution:      v.Attribution,
 		Content:          v.Content,
 	}
 	if v.Resource != nil {
 		res.Resource = marshalQuerysvcHistoryResourceToHistoryResourceResponseBody(v.Resource)
+	}
+	if v.Attribution != nil {
+		res.Attribution = marshalQuerysvcHistoryAttributionToHistoryAttributionResponseBody(v.Attribution)
 	}
 
 	return res
@@ -1048,6 +1050,44 @@ func marshalQuerysvcHistoryResourceToHistoryResourceResponseBody(v *querysvc.His
 	res := &HistoryResourceResponseBody{
 		Type: v.Type,
 		UID:  v.UID,
+	}
+
+	return res
+}
+
+// marshalQuerysvcHistoryAttributionToHistoryAttributionResponseBody builds a
+// value of type *HistoryAttributionResponseBody from a value of type
+// *querysvc.HistoryAttribution.
+func marshalQuerysvcHistoryAttributionToHistoryAttributionResponseBody(v *querysvc.HistoryAttribution) *HistoryAttributionResponseBody {
+	res := &HistoryAttributionResponseBody{
+		ActorRef:               v.ActorRef,
+		EffectiveActorRef:      v.EffectiveActorRef,
+		ActorVerified:          v.ActorVerified,
+		EffectiveActorVerified: v.EffectiveActorVerified,
+	}
+	if v.ActorProfile != nil {
+		res.ActorProfile = marshalQuerysvcHistoryActorProfileToHistoryActorProfileResponseBody(v.ActorProfile)
+	}
+	if v.EffectiveActorProfile != nil {
+		res.EffectiveActorProfile = marshalQuerysvcHistoryActorProfileToHistoryActorProfileResponseBody(v.EffectiveActorProfile)
+	}
+
+	return res
+}
+
+// marshalQuerysvcHistoryActorProfileToHistoryActorProfileResponseBody builds a
+// value of type *HistoryActorProfileResponseBody from a value of type
+// *querysvc.HistoryActorProfile.
+func marshalQuerysvcHistoryActorProfileToHistoryActorProfileResponseBody(v *querysvc.HistoryActorProfile) *HistoryActorProfileResponseBody {
+	if v == nil {
+		return nil
+	}
+	res := &HistoryActorProfileResponseBody{
+		Availability: v.Availability,
+		Name:         v.Name,
+		AvatarURL:    v.AvatarURL,
+		Email:        v.Email,
+		Username:     v.Username,
 	}
 
 	return res

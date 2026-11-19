@@ -88,6 +88,13 @@ The OpenSearch implementation includes query templates, a searcher, and a client
 
 The NATS implementation consists of a client, access control logic, and request/response models for messaging and access control.
 
+Authenticated history reads also use this connection for optional auth-service
+display metadata on `lfx.auth-service.user_metadata.read`, after event-level
+authorization. Lookup failure returns unavailable name/avatar fields without
+failing history or changing retained username/email. See the
+[history query contract](docs/audit-history-query.md) for verification flags,
+profile availability, cache/deadline bounds and rollout requirements.
+
 #### Clearbit Implementation
 
 The Clearbit implementation provides organization search capabilities using the Clearbit Company API. It includes a client for API communication, searcher for organization queries, and configuration management for API credentials and settings.

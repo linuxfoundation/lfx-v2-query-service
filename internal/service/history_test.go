@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
+	testifymock "github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/infrastructure/mock"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
-	"github.com/stretchr/testify/require"
 )
 
 type historyPageSearcher struct {
@@ -141,4 +143,55 @@ func TestQueryResourcesHistoryRevocation(t *testing.T) {
 	second, err := svc.QueryResourcesHistory(ctx, model.HistoryCriteria{SearchCriteria: model.SearchCriteria{PageSize: 50}})
 	require.NoError(t, err)
 	require.Empty(t, second.Events)
+}
+
+func TestQueryResourcesHistory_ProfileEnrichmentAfterAuthorization(t *testing.T) {
+	for _, tt := range []struct {
+		name                    string
+		allowed                 bool
+		accessErr, errorProfile error
+		anonymous               bool
+		wantStatus              string
+	}{
+		{name: "authorized available", allowed: true, wantStatus: "available"},
+		{name: "directory outage does not fail history", allowed: true, errorProfile: fmt.Errorf("private-directory-response"), wantStatus: "unavailable"},
+		{name: "denied does not resolve actors"},
+		{name: "authorization outage does not resolve actors", accessErr: fmt.Errorf("access unavailable")},
+		{name: "anonymous does not resolve actors", anonymous: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event := identityHistoryEvent("testuser01", "testuser01")
+			event.HistoryCheckObject, event.HistoryCheckRelation = "committee:one", "auditor"
+			searcher := &historyPageSearcher{pages: []*model.HistoryPage{{Events: []model.HistoryEvent{event}}}}
+			checker := &historyChecker{allowed: map[string]bool{"committee:one#auditor@user:reader": tt.allowed}, err: tt.accessErr}
+			profiles := &mock.HistoryProfileReader{}
+			if tt.allowed {
+				profiles.On("LookupHistoryProfile", testifymock.Anything, "testuser01").Return(model.HistoryDisplayProfile{Found: true, Name: historyString("Live Test User")}, tt.errorProfile).Once()
+			}
+			svc, err := NewResourceSearch(searcher, checker, mock.NewMockResourceFilter(), DefaultConfig(), WithHistoryProfileReader(profiles))
+			require.NoError(t, err)
+			principal := "reader"
+			if tt.anonymous {
+				principal = constants.AnonymousPrincipal
+			}
+			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, principal)
+			result, err := svc.QueryResourcesHistory(ctx, model.HistoryCriteria{SearchCriteria: model.SearchCriteria{PageSize: 100}})
+			if tt.accessErr != nil || tt.anonymous {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				if tt.allowed {
+					require.Len(t, result.Events, 1)
+					require.Equal(t, tt.wantStatus, result.Events[0].Attribution.ActorProfile.Availability)
+					require.Equal(t, "testuser01@example.com", *result.Events[0].Attribution.ActorProfile.Email)
+				} else {
+					require.Empty(t, result.Events)
+				}
+			}
+			if !tt.allowed {
+				profiles.AssertNotCalled(t, "LookupHistoryProfile", testifymock.Anything, testifymock.Anything)
+			}
+			profiles.AssertExpectations(t)
+		})
+	}
 }

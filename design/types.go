@@ -65,9 +65,34 @@ var HistoryEvent = dsl.Type("HistoryEvent", func() {
 	dsl.Attribute("action", dsl.String, "created, updated or deleted")
 	dsl.Attribute("occurred_at", dsl.String, "Source occurrence time (RFC3339)")
 	dsl.Attribute("resource_revision", dsl.UInt64, "Publisher's monotonic resource revision")
-	dsl.Attribute("attribution", dsl.Any, "Captured initiating/effective actor references and approved profile snapshots")
+	dsl.Attribute("attribution", HistoryAttribution, "Retained actor identity and verification, with live display profiles")
 	dsl.Attribute("content", dsl.Any, "Approved versioned before/after snapshots; absent sides are omitted")
 	dsl.Required("event_id", "resource", "action", "occurred_at", "resource_revision", "attribution", "content")
+})
+
+// HistoryAttribution separates verified event attribution from live display data.
+var HistoryAttribution = dsl.Type("HistoryAttribution", func() {
+	dsl.Attribute("actor_ref", dsl.String, "Initiating actor: user:<principal> or service:<client name>")
+	dsl.Attribute("effective_actor_ref", dsl.String, "Effective actor, equal to actor_ref without delegation")
+	dsl.Attribute("actor_verified", dsl.Boolean, "Indexer-verified initiating actor evidence at first append")
+	dsl.Attribute("effective_actor_verified", dsl.Boolean, "Indexer-verified effective actor evidence at first append")
+	dsl.Attribute("actor_profile", HistoryActorProfile, "Present for users only; never a source-captured display snapshot")
+	dsl.Attribute("effective_actor_profile", HistoryActorProfile, "Present for effective users only")
+	dsl.Required("actor_ref", "effective_actor_ref", "actor_verified", "effective_actor_verified")
+})
+
+// HistoryActorProfile retains event email/username even when live lookup fails.
+// Any is deliberate for nullable scalars: Goa's string schema rejects JSON null.
+// The service supplies only string pointers or nil for these response fields.
+var HistoryActorProfile = dsl.Type("HistoryActorProfile", func() {
+	dsl.Attribute("availability", dsl.String, "available: live lookup succeeded; deleted: user not found; unavailable: lookup failed", func() {
+		dsl.Enum("available", "deleted", "unavailable")
+	})
+	dsl.Attribute("name", dsl.Any, "Live display name: string or null when unavailable", func() { dsl.Meta("struct:tag:json", "name"); dsl.Example("Test User 1") })
+	dsl.Attribute("avatar_url", dsl.Any, "Live avatar URL: string or null; image bytes are never fetched", func() { dsl.Meta("struct:tag:json", "avatar_url"); dsl.Example("https://example.com/avatar.png") })
+	dsl.Attribute("email", dsl.Any, "Retained event email: string or null; never refreshed from live profile", func() { dsl.Meta("struct:tag:json", "email"); dsl.Example("user-1@example.com") })
+	dsl.Attribute("username", dsl.Any, "Retained event username: string or null; never refreshed", func() { dsl.Meta("struct:tag:json", "username"); dsl.Example("testuser01") })
+	dsl.Required("availability")
 })
 
 // HistoryResource identifies the subject of one retained audit event.
