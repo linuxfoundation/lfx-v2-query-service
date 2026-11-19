@@ -31,8 +31,9 @@ DISABLE_ERRORS_LINTERS:
   # Pre-existing dependency vulnerabilities; tracked separately.
   - REPOSITORY_GRYPE
 YAML_YAMLLINT_CONFIG_FILE: .yamllint
-# zizmor's "artipacked" audit needs the GitHub API (to verify
-# SHA-pinned action tags), which requires GITHUB_TOKEN.
+# zizmor's online audits (impostor-commit, ref-version-mismatch,
+# known-vulnerable-actions) call the GitHub API to resolve SHA-pinned actions
+# and their tag comments, which requires GITHUB_TOKEN.
 ACTION_ZIZMOR_UNSECURED_ENV_VARIABLES:
   - GITHUB_TOKEN
 REPOSITORY_CHECKOV_ARGUMENTS: >-
