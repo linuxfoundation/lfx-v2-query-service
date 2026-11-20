@@ -927,8 +927,13 @@ func membershipFixtureSearcher(records []model.Resource) *pagedSearcher {
 	return &pagedSearcher{MockResourceSearcher: mock.NewMockResourceSearcher(), pages: pages}
 }
 
+// TestResourceSearchMembershipSummaryRunCeiling pins the two outcomes of a
+// read that reaches the hard ceiling without a resumable boundary: an empty
+// complete: false answer without a cursor while the caller has seen nothing,
+// and a 503 once any visible row was read, whether the visible rows came
+// first, last, or on every page.
 func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
-	for _, mode := range []string{"visible", "denied", "unconverted"} {
+	for _, mode := range []string{"visible", "denied", "unconverted", "visible-then-denied", "visible-on-ceiling-page"} {
 		t.Run(mode, func(t *testing.T) {
 			records := make([]model.Resource, constants.MaxSummaryRunRecords+1)
 			for i := range records {
@@ -943,9 +948,22 @@ func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
 					page.Resources = nil
 				}
 			}
+			// The mock denies by substring of the access-check line, so a
+			// uid prefix denies a block of consecutive records.
 			checker := mock.NewMockAccessControlChecker()
-			if mode == "denied" {
+			switch mode {
+			case "denied":
 				checker.DeniedResourceIDs = []string{constants.MembershipResourceType + ":"}
+			case "visible-then-denied":
+				// Pages 1-40 are visible; pages 41-50 (m-40000..m-49999),
+				// including the page that reaches the ceiling, are denied.
+				checker.DeniedResourceIDs = []string{constants.MembershipResourceType + ":m-4"}
+			case "visible-on-ceiling-page":
+				// Pages 1-49 (m-00000..m-48999) are denied; only page 50
+				// (m-49xxx), the page that reaches the ceiling, is visible.
+				for _, prefix := range []string{":m-0", ":m-1", ":m-2", ":m-3", ":m-40", ":m-41", ":m-42", ":m-43", ":m-44", ":m-45", ":m-46", ":m-47", ":m-48"} {
+					checker.DeniedResourceIDs = append(checker.DeniedResourceIDs, constants.MembershipResourceType+prefix)
+				}
 			}
 			config := DefaultConfig()
 			config.MaxSummaryRecords = 1
@@ -953,10 +971,11 @@ func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
 			require.NoError(t, err)
 			result, err := service.QueryMembershipSummary(membershipContext("test-user"), model.MembershipSummaryCriteria{B2BOrgUID: "org-1"})
 			require.Len(t, searcher.cursors, constants.MaxSummaryRunRecords/constants.MaxPageSize)
-			if mode != "visible" {
+			if mode == "denied" || mode == "unconverted" {
 				// The caller saw nothing: access is per record, so visible
-				// records may lie past the ceiling. The read answers as any
-				// truncated read does and never claims completeness.
+				// records may lie past the ceiling. The read answers with
+				// nothing visible, not complete and no continuation, and
+				// never claims completeness.
 				require.NoError(t, err)
 				require.False(t, result.Complete)
 				require.Nil(t, result.SearchAfter)
@@ -964,8 +983,9 @@ func TestResourceSearchMembershipSummaryRunCeiling(t *testing.T) {
 				require.Zero(t, result.TermsTotal)
 				return
 			}
-			// The caller already saw visible rows, so a run that cannot be
-			// finished is an error, never a partial summary.
+			// The caller already saw visible rows, on any page of the read,
+			// so a run that cannot be finished is an error, never a partial
+			// summary.
 			var unavailable pkgerrors.ServiceUnavailable
 			require.ErrorAs(t, err, &unavailable)
 			require.ErrorContains(t, err, "membership summary cannot be read whole within the record ceiling; retrying will not help")
