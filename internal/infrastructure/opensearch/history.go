@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
+	"github.com/linuxfoundation/lfx-v2-query-service/pkg/constants"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/errors"
 )
 
@@ -102,6 +103,7 @@ func (os *OpenSearchSearcher) QueryHistory(ctx context.Context, criteria model.H
 			HistoryCheckObject   string `json:"history_check_object"`
 			HistoryCheckRelation string `json:"history_check_relation"`
 			Audit                struct {
+				Origin      string               `json:"origin"`
 				Attribution json.RawMessage      `json:"attribution"`
 				Content     model.HistoryContent `json:"content"`
 			} `json:"audit"`
@@ -113,7 +115,7 @@ func (os *OpenSearchSearcher) QueryHistory(ctx context.Context, criteria model.H
 			(source.Action != "created" && source.Action != "updated" && source.Action != "deleted") {
 			return nil, errors.NewServiceUnavailable("private history document is incomplete")
 		}
-		attribution, err := decodeHistoryAttribution(source.Audit.Attribution)
+		attribution, err := decodeHistoryAttribution(source.Audit.Attribution, source.Audit.Origin)
 		if err != nil {
 			return nil, err
 		}
@@ -141,7 +143,7 @@ func (os *OpenSearchSearcher) QueryHistory(ctx context.Context, criteria model.H
 	return page, nil
 }
 
-func decodeHistoryAttribution(payload []byte) (model.HistoryAttribution, error) {
+func decodeHistoryAttribution(payload []byte, origin string) (model.HistoryAttribution, error) {
 	// Storage and presentation deliberately use separate shapes. Never restore
 	// superseded name/avatar snapshots or accept JWT fields from stored history.
 	var stored struct {
@@ -155,7 +157,9 @@ func decodeHistoryAttribution(payload []byte) (model.HistoryAttribution, error) 
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&stored) != nil || decoder.Decode(new(any)) != io.EOF ||
-		!validHistoryIdentity(stored.ActorRef, stored.ActorIdentity) || !validHistoryIdentity(stored.EffectiveActorRef, stored.EffectiveActorIdentity) {
+		!validHistoryIdentity(stored.ActorRef, stored.ActorIdentity, stored.ActorVerified, origin) ||
+		!validHistoryIdentity(stored.EffectiveActorRef, stored.EffectiveActorIdentity, stored.EffectiveActorVerified, origin) ||
+		!explicitLegacyHistoryFields(payload, stored.ActorRef, stored.EffectiveActorRef) {
 		return model.HistoryAttribution{}, errors.NewServiceUnavailable("private history attribution is invalid")
 	}
 	return model.HistoryAttribution{
@@ -165,13 +169,45 @@ func decodeHistoryAttribution(payload []byte) (model.HistoryAttribution, error) 
 	}, nil
 }
 
-func validHistoryIdentity(ref string, identity *model.HistoryIdentity) bool {
+// explicitLegacyHistoryFields distinguishes explicit false/null values from Go
+// zero values. Check only legacy roles so older user/service records keep their
+// existing compatibility. Typed decoding above still rejects unknown fields.
+func explicitLegacyHistoryFields(payload []byte, actor, effective string) bool {
+	if !strings.HasPrefix(actor, "legacy:") && !strings.HasPrefix(effective, "legacy:") {
+		return true
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(payload, &fields) != nil {
+		return false
+	}
+	for _, role := range []struct{ ref, key string }{{actor, "actor"}, {effective, "effective_actor"}} {
+		if !strings.HasPrefix(role.ref, "legacy:") {
+			continue
+		}
+		if !bytes.Equal(bytes.TrimSpace(fields[role.key+"_verified"]), []byte("false")) {
+			return false
+		}
+		var identity map[string]json.RawMessage
+		if json.Unmarshal(fields[role.key+"_identity"], &identity) != nil || len(identity) != 2 ||
+			!bytes.Equal(bytes.TrimSpace(identity["username"]), []byte("null")) ||
+			!bytes.Equal(bytes.TrimSpace(identity["email"]), []byte("null")) {
+			return false
+		}
+	}
+	return true
+}
+
+func validHistoryIdentity(ref string, identity *model.HistoryIdentity, verified bool, origin string) bool {
 	kind, principal, ok := model.HistoryActorPrincipal(ref)
 	if !ok {
 		return false
 	}
 	if kind == "service" {
 		return identity == nil
+	}
+	if kind == "legacy" {
+		return origin == constants.HistoryOriginHistoricalImport && !verified &&
+			identity != nil && identity.Username == nil && identity.Email == nil
 	}
 	return identity != nil && (identity.Username == nil || *identity.Username == principal)
 }

@@ -160,6 +160,12 @@ func (h *HistoryProfiles) remember(ref string, profile model.HistoryDisplayProfi
 
 func historyProfile(ref string, identity *model.HistoryIdentity, display *model.HistoryDisplayProfile) *model.HistoryProfile {
 	kind, _, valid := model.HistoryActorPrincipal(ref)
+	if valid && kind == "legacy" {
+		// The reader has checked origin, false verification and null identity.
+		// This label is presentation only, not a stored name or directory result.
+		name := constants.HistoryUnknownLegacyUserName
+		return &model.HistoryProfile{Availability: "unavailable", Name: &name}
+	}
 	if !valid || kind != "user" {
 		return nil
 	}

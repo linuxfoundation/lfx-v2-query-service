@@ -669,7 +669,7 @@ definitions:
         properties:
             availability:
                 type: string
-                description: 'available: live lookup succeeded; deleted: user not found; unavailable: lookup failed'
+                description: 'available: live lookup succeeded; deleted: user not found; unavailable: lookup failed or legacy actor cannot be resolved'
                 example: available
                 enum:
                     - available
@@ -682,8 +682,8 @@ definitions:
                 description: 'Retained event email: string or null; never refreshed from live profile'
                 example: user-1@example.com
             name:
-                description: 'Live display name: string or null when unavailable'
-                example: Test User 1
+                description: 'Live display name: string or null; unresolved legacy actors use the display-only label Unknown legacy user'
+                example: First Last
             username:
                 description: 'Retained event username: string or null; never refreshed'
                 example: testuser01
@@ -691,7 +691,7 @@ definitions:
             availability: available
             avatar_url: https://example.com/avatar.png
             email: user-1@example.com
-            name: Test User 1
+            name: First Last
             username: testuser01
         required:
             - availability
@@ -703,7 +703,7 @@ definitions:
                 $ref: '#/definitions/HistoryActorProfile'
             actor_ref:
                 type: string
-                description: 'Initiating actor: user:<principal> or service:<client name>'
+                description: 'Initiating actor: user:<principal>, service:<client name>, or unresolved import provenance legacy:<source>/<opaque-id>'
                 example: Et porro culpa.
             actor_verified:
                 type: boolean
@@ -724,7 +724,7 @@ definitions:
                 availability: deleted
                 avatar_url: https://example.com/avatar.png
                 email: user-1@example.com
-                name: Test User 1
+                name: First Last
                 username: testuser01
             actor_ref: Blanditiis sit ut ut optio.
             actor_verified: false
@@ -732,7 +732,7 @@ definitions:
                 availability: deleted
                 avatar_url: https://example.com/avatar.png
                 email: user-1@example.com
-                name: Test User 1
+                name: First Last
                 username: testuser01
             effective_actor_ref: Ullam facilis rerum.
             effective_actor_verified: true
@@ -776,7 +776,7 @@ definitions:
                     availability: deleted
                     avatar_url: https://example.com/avatar.png
                     email: user-1@example.com
-                    name: Test User 1
+                    name: First Last
                     username: testuser01
                 actor_ref: Aut exercitationem eos numquam.
                 actor_verified: false
@@ -784,7 +784,7 @@ definitions:
                     availability: deleted
                     avatar_url: https://example.com/avatar.png
                     email: user-1@example.com
-                    name: Test User 1
+                    name: First Last
                     username: testuser01
                 effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                 effective_actor_verified: true
@@ -1227,7 +1227,7 @@ definitions:
                             availability: deleted
                             avatar_url: https://example.com/avatar.png
                             email: user-1@example.com
-                            name: Test User 1
+                            name: First Last
                             username: testuser01
                         actor_ref: Aut exercitationem eos numquam.
                         actor_verified: false
@@ -1235,7 +1235,7 @@ definitions:
                             availability: deleted
                             avatar_url: https://example.com/avatar.png
                             email: user-1@example.com
-                            name: Test User 1
+                            name: First Last
                             username: testuser01
                         effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                         effective_actor_verified: true
@@ -1252,7 +1252,7 @@ definitions:
                             availability: deleted
                             avatar_url: https://example.com/avatar.png
                             email: user-1@example.com
-                            name: Test User 1
+                            name: First Last
                             username: testuser01
                         actor_ref: Aut exercitationem eos numquam.
                         actor_verified: false
@@ -1260,7 +1260,7 @@ definitions:
                             availability: deleted
                             avatar_url: https://example.com/avatar.png
                             email: user-1@example.com
-                            name: Test User 1
+                            name: First Last
                             username: testuser01
                         effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                         effective_actor_verified: true
@@ -1277,7 +1277,7 @@ definitions:
                             availability: deleted
                             avatar_url: https://example.com/avatar.png
                             email: user-1@example.com
-                            name: Test User 1
+                            name: First Last
                             username: testuser01
                         actor_ref: Aut exercitationem eos numquam.
                         actor_verified: false
@@ -1285,7 +1285,7 @@ definitions:
                             availability: deleted
                             avatar_url: https://example.com/avatar.png
                             email: user-1@example.com
-                            name: Test User 1
+                            name: First Last
                             username: testuser01
                         effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                         effective_actor_verified: true
@@ -1308,7 +1308,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     actor_ref: Aut exercitationem eos numquam.
                     actor_verified: false
@@ -1316,7 +1316,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                     effective_actor_verified: true
@@ -1333,7 +1333,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     actor_ref: Aut exercitationem eos numquam.
                     actor_verified: false
@@ -1341,7 +1341,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                     effective_actor_verified: true
@@ -1358,7 +1358,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     actor_ref: Aut exercitationem eos numquam.
                     actor_verified: false
@@ -1366,7 +1366,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                     effective_actor_verified: true
@@ -1383,7 +1383,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     actor_ref: Aut exercitationem eos numquam.
                     actor_verified: false
@@ -1391,7 +1391,7 @@ definitions:
                         availability: deleted
                         avatar_url: https://example.com/avatar.png
                         email: user-1@example.com
-                        name: Test User 1
+                        name: First Last
                         username: testuser01
                     effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
                     effective_actor_verified: true

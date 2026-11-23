@@ -58,6 +58,13 @@ success. The existing user profile response shape is preserved; service actors
 have no profile. Metadata lookup uses a bounded in-process display cache and
 never refreshes retained identity.
 
+Historical imports can preserve unresolved actors as
+`legacy:<source>/<opaque-id>`. The reader requires an import origin, null identity
+and false verification; it performs no directory lookup and returns a display-only
+`Unknown legacy user` label with otherwise null profile fields. This neither
+grants history access nor changes pagination. See the
+[unresolved actor contract](audit-history-query.md#unresolved-historical-actors).
+
 ### GET /query/resources
 
 | Parameter | Type | Description |

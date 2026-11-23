@@ -302,7 +302,8 @@ type HistoryResourceResponseBody struct {
 // HistoryAttributionResponseBody is used to define fields on response body
 // types.
 type HistoryAttributionResponseBody struct {
-	// Initiating actor: user:<principal> or service:<client name>
+	// Initiating actor: user:<principal>, service:<client name>, or unresolved
+	// import provenance legacy:<source>/<opaque-id>
 	ActorRef *string `form:"actor_ref,omitempty" json:"actor_ref,omitempty" xml:"actor_ref,omitempty"`
 	// Effective actor, equal to actor_ref without delegation
 	EffectiveActorRef *string `form:"effective_actor_ref,omitempty" json:"effective_actor_ref,omitempty" xml:"effective_actor_ref,omitempty"`
@@ -310,9 +311,10 @@ type HistoryAttributionResponseBody struct {
 	ActorVerified *bool `form:"actor_verified,omitempty" json:"actor_verified,omitempty" xml:"actor_verified,omitempty"`
 	// Indexer-verified effective actor evidence at first append
 	EffectiveActorVerified *bool `form:"effective_actor_verified,omitempty" json:"effective_actor_verified,omitempty" xml:"effective_actor_verified,omitempty"`
-	// Present for users only; never a source-captured display snapshot
+	// Present for users and unresolved legacy actors; never a source-captured
+	// display snapshot
 	ActorProfile *HistoryActorProfileResponseBody `form:"actor_profile,omitempty" json:"actor_profile,omitempty" xml:"actor_profile,omitempty"`
-	// Present for effective users only
+	// Present for effective users and unresolved legacy actors
 	EffectiveActorProfile *HistoryActorProfileResponseBody `form:"effective_actor_profile,omitempty" json:"effective_actor_profile,omitempty" xml:"effective_actor_profile,omitempty"`
 }
 
@@ -320,9 +322,10 @@ type HistoryAttributionResponseBody struct {
 // types.
 type HistoryActorProfileResponseBody struct {
 	// available: live lookup succeeded; deleted: user not found; unavailable:
-	// lookup failed
+	// lookup failed or legacy actor cannot be resolved
 	Availability *string `form:"availability,omitempty" json:"availability,omitempty" xml:"availability,omitempty"`
-	// Live display name: string or null when unavailable
+	// Live display name: string or null; unresolved legacy actors use the
+	// display-only label Unknown legacy user
 	Name any `json:"name"`
 	// Live avatar URL: string or null; image bytes are never fetched
 	AvatarURL any `json:"avatar_url"`
