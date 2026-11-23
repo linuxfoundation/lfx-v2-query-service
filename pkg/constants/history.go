@@ -6,6 +6,10 @@ package constants
 import "time"
 
 const (
+	// HistoryOriginHistoricalImport is the indexer's history-only import origin.
+	HistoryOriginHistoricalImport = "historical_import"
+	// HistoryUnknownLegacyUserName is a display fallback, never persisted identity.
+	HistoryUnknownLegacyUserName = "Unknown legacy user"
 	// HistoryUserMetadataSubject is owned by auth-service's user_metadata contract.
 	HistoryUserMetadataSubject = "lfx.auth-service.user_metadata.read"
 	// HistoryProfileTimeout bounds the entire optional page-enrichment phase.

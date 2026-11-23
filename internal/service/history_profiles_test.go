@@ -87,6 +87,42 @@ func TestHistoryProfiles_Enrich(t *testing.T) {
 	})
 }
 
+func TestHistoryProfiles_LegacyDoesNotLookup(t *testing.T) {
+	reader := &infraMock.HistoryProfileReader{}
+	reader.On("LookupHistoryProfile", mock.Anything, "first-last").Return(model.HistoryDisplayProfile{Found: true, Name: historyString("First Last")}, nil).Once()
+	legacy := "legacy:v1-platform/actor-001"
+	events := []model.HistoryEvent{
+		{Attribution: model.HistoryAttribution{
+			ActorRef: legacy, EffectiveActorRef: legacy,
+			ActorIdentity: &model.HistoryIdentity{}, EffectiveActorIdentity: &model.HistoryIdentity{},
+		}},
+		{Attribution: model.HistoryAttribution{
+			ActorRef: "user:first-last", EffectiveActorRef: legacy,
+			ActorIdentity: &model.HistoryIdentity{Username: historyString("first-last")}, EffectiveActorIdentity: &model.HistoryIdentity{},
+		}},
+		{Attribution: model.HistoryAttribution{ActorRef: "service:fixture", EffectiveActorRef: "service:fixture"}},
+	}
+	enricher := NewHistoryProfiles(reader)
+	for range 2 {
+		enricher.Enrich(context.Background(), events)
+	}
+	for _, profile := range []*model.HistoryProfile{events[0].Attribution.ActorProfile, events[0].Attribution.EffectiveActorProfile, events[1].Attribution.EffectiveActorProfile} {
+		require.Equal(t, "unavailable", profile.Availability)
+		require.Equal(t, "Unknown legacy user", *profile.Name)
+		require.Nil(t, profile.Email)
+		require.Nil(t, profile.Username)
+		require.Nil(t, profile.AvatarURL)
+	}
+	require.Nil(t, events[0].Attribution.ActorIdentity.Username, "display fallback is never retained identity")
+	require.False(t, events[0].Attribution.ActorVerified)
+	require.False(t, events[0].Attribution.EffectiveActorVerified)
+	require.Equal(t, "First Last", *events[1].Attribution.ActorProfile.Name)
+	require.Nil(t, events[2].Attribution.ActorProfile)
+	require.Empty(t, enricher.cache[legacy])
+	reader.AssertNumberOfCalls(t, "LookupHistoryProfile", 1)
+	reader.AssertExpectations(t)
+}
+
 func TestHistoryProfiles_EnrichDeduplicatesAndCaches(t *testing.T) {
 	reader := &infraMock.HistoryProfileReader{}
 	for i := range 3 {

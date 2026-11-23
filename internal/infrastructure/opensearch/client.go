@@ -138,7 +138,7 @@ func (c *httpClient) SearchHistory(ctx context.Context, index string, query []by
 			SourceIncludes: []string{
 				"publisher", "event_id", "object_type", "object_id", "action",
 				"occurred_at", "resource_revision", "history_check_object",
-				"history_check_relation", "audit.attribution", "audit.content",
+				"history_check_relation", "audit.origin", "audit.attribution", "audit.content",
 			},
 		},
 	})

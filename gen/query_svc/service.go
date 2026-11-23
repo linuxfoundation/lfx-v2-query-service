@@ -74,9 +74,10 @@ type CountGroup struct {
 
 type HistoryActorProfile struct {
 	// available: live lookup succeeded; deleted: user not found; unavailable:
-	// lookup failed
+	// lookup failed or legacy actor cannot be resolved
 	Availability string
-	// Live display name: string or null when unavailable
+	// Live display name: string or null; unresolved legacy actors use the
+	// display-only label Unknown legacy user
 	Name any `json:"name"`
 	// Live avatar URL: string or null; image bytes are never fetched
 	AvatarURL any `json:"avatar_url"`
@@ -87,7 +88,8 @@ type HistoryActorProfile struct {
 }
 
 type HistoryAttribution struct {
-	// Initiating actor: user:<principal> or service:<client name>
+	// Initiating actor: user:<principal>, service:<client name>, or unresolved
+	// import provenance legacy:<source>/<opaque-id>
 	ActorRef string
 	// Effective actor, equal to actor_ref without delegation
 	EffectiveActorRef string
@@ -95,9 +97,10 @@ type HistoryAttribution struct {
 	ActorVerified bool
 	// Indexer-verified effective actor evidence at first append
 	EffectiveActorVerified bool
-	// Present for users only; never a source-captured display snapshot
+	// Present for users and unresolved legacy actors; never a source-captured
+	// display snapshot
 	ActorProfile *HistoryActorProfile
-	// Present for effective users only
+	// Present for effective users and unresolved legacy actors
 	EffectiveActorProfile *HistoryActorProfile
 }
 

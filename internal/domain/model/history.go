@@ -5,6 +5,7 @@ package model
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -50,15 +51,24 @@ type HistoryDisplayProfile struct {
 	AvatarURL *string
 }
 
-// HistoryActorPrincipal parses the indexer's bounded user/service actor grammar.
-// This validates syntax only; an actor reference never grants history access.
+var historyLegacySourcePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+
+// HistoryActorPrincipal parses user/service principals and source-qualified
+// legacy provenance. Legacy IDs are not directory keys. This checks syntax
+// only, not origin, verification or history access.
 func HistoryActorPrincipal(ref string) (kind, principal string, valid bool) {
 	kind, principal, ok := strings.Cut(ref, ":")
-	if !ok || (kind != "user" && kind != "service") || len(principal) == 0 || len(principal) > 256 {
+	if !ok || (kind != "user" && kind != "service" && kind != "legacy") || len(principal) == 0 || len(principal) > 256 {
 		return "", "", false
 	}
 	for _, r := range principal {
 		if r < 0x21 || r > 0x7e || strings.ContainsRune(":#@{}", r) {
+			return "", "", false
+		}
+	}
+	if kind == "legacy" {
+		source, sourceID, ok := strings.Cut(principal, "/")
+		if !ok || !historyLegacySourcePattern.MatchString(source) || sourceID == "" {
 			return "", "", false
 		}
 	}

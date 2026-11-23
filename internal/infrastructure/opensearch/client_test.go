@@ -36,7 +36,7 @@ func TestHTTPClientSearchHistory(t *testing.T) {
 		require.Contains(t, rawQuery, "allow_partial_search_results=false")
 		require.ElementsMatch(t, []string{
 			"publisher", "event_id", "object_type", "object_id", "action", "occurred_at",
-			"resource_revision", "history_check_object", "history_check_relation", "audit.attribution", "audit.content",
+			"resource_revision", "history_check_object", "history_check_relation", "audit.origin", "audit.attribution", "audit.content",
 		}, strings.Split(sourceIncludes, ","), "unexpected source field would widen the private history read")
 		require.Len(t, result.Hits.Hits, 1)
 		require.JSONEq(t, `[1794253800000,"source","event-1"]`, string(result.Hits.Hits[0].Sort))

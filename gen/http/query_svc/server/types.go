@@ -302,7 +302,8 @@ type HistoryResourceResponseBody struct {
 // HistoryAttributionResponseBody is used to define fields on response body
 // types.
 type HistoryAttributionResponseBody struct {
-	// Initiating actor: user:<principal> or service:<client name>
+	// Initiating actor: user:<principal>, service:<client name>, or unresolved
+	// import provenance legacy:<source>/<opaque-id>
 	ActorRef string `form:"actor_ref" json:"actor_ref" xml:"actor_ref"`
 	// Effective actor, equal to actor_ref without delegation
 	EffectiveActorRef string `form:"effective_actor_ref" json:"effective_actor_ref" xml:"effective_actor_ref"`
@@ -310,9 +311,10 @@ type HistoryAttributionResponseBody struct {
 	ActorVerified bool `form:"actor_verified" json:"actor_verified" xml:"actor_verified"`
 	// Indexer-verified effective actor evidence at first append
 	EffectiveActorVerified bool `form:"effective_actor_verified" json:"effective_actor_verified" xml:"effective_actor_verified"`
-	// Present for users only; never a source-captured display snapshot
+	// Present for users and unresolved legacy actors; never a source-captured
+	// display snapshot
 	ActorProfile *HistoryActorProfileResponseBody `form:"actor_profile,omitempty" json:"actor_profile,omitempty" xml:"actor_profile,omitempty"`
-	// Present for effective users only
+	// Present for effective users and unresolved legacy actors
 	EffectiveActorProfile *HistoryActorProfileResponseBody `form:"effective_actor_profile,omitempty" json:"effective_actor_profile,omitempty" xml:"effective_actor_profile,omitempty"`
 }
 
@@ -320,9 +322,10 @@ type HistoryAttributionResponseBody struct {
 // types.
 type HistoryActorProfileResponseBody struct {
 	// available: live lookup succeeded; deleted: user not found; unavailable:
-	// lookup failed
+	// lookup failed or legacy actor cannot be resolved
 	Availability string `form:"availability" json:"availability" xml:"availability"`
-	// Live display name: string or null when unavailable
+	// Live display name: string or null; unresolved legacy actors use the
+	// display-only label Unknown legacy user
 	Name any `json:"name"`
 	// Live avatar URL: string or null; image bytes are never fetched
 	AvatarURL any `json:"avatar_url"`

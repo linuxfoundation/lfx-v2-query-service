@@ -77,7 +77,7 @@ GET /query/resources/history?v=1&parent=committee:committee-uuid&filters=action:
 }
 ```
 
-Only mutation events have history records. Actor refs and the two verification
+Live mutations and historical imports have history records. Actor refs and the two verification
 booleans come from the retained event; read-time lookup does not authenticate
 actors or change first-append verification. Service actors have no profile.
 User actors retain the existing `actor_profile` / `effective_actor_profile`
@@ -95,6 +95,53 @@ For `deleted` and `unavailable`, name/avatar are explicitly null while the store
 email/username remain. Successful partial metadata still has `available` status
 and nulls for absent display fields. Nullable attributes are serialized as null,
 not silently omitted. All strings must be rendered as text, not trusted HTML.
+
+### Unresolved historical actors
+
+Historical imports can use `legacy:<source>/<opaque-id>` when the source actor
+cannot be mapped confidently to an LFX username or known M2M client. The source
+namespace uses `[a-z][a-z0-9_-]{0,63}`; the combined source/id obeys the indexer's
+existing 256-character printable opaque-ID grammar. For example,
+`legacy:v1-platform/actor-001` preserves an original source identity without
+pretending it is a directory principal. Never use these refs as directory keys,
+FGA grants, or evidence that the importer performed the original change.
+
+The OpenSearch adapter reads the existing private `audit.origin` to validate this
+kind. A legacy ref is accepted only on `historical_import` records, with an
+explicitly present `false` verification flag and an identity object whose
+`username` and `email` members are both explicitly present as null. Missing/null
+verification, missing identity members, non-null username/email, true verification,
+malformed source refs or a missing/non-import origin fail the entire page with
+503. These presence requirements apply independently to each legacy role, not
+to a user/service counterpart. Existing user/service
+records remain compatible without an origin field; service records still omit
+identity/profile. No new top-level storage mapping or public response field is
+introduced, and origin is not added as a request filter or exposed in responses.
+
+After the normal per-event history authorization, each legacy actor role receives:
+
+```json
+{
+  "availability": "unavailable",
+  "name": "Unknown legacy user",
+  "avatar_url": null,
+  "email": null,
+  "username": null
+}
+```
+
+The name is a display-only default, not captured identity or a directory result.
+It is the legacy-specific exception to null names for unavailable user lookups.
+No metadata lookup or display-cache entry is created. Actor refs and false
+verification are returned unchanged. Known usernames continue to use current
+name/avatar enrichment; explicit account absence retains stored username/email
+and displays null name/avatar as before. Known M2M clients remain service actors.
+
+Deploy this compatible reader before enabling imports containing `legacy:` refs;
+older readers reject the unknown kind. Identity mappings are frozen by the
+importer before dispatch. Later identity discovery does not authorize rewriting
+stored events or binding a legacy ref to a new account during reads. Names and
+avatars intentionally use current display data, not historical profile captures.
 
 The OpenSearch adapter reads `actor_identity` and `effective_actor_identity`
 (username/email only), not the superseded publisher profile snapshots. Private

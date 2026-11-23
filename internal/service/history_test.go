@@ -195,3 +195,33 @@ func TestQueryResourcesHistory_ProfileEnrichmentAfterAuthorization(t *testing.T)
 		})
 	}
 }
+
+func TestQueryResourcesHistory_LegacyStillRequiresAuthorization(t *testing.T) {
+	for _, allowed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allowed=%v", allowed), func(t *testing.T) {
+			event := model.HistoryEvent{
+				EventID: "legacy-event", HistoryCheckObject: "committee:one", HistoryCheckRelation: "auditor",
+				Attribution: model.HistoryAttribution{
+					ActorRef: "legacy:v1-platform/actor-001", EffectiveActorRef: "legacy:v1-platform/actor-001",
+					ActorIdentity: &model.HistoryIdentity{}, EffectiveActorIdentity: &model.HistoryIdentity{},
+				},
+			}
+			searcher := &historyPageSearcher{pages: []*model.HistoryPage{{Events: []model.HistoryEvent{event}}}}
+			checker := &historyChecker{allowed: map[string]bool{"committee:one#auditor@user:reader": allowed}}
+			profiles := &mock.HistoryProfileReader{}
+			svc, err := NewResourceSearch(searcher, checker, mock.NewMockResourceFilter(), DefaultConfig(), WithHistoryProfileReader(profiles))
+			require.NoError(t, err)
+			ctx := context.WithValue(context.Background(), constants.PrincipalContextID, "reader")
+			result, err := svc.QueryResourcesHistory(ctx, model.HistoryCriteria{SearchCriteria: model.SearchCriteria{PageSize: 50}})
+			require.NoError(t, err)
+			require.Equal(t, []string{"committee:one#auditor@user:reader"}, checker.requests)
+			if allowed {
+				require.Len(t, result.Events, 1)
+				require.Equal(t, "Unknown legacy user", *result.Events[0].Attribution.ActorProfile.Name)
+			} else {
+				require.Empty(t, result.Events)
+			}
+			profiles.AssertNotCalled(t, "LookupHistoryProfile", testifymock.Anything, testifymock.Anything)
+		})
+	}
+}
