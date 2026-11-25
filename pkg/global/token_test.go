@@ -277,9 +277,7 @@ func TestPageTokenSecretContextVariations(t *testing.T) {
 			setupEnv: func(t *testing.T, value string) {
 				t.Setenv("PAGE_TOKEN_SECRET", value)
 			},
-			createCtx: func() context.Context {
-				return context.Background()
-			},
+			createCtx:    context.Background,
 			expectResult: true,
 		},
 		{
@@ -288,9 +286,7 @@ func TestPageTokenSecretContextVariations(t *testing.T) {
 			setupEnv: func(t *testing.T, value string) {
 				t.Setenv("PAGE_TOKEN_SECRET", value)
 			},
-			createCtx: func() context.Context {
-				return context.TODO()
-			},
+			createCtx:    context.TODO,
 			expectResult: true,
 		},
 		{

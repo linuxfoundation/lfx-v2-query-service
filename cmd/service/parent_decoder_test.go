@@ -33,15 +33,21 @@ func TestParentHTTPDecodeAndConvert(t *testing.T) {
 		} {
 			t.Run(route+"/"+tc.name, func(t *testing.T) {
 				path := "/query/resources"
-				decode := queryserver.DecodeQueryResourcesRequest(goahttp.NewMuxer(), goahttp.RequestDecoder)
+				var (
+					decoded any
+					err     error
+				)
 				if route == "count" {
 					path += "/count"
-					decode = queryserver.DecodeQueryResourcesCountRequest(goahttp.NewMuxer(), goahttp.RequestDecoder)
 				}
 				req := httptest.NewRequest(http.MethodGet, path+"?v=1&type=committee"+tc.query, nil)
 				// Decoding requires a header but does not authenticate its value.
 				req.Header.Set("Authorization", "Bearer test-only")
-				decoded, err := decode(req)
+				if route == "count" {
+					decoded, err = queryserver.DecodeQueryResourcesCountRequest(goahttp.NewMuxer(), goahttp.RequestDecoder)(req)
+				} else {
+					decoded, err = queryserver.DecodeQueryResourcesRequest(goahttp.NewMuxer(), goahttp.RequestDecoder)(req)
+				}
 				if tc.invalid {
 					require.ErrorContains(t, err, "parent")
 					assert.Equal(t, http.StatusBadRequest, goahttp.NewErrorResponse(req.Context(), err).StatusCode())

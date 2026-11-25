@@ -377,11 +377,8 @@ func TestOrganizationSearchSuggestOrganizations(t *testing.T) {
 						}
 					}
 				}
-			} else {
-				// Handle case where no suggestions are expected
-				if result != nil {
-					assert.Len(t, result.Suggestions, 0)
-				}
+			} else if result != nil {
+				assert.Len(t, result.Suggestions, 0)
 			}
 		})
 	}
@@ -546,10 +543,8 @@ func TestNewOrganizationSearch(t *testing.T) {
 		expectType   string
 	}{
 		{
-			name: "creates new organization search with valid dependency",
-			setupMock: func() *mock.MockOrganizationSearcher {
-				return mock.NewMockOrganizationSearcher()
-			},
+			name:         "creates new organization search with valid dependency",
+			setupMock:    mock.NewMockOrganizationSearcher,
 			expectNonNil: true,
 			expectType:   "*service.OrganizationSearch",
 		},

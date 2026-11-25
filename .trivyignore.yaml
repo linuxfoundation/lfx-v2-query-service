@@ -1,0 +1,16 @@
+# Copyright The Linux Foundation and each contributor to LFX.
+# SPDX-License-Identifier: MIT
+---
+misconfigurations:
+  - id: AVD-DS-0001
+    paths:
+      - Dockerfile
+    statement: >-
+      The local Dockerfile uses Chainguard's freely available latest tags.
+      Remove this exception when versioned tags are available.
+  - id: AVD-DS-0026
+    paths:
+      - Dockerfile
+    statement: >-
+      Kubernetes probes monitor the service. Remove this exception when the
+      local image has a health check.

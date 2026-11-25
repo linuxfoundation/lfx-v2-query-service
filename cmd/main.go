@@ -41,6 +41,10 @@ func init() {
 }
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	// Define command line flags, add any other flag required to configure the
 	// service.
 	var (
@@ -66,7 +70,7 @@ func main() {
 	otelShutdown, err := utils.SetupOTelSDKWithConfig(ctx, otelConfig)
 	if err != nil {
 		slog.ErrorContext(ctx, "error setting up OpenTelemetry SDK", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	// Handle shutdown properly so nothing leaks.
 	defer func() {
@@ -100,7 +104,7 @@ func main() {
 		querySvcSvc, errQuerySvc = service.NewQuerySvc(resourceSearcher, accessControlChecker, resourceFilter, organizationSearcher, authService, resourceSearchConfig)
 		if errQuerySvc != nil {
 			slog.ErrorContext(ctx, "failed to initialize query service", "error", errQuerySvc)
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -170,4 +174,5 @@ func main() {
 	}
 
 	slog.InfoContext(ctx, "exited")
+	return 0
 }

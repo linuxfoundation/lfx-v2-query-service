@@ -113,11 +113,7 @@ Dependency injection starts in `cmd/main.go`, with concrete implementations sele
 
 ## Dependency vulnerability scanning
 
-MegaLinter's OSV scan remains blocking. Its bundled Go 1.26-era analyzer cannot
-load this service's Go 1.27 module, so vulnerability findings fall back to version
-matching. Upgrading that analyzer is tracked in
-[lfx-self-serve#6097](https://github.com/linuxfoundation/lfx-self-serve/issues/6097);
-do not disable scanning or downgrade the service's Go minor to work around it.
+MegaLinter's OSV scan is blocking and analyzes the service's Go dependencies.
 
 When a scanner table appears to report an installed version as already fixed,
 inspect the complete affected ranges in its JSON output and the source advisory:
@@ -518,14 +514,14 @@ To add a new access control implementation:
 
 ### Prerequisites
 
-This project uses the [GOA Framework](https://goa.design/) for API generation. You'll need to install GOA before building the project.
+This project uses the [GOA Framework](https://goa.design/) for API generation. Run `make deps` to install the version specified in `go.mod`.
 
 #### Installing GOA Framework
 
-Follow the [GOA installation guide](https://goa.design/docs/1-goa/quickstart/) to install GOA:
+Install the project's GOA version:
 
 ```bash
-go install goa.design/goa/v3/cmd/goa@latest
+make deps
 ```
 
 Verify the installation:
@@ -541,7 +537,7 @@ goa version
 The project uses GOA to generate API code from the design specification. Run the following command to generate all necessary code:
 
 ```bash
-goa gen github.com/linuxfoundation/lfx-v2-query-service/design
+make apigen
 ```
 
 This command generates:

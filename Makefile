@@ -17,7 +17,7 @@ HELM_RELEASE_NAME=lfx-v2-query-service
 HELM_NAMESPACE=lfx
 
 # Go
-GO_VERSION := 1.27.4
+GO_VERSION := 1.26.11
 GOOS := linux
 GOARCH := amd64
 
@@ -26,7 +26,10 @@ GOLANGCI_LINT_VERSION := v2.15.0
 LINT_TIMEOUT := 10m
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
 
-GOA_VERSION := v3.22.6
+GOA_VERSION := $(shell go list -m -f '{{.Version}}' goa.design/goa/v3)
+
+# Keep this digest in sync with .github/workflows/mega-linter.yml.
+MEGALINTER_IMAGE := ghcr.io/oxsecurity/megalinter-go@sha256:e676b8e9dac00d148bf1abb6ab809f1df76f07e804d8061f78631975d0c90925  # v10.2.0
 
 ##@ Development
 
@@ -50,6 +53,16 @@ deps: ## Install dependencies
 .PHONY: apigen
 apigen: deps #@ Generate API code using Goa
 	goa gen github.com/linuxfoundation/lfx-v2-query-service/design
+
+.PHONY: megalinter
+megalinter: ## Run MegaLinter locally via Docker.
+	docker pull $(MEGALINTER_IMAGE)
+	@git_common_dir=$$(git rev-parse --path-format=absolute --git-common-dir) || exit 1; \
+	case "$$git_common_dir/" in \
+		'$(CURDIR)/'*) set -- ;; \
+		*) set -- --mount "type=bind,src=$$git_common_dir,dst=$$git_common_dir" ;; \
+	esac; \
+	docker run --rm --platform linux/amd64 -e GOTOOLCHAIN=auto -v '$(CURDIR):/tmp/lint:rw' "$$@" $(MEGALINTER_IMAGE)
 
 .PHONY: lint
 lint: ## Run golangci-lint (local Go linting)
