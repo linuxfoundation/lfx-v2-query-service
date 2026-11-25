@@ -22,7 +22,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// NATSClient wraps the NATS connection and provides access control operations
+// NATSClient shares a connection for access control and optional history metadata.
 type NATSClient struct {
 	conn    *nats.Conn
 	config  Config
@@ -31,6 +31,7 @@ type NATSClient struct {
 
 // NATSClientInterface defines the interface for NATS operations
 // This allows for easy mocking and testing
+// Optional metadata lookup is a separate port.HistoryProfileReader capability.
 type NATSClientInterface interface {
 	CheckAccess(ctx context.Context, request *AccessCheckNATSRequest) (AccessCheckNATSResponse, error)
 	ReadTuples(ctx context.Context, request *ReadTuplesNATSRequest) (*ReadTuplesNATSResponse, error)

@@ -58,6 +58,50 @@ var Resource = dsl.Type("Resource", func() {
 	})
 })
 
+// HistoryEvent is the public, deliberately narrow projection of one retained mutation.
+var HistoryEvent = dsl.Type("HistoryEvent", func() {
+	dsl.Attribute("event_id", dsl.String, "Publisher-qualified stable event identity")
+	dsl.Attribute("resource", HistoryResource, "Resource identity independent of event identity")
+	dsl.Attribute("action", dsl.String, "created, updated or deleted")
+	dsl.Attribute("occurred_at", dsl.String, "Source occurrence time (RFC3339)")
+	dsl.Attribute("resource_revision", dsl.UInt64, "Publisher's monotonic resource revision")
+	dsl.Attribute("attribution", HistoryAttribution, "Retained actor identity and verification, with live display profiles")
+	dsl.Attribute("content", dsl.Any, "Approved versioned before/after snapshots; absent sides are omitted")
+	dsl.Required("event_id", "resource", "action", "occurred_at", "resource_revision", "attribution", "content")
+})
+
+// HistoryAttribution separates verified event attribution from live display data.
+var HistoryAttribution = dsl.Type("HistoryAttribution", func() {
+	dsl.Attribute("actor_ref", dsl.String, "Initiating actor: user:<principal>, service:<client name>, or unresolved import provenance legacy:<source>/<opaque-id>")
+	dsl.Attribute("effective_actor_ref", dsl.String, "Effective actor, equal to actor_ref without delegation")
+	dsl.Attribute("actor_verified", dsl.Boolean, "Indexer-verified initiating actor evidence at first append")
+	dsl.Attribute("effective_actor_verified", dsl.Boolean, "Indexer-verified effective actor evidence at first append")
+	dsl.Attribute("actor_profile", HistoryActorProfile, "Present for users and unresolved legacy actors; never a source-captured display snapshot")
+	dsl.Attribute("effective_actor_profile", HistoryActorProfile, "Present for effective users and unresolved legacy actors")
+	dsl.Required("actor_ref", "effective_actor_ref", "actor_verified", "effective_actor_verified")
+})
+
+// HistoryActorProfile retains event email/username even when live lookup fails.
+// Any is deliberate for nullable scalars: Goa's string schema rejects JSON null.
+// The service supplies only string pointers or nil for these response fields.
+var HistoryActorProfile = dsl.Type("HistoryActorProfile", func() {
+	dsl.Attribute("availability", dsl.String, "available: live lookup succeeded; deleted: user not found; unavailable: lookup failed or legacy actor cannot be resolved", func() {
+		dsl.Enum("available", "deleted", "unavailable")
+	})
+	dsl.Attribute("name", dsl.Any, "Live display name: string or null; unresolved legacy actors use the display-only label Unknown legacy user", func() { dsl.Meta("struct:tag:json", "name"); dsl.Example("First Last") })
+	dsl.Attribute("avatar_url", dsl.Any, "Live avatar URL: string or null; image bytes are never fetched", func() { dsl.Meta("struct:tag:json", "avatar_url"); dsl.Example("https://example.com/avatar.png") })
+	dsl.Attribute("email", dsl.Any, "Retained event email: string or null; never refreshed from live profile", func() { dsl.Meta("struct:tag:json", "email"); dsl.Example("user-1@example.com") })
+	dsl.Attribute("username", dsl.Any, "Retained event username: string or null; never refreshed", func() { dsl.Meta("struct:tag:json", "username"); dsl.Example("testuser01") })
+	dsl.Required("availability")
+})
+
+// HistoryResource identifies the subject of one retained audit event.
+var HistoryResource = dsl.Type("HistoryResource", func() {
+	dsl.Attribute("type", dsl.String, "Resource type")
+	dsl.Attribute("uid", dsl.String, "Resource UID")
+	dsl.Required("type", "uid")
+})
+
 // CountGroup is one group of a grouped count.
 var CountGroup = dsl.Type("CountGroup", func() {
 	dsl.Description("One group of a grouped resource count.")

@@ -110,7 +110,7 @@ func TestConfigValidateAccessCheckRetriesBound(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			config := DefaultConfig()
-			config.AccessCheckRetries = tc.value
+			config.AccessCheckRetries = intPtr(tc.value)
 			err := config.Validate()
 			if tc.wantError {
 				require.ErrorContains(t, err, "access check retries must be between 0 and")

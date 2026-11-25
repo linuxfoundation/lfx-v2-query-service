@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
+	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/nats-io/nats.go"
 )
 
 // MockNATSClient is a mock implementation of NATSClientInterface
@@ -55,10 +58,6 @@ func (m *MockNATSClient) IsReady(ctx context.Context) error {
 
 func (m *MockNATSClient) MaxPayload() int64 {
 	return m.maxPayload
-}
-
-func (m *MockNATSClient) SetMaxPayload(n int64) {
-	m.maxPayload = n
 }
 
 func (m *MockNATSClient) SetCheckAccessResponse(response AccessCheckNATSResponse) {
@@ -234,6 +233,22 @@ func TestNATSAccessControlChecker_CheckAccess(t *testing.T) {
 			assertion.Equal(tc.expectedResult, result)
 		})
 	}
+}
+
+// TestNATSAccessControlChecker_CheckAccess_MaxPayload verifies that a
+// nats.ErrMaxPayload failure is wrapped with port.ErrAccessCheckPayloadTooLarge
+// so the service layer can recognize it as non-retryable without importing
+// nats.go itself.
+func TestNATSAccessControlChecker_CheckAccess_MaxPayload(t *testing.T) {
+	mockClient := NewMockNATSClient()
+	mockClient.SetCheckAccessError(nats.ErrMaxPayload)
+
+	checker := &NATSAccessControlChecker{client: mockClient}
+
+	_, err := checker.CheckAccess(context.Background(), "access.check.project", []byte("line\n"), 5*time.Second)
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, port.ErrAccessCheckPayloadTooLarge)
+	assert.ErrorIs(t, err, nats.ErrMaxPayload)
 }
 
 func TestNATSAccessControlChecker_Close(t *testing.T) {

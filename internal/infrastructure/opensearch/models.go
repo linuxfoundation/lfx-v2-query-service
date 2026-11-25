@@ -7,8 +7,11 @@ import "encoding/json"
 
 // Config represents OpenSearch configuration
 type Config struct {
-	URL   string `json:"url"`
-	Index string `json:"index"`
+	URL          string `json:"url"`
+	Index        string `json:"index"`
+	HistoryIndex string `json:"history_index"`
+	Username     string `json:"-"`
+	Password     string `json:"-"`
 }
 
 // SearchResponse represents the OpenSearch search response

@@ -5,6 +5,7 @@ package nats
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/port"
+
+	"github.com/nats-io/nats.go"
 )
 
 // NATSAccessControlChecker implements the AccessControlChecker interface for NATS
@@ -38,6 +41,9 @@ func (n *NATSAccessControlChecker) CheckAccess(ctx context.Context, subj string,
 			"error", err,
 			"subject", subj,
 		)
+		if stderrors.Is(err, nats.ErrMaxPayload) {
+			return nil, fmt.Errorf("NATS access control check failed: %w: %w", port.ErrAccessCheckPayloadTooLarge, err)
+		}
 		return nil, fmt.Errorf("NATS access control check failed: %w", err)
 	}
 

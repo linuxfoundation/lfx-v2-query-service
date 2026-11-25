@@ -29,6 +29,25 @@ spec:
           config:
             values:
               aud: lfx-v2-query-service
+    # Put the authenticated-only route before the generic, anonymously
+    # accessible resource route even if the rules engine uses prefix matches.
+    - id: "rule:lfx:lfx-v2-query-service:resources-history"
+      allow_encoded_slashes: "off"
+      match:
+        methods:
+          - GET
+        routes:
+          - path: /query/resources/history
+      execute:
+        - authenticator: oidc
+        {{- if .Values.app.use_oidc_contextualizer }}
+        - contextualizer: oidc_contextualizer
+        {{- end }}
+        - authorizer: allow_all
+        - finalizer: create_jwt
+          config:
+            values:
+              aud: lfx-v2-query-service
     - id: "rule:lfx:lfx-v2-query-service"
       allow_encoded_slashes: "off"
       match:

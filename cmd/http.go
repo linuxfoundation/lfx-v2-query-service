@@ -92,21 +92,41 @@ func handleHTTPServer(ctx context.Context, host string, querySvcEndpoints *query
 
 	// Configure the mux.
 	querysvcsvr.Mount(mux, querySvcServer)
+	historyPath := querysvcsvr.QueryResourcesHistoryQuerySvcPath()
 
-	var handler http.Handler = mux
+	// Error responses, including rejected anonymous requests, must not be
+	// shared-cacheable either. Set the header before Goa writes any status.
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == historyPath {
+			w.Header().Set("Cache-Control", "private, no-store")
+		}
+		mux.ServeHTTP(w, r)
+	})
 
 	// Add RequestID middleware first
 	handler = middleware.RequestIDMiddleware()(handler)
 
 	if dbg {
-		// Log query and response bodies if debug logs are enabled.
-		handler = debug.HTTP()(handler)
+		// Keep the pre-existing debug handler for other routes, but never
+		// record a private history response or its sensitive query filters.
+		plain := handler
+		logged := debug.HTTP()(plain)
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == historyPath {
+				plain.ServeHTTP(w, r)
+				return
+			}
+			logged.ServeHTTP(w, r)
+		})
 	}
 	// Wrap the handler with OpenTelemetry instrumentation
 	handler = otelhttp.NewHandler(handler, "query-service",
 		otelhttp.WithFilter(func(r *http.Request) bool {
 			p := r.URL.Path
-			return p != querysvcsvr.LivezQuerySvcPath() && p != querysvcsvr.ReadyzQuerySvcPath()
+			// History tags may contain linked identifiers. Avoid exporting the
+			// full query URL in an HTTP span until URL-attribute scrubbing is
+			// installed at the instrumentation boundary.
+			return p != querysvcsvr.LivezQuerySvcPath() && p != querysvcsvr.ReadyzQuerySvcPath() && p != historyPath
 		}),
 	)
 

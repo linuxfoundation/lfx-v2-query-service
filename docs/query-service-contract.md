@@ -8,6 +8,11 @@ about individual resource types: it queries a shared `resources` index and deleg
 access control to fga-sync. Indexer-service populates that index from NATS events
 published by resource services.
 
+Retained mutations use a **separate, private** `resource-history-v1` index and
+`GET /query/resources/history`, not the current-resource search/count pipeline.
+See [the history-read contract](audit-history-query.md) for the API, privacy,
+per-event authorization, indexed-field limits, pagination and rollout gates.
+
 ## How the Three Services Connect
 
 ```text
@@ -32,6 +37,33 @@ access-check message for it and treats it as unauthorized: the resource is
 excluded from results (it does not bypass access filtering).
 
 ## HTTP API
+
+### GET /query/resources/history
+
+History reads are authenticated-only and never use the `public: true` bypass.
+They share `type`, `parent`, `filters`, `filters_all`, `filters_or`,
+`date_field`, `date_from`, `date_to`, `page_size` and `page_token` names with
+resource search, but operate on the private history mapping, not `data.*`.
+Only `action` and `object_id` are supported in history field filters, and
+`occurred_at` in date filters; other history fields return 400. `parent` matches
+before/after scope **or the referenced resource itself**, unlike the current
+resource `parent` filter. At least one of `type` or `parent` is required. No
+`tags`, `tags_all`, `id` or committee-only parameter is exposed.
+See [audit-history-query.md](audit-history-query.md) for the full contract.
+
+History attribution combines retained actor refs, verification and username/email
+with live auth-service name/avatar enrichment **after authorization**. Directory
+failure changes only profile availability, never event visibility or request
+success. The existing user profile response shape is preserved; service actors
+have no profile. Metadata lookup uses a bounded in-process display cache and
+never refreshes retained identity.
+
+Historical imports can preserve unresolved actors as
+`legacy:<source>/<opaque-id>`. The reader requires an import origin, null identity
+and false verification; it performs no directory lookup and returns a display-only
+`Unknown legacy user` label with otherwise null profile fields. This neither
+grants history access nor changes pagination. See the
+[unresolved actor contract](audit-history-query.md#unresolved-historical-actors).
 
 ### GET /query/resources
 
@@ -283,6 +315,11 @@ Environment variables (defaults live in code; no values file needs to set them):
 | `SEARCH_DENIED_PAGE_WALK` | `10` | Extra raw pages `/query/resources` fetches when a page leaves the caller no visible resource (1–25); see [Page Size](#page-size) |
 | `COUNT_MAX_ACCESS_BUCKETS` | `5000` | Access-key walk cap (page size..10000, validated at startup); at most 100 pages per count (`ceil(cap/page) <= 100`); a full page can overshoot by at most page size minus one |
 | `SUMMARY_MAX_RECORDS` | `5000` | Membership records read by `GET /query/memberships/summary` before returning whole organization runs with `complete: false` (1..50000, validated at startup); normally at most the larger of the cap rounded up to whole pages (`ceil(cap/page)`) and one full page more than `SEARCH_DENIED_PAGE_WALK`. With no resumable organization boundary yet, the read continues to finish the first run, bounded by 50000 raw hits (the existing configurable cap ceiling). If neither a boundary nor end-of-results is established within that ceiling, the read fails with `503`, never a partial summary |
+| `COUNT_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round-trip pair `QueryResourcesCount` issues combined, on top of (not instead of) each individual call's own timeout (any positive duration up to 5m) |
+| `SEARCH_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round trip `/query/resources` issues combined (the denied-page walk's raw OpenSearch queries plus each page's batched, possibly chunked and retried, access check), on top of each individual call's own timeout (any positive duration up to 5m) |
+| `SUMMARY_REQUEST_TIMEOUT` | `30s` | Total wall-clock deadline for every round trip `GET /query/memberships/summary` issues combined (every page's raw OpenSearch query plus its batched, possibly chunked and retried, access check), on top of each individual call's own timeout (any positive duration up to 5m) |
+| `ACCESS_CHECK_CHUNK_BYTES` | `524288` | Soft ceiling, in bytes, on the size of a single batched access-check message sent to fga-sync; larger messages are split into chunks no bigger than this, never mid-line (1–1048576); clamped to the hard bound — the connection's negotiated NATS `max_payload`, capped at 1MiB and falling back to 1MiB when unknown, less an 8KiB header margin — and a single check line beyond that hard bound is rejected rather than sent oversized |
+| `ACCESS_CHECK_RETRIES` | `1` | Retries for a single access-check chunk that fails outright, on top of the initial attempt (0–5); `0` disables retries entirely; a retry is abandoned early if the request context is already cancelled or past its deadline, or if the failure is a deterministic oversized-payload error |
 
 #### Not supported
 
@@ -578,25 +615,28 @@ regardless of how many resources share it.
 
 **Chunking and retries:** a batch built from a large result page is split into
 chunks bounded by `ACCESS_CHECK_CHUNK_BYTES` (default 512KiB) before it is
-sent to fga-sync, never mid-line, so the request stays comfortably under
-NATS' default 1MiB max payload. The split also budgets each chunk against its
-*projected worst-case response size*, not just its request size: a response
-line (`<key>\t<true|false>`) can be up to 6 bytes longer than its request
-line (`<key>\n`), so a chunk sized only against the outbound request could
-still produce an oversized reply. A single check line whose projected
+sent to fga-sync, never mid-line, so the request stays comfortably under the
+connection's negotiated NATS `max_payload`. The split also budgets each chunk
+against its *projected worst-case response size*, not just its request size:
+a response line (`<key>\t<true|false>`) can be up to 6 bytes longer than its
+request line (`<key>\n`), so a chunk sized only against the outbound request
+could still produce an oversized reply. A single check line whose projected
 response would exceed `ACCESS_CHECK_CHUNK_BYTES` is still sent, kept whole in
 its own chunk rather than split; only a line beyond the hard payload bound is
-rejected outright. That hard bound is NATS' 1MiB max payload less an 8KiB
-margin reserved for the OpenTelemetry trace-context headers attached to every
-outbound publish, since NATS' limit covers the header block plus data
-together, not the data alone. `ACCESS_CHECK_CHUNK_BYTES` itself is clamped to
-that hard bound, so configuring it right up against the nominal 1MiB ceiling
-can't let a multi-line chunk's accumulated projected response spill past the
-real limit even though no single line in it is individually oversized. Each
-chunk that fails outright (e.g. a transient
-NATS timeout) is retried up to `ACCESS_CHECK_RETRIES` times (default 1) before
-the whole request fails; a retry is abandoned early if the request's own
-deadline has already passed.
+rejected outright. That hard bound is the connection's negotiated NATS
+`max_payload` — capped at 1MiB, and falling back to 1MiB when the negotiated
+value is unknown — less an 8KiB margin reserved for the OpenTelemetry
+trace-context headers attached to every outbound publish, since NATS' limit
+covers the header block plus data together, not the data alone.
+`ACCESS_CHECK_CHUNK_BYTES` itself is clamped to that hard bound, so
+configuring it right up against the nominal 1MiB ceiling can't let a
+multi-line chunk's accumulated projected response spill past the real limit
+even though no single line in it is individually oversized. Each chunk that
+fails outright (e.g. a transient NATS timeout) is retried up to
+`ACCESS_CHECK_RETRIES` times (default 1, `0` disables retries) before the
+whole request fails; a retry is abandoned early if the request's own deadline
+has already passed, or if the failure was the chunk exceeding NATS'
+`max_payload`, which a retry cannot fix.
 
 ### Direct grant filtering
 

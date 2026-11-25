@@ -141,8 +141,9 @@ const (
 
 // OpenSearchSearcher implements the ResourceSearcher interface for OpenSearch
 type OpenSearchSearcher struct {
-	client OpenSearchClientRetriever
-	index  string
+	client       OpenSearchClientRetriever
+	index        string
+	historyIndex string
 
 	// accessKeyField is usable only while its successful resolution is fresh.
 	accessKeyField string
@@ -161,6 +162,7 @@ type OpenSearchSearcher struct {
 // This allows for easy mocking and testing
 type OpenSearchClientRetriever interface {
 	Search(ctx context.Context, index string, query []byte, pageSize int) (*SearchResponse, error)
+	SearchHistory(ctx context.Context, index string, query []byte) (*SearchResponse, error)
 	Count(ctx context.Context, index string, query []byte) (*CountResponse, error)
 	AggregationSearch(ctx context.Context, index string, query []byte) (json.RawMessage, error)
 	GetMapping(ctx context.Context, index string) (IndexMappings, error)
@@ -743,10 +745,21 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 		slog.ErrorContext(ctx, "opensearch index is required")
 		return nil, fmt.Errorf("opensearch index is required")
 	}
+	if (config.Username == "") != (config.Password == "") {
+		return nil, fmt.Errorf("OpenSearch username and password must both be configured")
+	}
+	if config.HistoryIndex == "" {
+		config.HistoryIndex = defaultHistoryIndex
+	}
+	if config.HistoryIndex == config.Index || !historyIndexPattern.MatchString(config.HistoryIndex) {
+		return nil, fmt.Errorf("history index must be a dedicated concrete index name")
+	}
 
 	opensearchClient, errpensearchClient := opensearchapi.NewClient(opensearchapi.Config{
 		Client: opensearch.Config{
 			Addresses: []string{config.URL},
+			Username:  config.Username,
+			Password:  config.Password,
 			Transport: otelhttp.NewTransport(
 				&http.Transport{
 					MaxIdleConnsPerHost:   10,
@@ -778,6 +791,7 @@ func NewSearcher(ctx context.Context, config Config) (port.ResourceSearcher, err
 			baseURL: config.URL,
 			client:  opensearchClient,
 		},
-		index: config.Index,
+		index:        config.Index,
+		historyIndex: config.HistoryIndex,
 	}, nil
 }

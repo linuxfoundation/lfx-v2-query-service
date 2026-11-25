@@ -21,9 +21,7 @@ import (
 // Returns an error if decoding, decryption, or unmarshaling fails.
 func DecodePageToken(ctx context.Context, encoded string, secretKey *[32]byte) (string, error) {
 
-	slog.DebugContext(ctx, "decoding page token",
-		"encoded_token", encoded,
-	)
+	slog.DebugContext(ctx, "decoding page token")
 
 	encrypted, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
@@ -51,9 +49,7 @@ func DecodePageToken(ctx context.Context, encoded string, secretKey *[32]byte) (
 		return "", errors.NewValidation("failed to marshal search_after data", err)
 	}
 
-	slog.DebugContext(ctx, "decoded page token successfully",
-		"search_after", string(searchAfterData),
-	)
+	slog.DebugContext(ctx, "decoded page token successfully")
 
 	return string(searchAfterData), nil
 }

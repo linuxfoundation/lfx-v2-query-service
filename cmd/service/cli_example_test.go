@@ -24,9 +24,7 @@ func TestGeneratedCountCLIExampleUsesOneMode(t *testing.T) {
 	usage := strings.SplitN(string(source)[start:], "\nfunc ", 2)[0]
 	parts := strings.SplitN(usage, "Example:", 2)
 	require.Len(t, parts, 2)
-	// Newer Goa versions emit the example as an interpreted string literal
-	// (with `\"` and `\n` escapes) instead of a raw backtick string; unescape
-	// both so the regex below sees the same runtime text either way.
+	// Unescape interpreted string literals so the regex sees the example text.
 	example := strings.ReplaceAll(parts[1], `\"`, `"`)
 	example = strings.ReplaceAll(example, `\n`, "\n")
 	flags := map[string]string{}

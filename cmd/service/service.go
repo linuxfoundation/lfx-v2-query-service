@@ -195,7 +195,11 @@ func NewQuerySvc(resourceSearcher port.ResourceSearcher,
 	auth port.Authenticator,
 	config service.Config,
 ) (querysvc.Service, error) {
-	resourceService, err := service.NewResourceSearch(resourceSearcher, accessControlChecker, resourceFilter, config)
+	// The NATS adapter shares its existing connection for optional metadata
+	// reads. Mock/other access backends without that capability degrade profiles
+	// to unavailable rather than becoming a new history/readiness dependency.
+	profiles, _ := accessControlChecker.(port.HistoryProfileReader)
+	resourceService, err := service.NewResourceSearch(resourceSearcher, accessControlChecker, resourceFilter, config, service.WithHistoryProfileReader(profiles))
 	if err != nil {
 		return nil, err
 	}

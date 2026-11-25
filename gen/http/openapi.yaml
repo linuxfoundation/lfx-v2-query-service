@@ -45,6 +45,11 @@ paths:
                   description: Opaque token from a previous summary response with the same project_uid and b2b_org_uid; resumes at the next organization run. A page_token is accepted only from the same version of the summary read; a token from any other version, older or newer, is rejected with 400 and the read must restart without it
                   required: false
                   type: string
+                - name: Authorization
+                  in: header
+                  description: JWT token issued by Heimdall
+                  required: true
+                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -107,6 +112,11 @@ paths:
                   required: false
                   type: string
                   pattern: ^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}$
+                - name: Authorization
+                  in: header
+                  description: Token
+                  required: true
+                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -161,6 +171,11 @@ paths:
                   required: true
                   type: string
                   minLength: 1
+                - name: Authorization
+                  in: header
+                  description: Token
+                  required: true
+                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -315,6 +330,11 @@ paths:
                   default: 50
                   maximum: 1000
                   minimum: 1
+                - name: Authorization
+                  in: header
+                  description: Token
+                  required: true
+                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -455,6 +475,11 @@ paths:
                   required: false
                   type: string
                   maxLength: 80
+                - name: Authorization
+                  in: header
+                  description: JWT token issued by Heimdall
+                  required: true
+                  type: string
             responses:
                 "200":
                     description: OK response.
@@ -466,6 +491,121 @@ paths:
                     headers:
                         Cache-Control:
                             description: Cache control header
+                            type: string
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/BadRequestError'
+                        required:
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/InternalServerError'
+                        required:
+                            - message
+                "503":
+                    description: Service Unavailable response.
+                    schema:
+                        $ref: '#/definitions/ServiceUnavailableError'
+                        required:
+                            - message
+            schemes:
+                - http
+            security:
+                - jwt_header_Authorization: []
+    /query/resources/history:
+        get:
+            tags:
+                - query-svc
+            summary: query-resources-history query-svc
+            description: Search retained resource mutations, checking each event's history permission independently of current-resource visibility.
+            operationId: query-svc#query-resources-history
+            parameters:
+                - name: v
+                  in: query
+                  description: API version
+                  required: true
+                  type: string
+                  enum:
+                    - "1"
+                - name: type
+                  in: query
+                  description: Resource type; at least one of type or parent is required
+                  required: false
+                  type: string
+                - name: parent
+                  in: query
+                  description: 'Resource reference (type:uid): events for this resource or whose before/after ownership scope includes it'
+                  required: false
+                  type: string
+                - name: filters
+                  in: query
+                  description: AND field:value filters; action and object_id are supported
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: filters_all
+                  in: query
+                  description: AND field:value filters; action and object_id are supported
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: filters_or
+                  in: query
+                  description: OR field:value filters; action and object_id are supported
+                  required: false
+                  type: array
+                  items:
+                    type: string
+                  collectionFormat: multi
+                - name: date_field
+                  in: query
+                  description: Date field; only occurred_at is supported
+                  required: false
+                  type: string
+                - name: date_from
+                  in: query
+                  description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD lower bound; requires date_field
+                  required: false
+                  type: string
+                - name: date_to
+                  in: query
+                  description: Inclusive RFC3339 (up to milliseconds) or YYYY-MM-DD upper bound; requires date_field
+                  required: false
+                  type: string
+                - name: page_size
+                  in: query
+                  description: Number of raw events per page
+                  required: false
+                  type: integer
+                  default: 50
+                  maximum: 100
+                  minimum: 1
+                - name: page_token
+                  in: query
+                  description: Opaque continuation bound to these filters and this principal
+                  required: false
+                  type: string
+                - name: Authorization
+                  in: header
+                  description: Heimdall JWT
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/QuerySvcQueryResourcesHistoryResponseBody'
+                        required:
+                            - events
+                    headers:
+                        Cache-Control:
+                            description: Private, non-cacheable response
                             type: string
                 "400":
                     description: Bad Request response.
@@ -523,6 +663,164 @@ definitions:
         required:
             - key
             - count
+    HistoryActorProfile:
+        title: HistoryActorProfile
+        type: object
+        properties:
+            availability:
+                type: string
+                description: 'available: live lookup succeeded; deleted: user not found; unavailable: lookup failed or legacy actor cannot be resolved'
+                example: available
+                enum:
+                    - available
+                    - deleted
+                    - unavailable
+            avatar_url:
+                description: 'Live avatar URL: string or null; image bytes are never fetched'
+                example: https://example.com/avatar.png
+            email:
+                description: 'Retained event email: string or null; never refreshed from live profile'
+                example: user-1@example.com
+            name:
+                description: 'Live display name: string or null; unresolved legacy actors use the display-only label Unknown legacy user'
+                example: First Last
+            username:
+                description: 'Retained event username: string or null; never refreshed'
+                example: testuser01
+        example:
+            availability: available
+            avatar_url: https://example.com/avatar.png
+            email: user-1@example.com
+            name: First Last
+            username: testuser01
+        required:
+            - availability
+    HistoryAttribution:
+        title: HistoryAttribution
+        type: object
+        properties:
+            actor_profile:
+                $ref: '#/definitions/HistoryActorProfile'
+            actor_ref:
+                type: string
+                description: 'Initiating actor: user:<principal>, service:<client name>, or unresolved import provenance legacy:<source>/<opaque-id>'
+                example: Et porro culpa.
+            actor_verified:
+                type: boolean
+                description: Indexer-verified initiating actor evidence at first append
+                example: false
+            effective_actor_profile:
+                $ref: '#/definitions/HistoryActorProfile'
+            effective_actor_ref:
+                type: string
+                description: Effective actor, equal to actor_ref without delegation
+                example: Sunt doloremque repudiandae quia voluptas ad laborum.
+            effective_actor_verified:
+                type: boolean
+                description: Indexer-verified effective actor evidence at first append
+                example: false
+        example:
+            actor_profile:
+                availability: deleted
+                avatar_url: https://example.com/avatar.png
+                email: user-1@example.com
+                name: First Last
+                username: testuser01
+            actor_ref: Blanditiis sit ut ut optio.
+            actor_verified: false
+            effective_actor_profile:
+                availability: deleted
+                avatar_url: https://example.com/avatar.png
+                email: user-1@example.com
+                name: First Last
+                username: testuser01
+            effective_actor_ref: Ullam facilis rerum.
+            effective_actor_verified: true
+        required:
+            - actor_ref
+            - effective_actor_ref
+            - actor_verified
+            - effective_actor_verified
+    HistoryEvent:
+        title: HistoryEvent
+        type: object
+        properties:
+            action:
+                type: string
+                description: created, updated or deleted
+                example: Quia molestiae at necessitatibus et molestias.
+            attribution:
+                $ref: '#/definitions/HistoryAttribution'
+            content:
+                description: Approved versioned before/after snapshots; absent sides are omitted
+                example: Itaque aut.
+            event_id:
+                type: string
+                description: Publisher-qualified stable event identity
+                example: Voluptatem molestiae facere libero amet accusamus laboriosam.
+            occurred_at:
+                type: string
+                description: Source occurrence time (RFC3339)
+                example: Voluptatibus eveniet.
+            resource:
+                $ref: '#/definitions/HistoryResource'
+            resource_revision:
+                type: integer
+                description: Publisher's monotonic resource revision
+                example: 11362578990372628689
+                format: int64
+        example:
+            action: Temporibus sequi expedita quis aut.
+            attribution:
+                actor_profile:
+                    availability: deleted
+                    avatar_url: https://example.com/avatar.png
+                    email: user-1@example.com
+                    name: First Last
+                    username: testuser01
+                actor_ref: Aut exercitationem eos numquam.
+                actor_verified: false
+                effective_actor_profile:
+                    availability: deleted
+                    avatar_url: https://example.com/avatar.png
+                    email: user-1@example.com
+                    name: First Last
+                    username: testuser01
+                effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                effective_actor_verified: true
+            content: Mollitia quo nostrum quod libero facere quibusdam.
+            event_id: Delectus ut eaque.
+            occurred_at: Quibusdam temporibus dignissimos ipsa in.
+            resource:
+                type: Provident explicabo illo.
+                uid: Vitae ipsam ut quae quaerat ab neque.
+            resource_revision: 16977892419007532226
+        required:
+            - event_id
+            - resource
+            - action
+            - occurred_at
+            - resource_revision
+            - attribution
+            - content
+    HistoryResource:
+        title: HistoryResource
+        type: object
+        properties:
+            type:
+                type: string
+                description: Resource type
+                example: Omnis voluptate delectus.
+            uid:
+                type: string
+                description: Resource UID
+                example: Recusandae harum.
+        example:
+            type: Velit nihil repellat id vero eius.
+            uid: Beatae placeat dicta.
+        required:
+            - type
+            - uid
     InternalServerError:
         title: InternalServerError
         type: object
@@ -628,7 +926,7 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Aut expedita repudiandae placeat saepe.
+                    example: Sed optio ut suscipit asperiores atque.
                 description: Distinct statuses in first appearance order
                 example:
                     - Expired
@@ -659,7 +957,7 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Reprehenderit impedit voluptatum.
+                    example: Sit cumque ad non hic.
                 description: Distinct tier product names in first appearance order
                 example:
                     - Silver Membership
@@ -742,7 +1040,6 @@ definitions:
                 type: string
                 description: Business sector classification
                 example: Technology
-        description: An organization is a universal representation of an LFX API organization.
         example:
             domain: linuxfoundation.org
             employees: 100-499
@@ -889,12 +1186,10 @@ definitions:
                       key: a1b2c3d4
                     - count: 30
                       key: a1b2c3d4
-                    - count: 30
-                      key: a1b2c3d4
             groups_complete:
                 type: boolean
                 description: True when every group is present; false when more groups exist than group_by_size or when has_more is true
-                example: true
+                example: false
             has_more:
                 type: boolean
                 description: 'True if count is not guaranteed to be exhaustive: client should request a narrower query'
@@ -902,7 +1197,7 @@ definitions:
             metric_complete:
                 type: boolean
                 description: True when the metric was computed over every distinct value; false when it stopped at the cap or when has_more is true
-                example: true
+                example: false
             metric_value:
                 type: integer
                 description: Value of the requested metric
@@ -916,6 +1211,200 @@ definitions:
         required:
             - count
             - has_more
+    QuerySvcQueryResourcesHistoryResponseBody:
+        title: QuerySvcQueryResourcesHistoryResponseBody
+        type: object
+        properties:
+            events:
+                type: array
+                items:
+                    $ref: '#/definitions/HistoryEvent'
+                description: Authorized mutation events in source-occurrence order
+                example:
+                    - action: Odio quis.
+                      attribution:
+                        actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: First Last
+                            username: testuser01
+                        actor_ref: Aut exercitationem eos numquam.
+                        actor_verified: false
+                        effective_actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: First Last
+                            username: testuser01
+                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                        effective_actor_verified: true
+                      content: Non molestiae temporibus iste iste sed.
+                      event_id: Cupiditate sed officia suscipit.
+                      occurred_at: Et consequuntur quia itaque.
+                      resource:
+                        type: Provident explicabo illo.
+                        uid: Vitae ipsam ut quae quaerat ab neque.
+                      resource_revision: 8018637725149082057
+                    - action: Odio quis.
+                      attribution:
+                        actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: First Last
+                            username: testuser01
+                        actor_ref: Aut exercitationem eos numquam.
+                        actor_verified: false
+                        effective_actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: First Last
+                            username: testuser01
+                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                        effective_actor_verified: true
+                      content: Non molestiae temporibus iste iste sed.
+                      event_id: Cupiditate sed officia suscipit.
+                      occurred_at: Et consequuntur quia itaque.
+                      resource:
+                        type: Provident explicabo illo.
+                        uid: Vitae ipsam ut quae quaerat ab neque.
+                      resource_revision: 8018637725149082057
+                    - action: Odio quis.
+                      attribution:
+                        actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: First Last
+                            username: testuser01
+                        actor_ref: Aut exercitationem eos numquam.
+                        actor_verified: false
+                        effective_actor_profile:
+                            availability: deleted
+                            avatar_url: https://example.com/avatar.png
+                            email: user-1@example.com
+                            name: First Last
+                            username: testuser01
+                        effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                        effective_actor_verified: true
+                      content: Non molestiae temporibus iste iste sed.
+                      event_id: Cupiditate sed officia suscipit.
+                      occurred_at: Et consequuntur quia itaque.
+                      resource:
+                        type: Provident explicabo illo.
+                        uid: Vitae ipsam ut quae quaerat ab neque.
+                      resource_revision: 8018637725149082057
+            page_token:
+                type: string
+                description: Continue until absent, including after a short authorized page
+                example: Suscipit quo laudantium dolores.
+        example:
+            events:
+                - action: Odio quis.
+                  attribution:
+                    actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    actor_ref: Aut exercitationem eos numquam.
+                    actor_verified: false
+                    effective_actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                    effective_actor_verified: true
+                  content: Non molestiae temporibus iste iste sed.
+                  event_id: Cupiditate sed officia suscipit.
+                  occurred_at: Et consequuntur quia itaque.
+                  resource:
+                    type: Provident explicabo illo.
+                    uid: Vitae ipsam ut quae quaerat ab neque.
+                  resource_revision: 8018637725149082057
+                - action: Odio quis.
+                  attribution:
+                    actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    actor_ref: Aut exercitationem eos numquam.
+                    actor_verified: false
+                    effective_actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                    effective_actor_verified: true
+                  content: Non molestiae temporibus iste iste sed.
+                  event_id: Cupiditate sed officia suscipit.
+                  occurred_at: Et consequuntur quia itaque.
+                  resource:
+                    type: Provident explicabo illo.
+                    uid: Vitae ipsam ut quae quaerat ab neque.
+                  resource_revision: 8018637725149082057
+                - action: Odio quis.
+                  attribution:
+                    actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    actor_ref: Aut exercitationem eos numquam.
+                    actor_verified: false
+                    effective_actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                    effective_actor_verified: true
+                  content: Non molestiae temporibus iste iste sed.
+                  event_id: Cupiditate sed officia suscipit.
+                  occurred_at: Et consequuntur quia itaque.
+                  resource:
+                    type: Provident explicabo illo.
+                    uid: Vitae ipsam ut quae quaerat ab neque.
+                  resource_revision: 8018637725149082057
+                - action: Odio quis.
+                  attribution:
+                    actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    actor_ref: Aut exercitationem eos numquam.
+                    actor_verified: false
+                    effective_actor_profile:
+                        availability: deleted
+                        avatar_url: https://example.com/avatar.png
+                        email: user-1@example.com
+                        name: First Last
+                        username: testuser01
+                    effective_actor_ref: Quia ut quo officiis temporibus velit consequatur.
+                    effective_actor_verified: true
+                  content: Non molestiae temporibus iste iste sed.
+                  event_id: Cupiditate sed officia suscipit.
+                  occurred_at: Et consequuntur quia itaque.
+                  resource:
+                    type: Provident explicabo illo.
+                    uid: Vitae ipsam ut quae quaerat ab neque.
+                  resource_revision: 8018637725149082057
+            page_token: Ut possimus et nobis sit exercitationem adipisci.
+        required:
+            - events
     QuerySvcQueryResourcesResponseBody:
         title: QuerySvcQueryResourcesResponseBody
         type: object
@@ -942,33 +1431,9 @@ definitions:
                         description: a committee
                       id: "123"
                       type: committee
-                    - data:
-                        id: "123"
-                        name: My committee
-                        description: a committee
-                      id: "123"
-                      type: committee
-                    - data:
-                        id: "123"
-                        name: My committee
-                        description: a committee
-                      id: "123"
-                      type: committee
         example:
             page_token: '****'
             resources:
-                - data:
-                    id: "123"
-                    name: My committee
-                    description: a committee
-                  id: "123"
-                  type: committee
-                - data:
-                    id: "123"
-                    name: My committee
-                    description: a committee
-                  id: "123"
-                  type: committee
                 - data:
                     id: "123"
                     name: My committee
@@ -1001,6 +1466,9 @@ definitions:
                       name: Linux Foundation
         example:
             suggestions:
+                - domain: linuxfoundation.org
+                  logo: https://example.com/logo.png
+                  name: Linux Foundation
                 - domain: linuxfoundation.org
                   logo: https://example.com/logo.png
                   name: Linux Foundation

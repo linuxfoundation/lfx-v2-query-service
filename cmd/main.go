@@ -18,7 +18,6 @@ import (
 	querysvc "github.com/linuxfoundation/lfx-v2-query-service/gen/query_svc"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/log"
 	"github.com/linuxfoundation/lfx-v2-query-service/pkg/utils"
-	"goa.design/clue/debug"
 )
 
 // Build-time variables set via ldflags
@@ -108,7 +107,8 @@ func main() {
 	// Wrap the services in endpoints that can be invoked from other services
 	// potentially running in different processes.
 	querySvcEndpoints := querysvc.NewEndpoints(querySvcSvc)
-	querySvcEndpoints.Use(debug.LogPayloads())
+	// History responses contain retained personal snapshots. Do not install
+	// debug.LogPayloads on the service: it would log them before serialization.
 
 	// Create channel used by both the signal handler and server goroutines
 	// to notify the main goroutine when to stop the server.

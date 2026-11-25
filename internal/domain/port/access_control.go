@@ -5,10 +5,19 @@ package port
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/linuxfoundation/lfx-v2-query-service/internal/domain/model"
 )
+
+// ErrAccessCheckPayloadTooLarge indicates that an access-check chunk
+// exceeded the transport's maximum message size. This is a deterministic,
+// non-retryable failure: the chunk will be rejected identically on every
+// attempt, so callers should not retry it. Adapters wrap their
+// transport-specific "too large" error with this sentinel so the service
+// layer can recognize it without depending on a specific transport.
+var ErrAccessCheckPayloadTooLarge = errors.New("access check payload exceeds the transport's maximum message size")
 
 // AccessControlChecker defines the interface for access control operations
 // This abstraction allows different access control implementations (NATS, etc.)

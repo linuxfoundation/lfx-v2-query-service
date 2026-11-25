@@ -88,6 +88,13 @@ The OpenSearch implementation includes query templates, a searcher, and a client
 
 The NATS implementation consists of a client, access control logic, and request/response models for messaging and access control.
 
+Authenticated history reads also use this connection for optional auth-service
+display metadata on `lfx.auth-service.user_metadata.read`, after event-level
+authorization. Lookup failure returns unavailable name/avatar fields without
+failing history or changing retained username/email. See the
+[history query contract](docs/audit-history-query.md) for verification flags,
+profile availability, cache/deadline bounds and rollout requirements.
+
 #### Clearbit Implementation
 
 The Clearbit implementation provides organization search capabilities using the Clearbit Company API. It includes a client for API communication, searcher for organization queries, and configuration management for API credentials and settings.
@@ -103,6 +110,37 @@ Dependency injection starts in `cmd/main.go`, with concrete implementations sele
 3. **Maintainability**: Clear separation of concerns
 4. **Scalability**: Easy to add new search and access control implementations
 5. **Independence**: Layers don't depend on external frameworks
+
+## Dependency vulnerability scanning
+
+MegaLinter's OSV scan remains blocking. Its bundled Go 1.26-era analyzer cannot
+load this service's Go 1.27 module, so vulnerability findings fall back to version
+matching. Upgrading that analyzer is tracked in
+[lfx-self-serve#6097](https://github.com/linuxfoundation/lfx-self-serve/issues/6097);
+do not disable scanning or downgrade the service's Go minor to work around it.
+
+When a scanner table appears to report an installed version as already fixed,
+inspect the complete affected ranges in its JSON output and the source advisory:
+
+```bash
+osv-scanner scan source --format json \
+  --experimental-exclude .git --experimental-exclude gen \
+  --experimental-exclude megalinter-reports --experimental-exclude templates \
+  --recursive .
+```
+
+The [verified GO-2026-6278 record][websocket-advisory] at Go vulnerability-database
+revision `0db6d52` (2026-11-23) includes a reintroduced range starting at WebSocket
+`v1.5.3`, fixed at `v1.5.4-0.20240701034025-d67f41855da4`. During the
+[#6096 investigation](https://github.com/linuxfoundation/lfx-self-serve/issues/6096),
+OSV's lookup-by-ID response still showed an older range ending at `1.5.3`, while
+its version-query response and the Go database included the reintroduced range.
+The [upstream fix][websocket-mask-fix] postdates the `v1.5.3` tag, so this module
+pins that exact fix commit rather than suppressing the advisory. A single fixed-version table
+cell or stale lookup response is not evidence that a package is unaffected.
+
+[websocket-advisory]: https://raw.githubusercontent.com/golang/vulndb/0db6d52dd97bd2ece1030efae06302b118182e83/data/osv/GO-2026-6278.json
+[websocket-mask-fix]: https://github.com/gorilla/websocket/commit/d67f41855da42d7bccd9ef050c49f7e54e783b95
 
 ## Docker
 
@@ -202,8 +240,8 @@ go run ./cmd
 - `COUNT_REQUEST_TIMEOUT`: Total wall-clock deadline for every round-trip pair `QueryResourcesCount` issues combined, on top of (not instead of) each individual call's own timeout (any positive duration up to 5m, default: "30s")
 - `SEARCH_REQUEST_TIMEOUT`: Total wall-clock deadline for every round trip `/query/resources` issues combined (the denied-page walk's raw OpenSearch queries plus each page's batched, possibly chunked and retried, access check), on top of (not instead of) each individual call's own timeout (any positive duration up to 5m, default: "30s")
 - `SUMMARY_REQUEST_TIMEOUT`: Total wall-clock deadline for every round trip `GET /query/memberships/summary` issues combined (every page's raw OpenSearch query plus its batched, possibly chunked and retried, access check), on top of (not instead of) each individual call's own timeout (any positive duration up to 5m, default: "30s")
-- `ACCESS_CHECK_CHUNK_BYTES`: Soft ceiling, in bytes, on the size of a single batched access-check message sent to fga-sync; larger messages are split into chunks no bigger than this, never mid-line (1–1048576, default: "524288"); this value is itself clamped to the hard bound below, and a single check line beyond that hard bound (NATS' default 1MiB max payload, less an 8KiB margin reserved for OpenTelemetry trace-context headers) is rejected rather than sent oversized, regardless of this setting
-- `ACCESS_CHECK_RETRIES`: Retries for a single access-check chunk that fails outright, on top of the initial attempt (1–5, default: "1"; `0` is treated as unset and yields the default, so retries cannot currently be disabled); a retry is abandoned early if the request context is already cancelled or past its deadline
+- `ACCESS_CHECK_CHUNK_BYTES`: Soft ceiling, in bytes, on the size of a single batched access-check message sent to fga-sync; larger messages are split into chunks no bigger than this, never mid-line (1–1048576, default: "524288"); this value is itself clamped to the hard bound below, and a single check line beyond that hard bound (the connection's negotiated NATS `max_payload`, capped at 1MiB and falling back to 1MiB when unknown, less an 8KiB margin reserved for OpenTelemetry trace-context headers) is rejected rather than sent oversized, regardless of this setting
+- `ACCESS_CHECK_RETRIES`: Retries for a single access-check chunk that fails outright, on top of the initial attempt (0–5, default: "1"); a retry is abandoned early if the request context is already cancelled or past its deadline
 - `COUNT_ACCESS_BUCKET_PAGE`: Access-key buckets fetched and checked per page of a count (1–1000, default: "100")
 - `COUNT_MAX_ACCESS_BUCKETS`: Access-key walk cap (page size..10000, default: "5000"); startup validation also requires at most 100 pages per count (`ceil(cap/page) <= 100`). Whole pages are never split, so the final page can overshoot by at most page size minus one (always fewer than 11000 granted keys). An index with a lowered `index.max_terms_count` must accommodate that bound.
 - `SUMMARY_MAX_RECORDS`: Membership records `GET /query/memberships/summary` reads before it returns whole organization runs with `complete: false` and a `page_token` (1–50000, default: "5000"). The cap is checked after a whole page and yields to the denied-page walk while the caller has seen nothing. The read normally uses at most the larger of the cap rounded up to whole pages and one full page more than `SEARCH_DENIED_PAGE_WALK`; if no organization boundary exists yet, it continues to finish the first run. This extension is bounded by 50000 raw hits (the existing configurable cap ceiling, not a new setting): if neither a resumable boundary nor end-of-results is established within that ceiling, the read fails with `503` and no summaries when the caller has already read visible rows, never a partial run; when the caller has seen none, it returns `200` with empty summaries, `complete: false` and no `page_token`, the same shape as any truncated read, because access is per record and visible records may lie past the ceiling. The flag can tell a scope larger than the ceiling from an empty one, never which records or how many. A `page_token` is accepted only from the same version of the summary read; a token from any other version, older or newer, is rejected with `400` and the read must restart without it (see the [summary contract](docs/query-service-contract.md#get-querymembershipssummary)).
@@ -480,14 +518,14 @@ To add a new access control implementation:
 
 ### Prerequisites
 
-This project uses the [GOA Framework](https://goa.design/) for API generation. You'll need to install GOA before building the project.
+This project uses the [GOA Framework](https://goa.design/) for API generation. Run `make deps` to install the version specified in `go.mod`.
 
 #### Installing GOA Framework
 
-Follow the [GOA installation guide](https://goa.design/docs/1-goa/quickstart/) to install GOA:
+Install the project's GOA version:
 
 ```bash
-go install goa.design/goa/v3/cmd/goa@latest
+make deps
 ```
 
 Verify the installation:
@@ -503,7 +541,7 @@ goa version
 The project uses GOA to generate API code from the design specification. Run the following command to generate all necessary code:
 
 ```bash
-goa gen github.com/linuxfoundation/lfx-v2-query-service/design
+make apigen
 ```
 
 This command generates:

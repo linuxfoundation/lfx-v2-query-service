@@ -30,8 +30,9 @@ RUN go build -o /go/bin/lfx-query-svc -trimpath -ldflags="-w -s" github.com/linu
 # Run our go binary standalone
 FROM cgr.dev/chainguard/static:latest
 
-# Implicit with base image; setting explicitly for linters.
-USER nonroot
+# Implicit with base image; setting explicitly for linters. 65532 is the
+# numeric UID of the Chainguard nonroot user.
+USER 65532
 
 COPY --from=builder /go/bin/lfx-query-svc /cmd/lfx-query-svc
 

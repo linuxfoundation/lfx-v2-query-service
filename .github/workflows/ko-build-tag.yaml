@@ -134,7 +134,9 @@ jobs:
       actions: read
       id-token: write
       packages: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
+    # The generator requires a tag reference for SLSA builder ref resolution.
+    # yamllint disable-line rule:line-length
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0  # zizmor: ignore[unpinned-uses]
     with:
       image: ${{ needs.release-helm-chart.outputs.image_name }}
       digest: ${{ needs.release-helm-chart.outputs.digest }}
@@ -172,9 +174,8 @@ jobs:
         with:
           client-id: ${{ env.TRIGGER_CLIENT_ID }}
           private-key: ${{ env.TRIGGER_PRIVATE_KEY }}
-          # Rationale: repositories: below already scopes
-          # this token to one repo. Fixed upstream in zizmor v1.25.1/v1.29.0
-          # (zizmorcore/zizmor#2011, #2227); MegaLinter v9.6.0 bundles the buggy v1.25.0.
+          # zizmor flags owner plus repositories as all-repository access;
+          # repositories scopes the token, so this is a false positive.
           owner: linuxfoundation  # zizmor: ignore[github-app]
           repositories: lfx-v2-argocd
           permission-actions: write
