@@ -112,10 +112,6 @@ func (c *Client) makeRequest(ctx context.Context, url string, model any) error {
 // IsReady checks if the Clearbit API is reachable
 func (c *Client) IsReady(ctx context.Context) error {
 
-	// curl -v --location 'https://company.clearbit.com' \
-	//< HTTP/2 200
-	//Welcome to the Company API.
-
 	resp, err := c.httpClient.Request(ctx, http.MethodGet, c.config.BaseURL, nil, nil)
 	if err != nil {
 		return errors.NewUnexpected("failed to check if Clearbit API is reachable", err)

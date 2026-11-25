@@ -16,22 +16,14 @@ DISABLE_LINTERS:
   - SPELL_LYCHEE
   # yamllint is sufficient for us.
   - YAML_PRETTIER
-  # MegaLinter's default golangci-lint config enables gocritic, which reports
-  # findings in existing code. Re-enable once those are fixed or the repo adds
-  # its own .golangci.yml.
-  - GO_GOLANGCI_LINT
 DISABLE_ERRORS_LINTERS:
   # Reports spelling findings without blocking the build.
   - SPELL_CSPELL
   # This may be informative but doesn't need to break the build.
   - COPYPASTE_JSCPD
-  # TBD! Need to work through these.
-  - REPOSITORY_TRIVY
-  - REPOSITORY_CHECKOV
-  - REPOSITORY_DEVSKIM
-  # Pre-existing dependency vulnerabilities; tracked separately.
-  - REPOSITORY_GRYPE
 YAML_YAMLLINT_CONFIG_FILE: .yamllint
+REPOSITORY_TRIVY_UNSECURED_ENV_VARIABLES:
+  - GITHUB_TOKEN
 # zizmor's online audits (impostor-commit, ref-version-mismatch,
 # known-vulnerable-actions) call the GitHub API to resolve SHA-pinned actions
 # and their tag comments, which requires GITHUB_TOKEN.

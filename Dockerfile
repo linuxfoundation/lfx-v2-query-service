@@ -1,10 +1,9 @@
 # Copyright The Linux Foundation and each contributor to LFX.
 # SPDX-License-Identifier: MIT
 
-# checkov:skip=CKV_DOCKER_7:No free access to Chainguard versioned labels.
 # hadolint global ignore=DL3007
 
-FROM --platform=$BUILDPLATFORM cgr.dev/chainguard/go:latest AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS builder
 
 # Expose port 8080 for the query service API.
 EXPOSE 8080

@@ -113,11 +113,12 @@ func (m *MockOrganizationSearcher) QueryOrganizations(ctx context.Context, crite
 	}
 
 	// Not found - return appropriate error
-	if criteria.Name != nil && criteria.Domain != nil {
+	switch {
+	case criteria.Name != nil && criteria.Domain != nil:
 		return nil, errors.NewNotFound(fmt.Sprintf("organization not found with name '%s' or domain '%s'", *criteria.Name, *criteria.Domain))
-	} else if criteria.Name != nil {
+	case criteria.Name != nil:
 		return nil, errors.NewNotFound(fmt.Sprintf("organization not found with name '%s'", *criteria.Name))
-	} else if criteria.Domain != nil {
+	case criteria.Domain != nil:
 		return nil, errors.NewNotFound(fmt.Sprintf("organization not found with domain '%s'", *criteria.Domain))
 	}
 

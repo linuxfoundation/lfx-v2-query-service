@@ -147,16 +147,17 @@ func TestUnsatisfiableFiltersRoutes(t *testing.T) {
 							assert.Zero(t, searcher.AccessBucketCalls())
 						}
 					}
-					if tc.probeError != nil || tc.dimensionError != nil {
+					switch {
+					case tc.probeError != nil || tc.dimensionError != nil:
 						require.NoError(t, err, "a failed probe keeps today's empty result")
 						assert.Contains(t, logs.String(), `"level":"ERROR"`)
 						assert.Contains(t, logs.String(), "indexed filter support probe failed")
 						assert.Contains(t, logs.String(), `"object_type":"committee"`)
-					} else if tc.message != "" {
+					case tc.message != "":
 						var validation errors.Validation
 						require.ErrorAs(t, err, &validation)
 						assert.EqualError(t, err, tc.message)
-					} else {
+					default:
 						require.NoError(t, err)
 					}
 					calls := searcher.CarrierProbeCalls()

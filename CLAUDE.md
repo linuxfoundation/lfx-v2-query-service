@@ -68,18 +68,11 @@ make docker-run
 
 ### Go version
 
-This repo targets Go 1.27.x (currently 1.27.4, the latest patch). This
-supersedes the Go version policy in the `lfx-megalinter` skill, which targets
-the latest stable minor minus one: don't move `go.mod` back to Go 1.26. Take
-every 1.27.x patch release, and update `go.mod`, `GO_VERSION` in the
-`Makefile` and this file together.
-
-MegaLinter (v10.2.0) runs Go 1.26.10 in its image, so
-`.github/workflows/mega-linter.yml` sets `GOTOOLCHAIN: auto` to let its Go
-linters download the `go.mod` toolchain. osv-scanner's govulncheck call
-analysis is built with Go 1.26 and cannot load this module, so osv-scanner
-falls back to matching vulnerabilities by version: any known vulnerability in
-a dependency version fails the check, reachable or not.
+**Go toolchain version**: Follow the `lfx-megalinter` skill's Go version policy.
+It sets `go.mod` to the latest patch of the previous stable Go minor and caps it
+at the minor bundled by the pinned MegaLinter release. This importable module
+declares the lowest Go version allowed by its dependencies in `go` and pins the
+patch in `toolchain`.
 
 ## Architecture Overview
 
