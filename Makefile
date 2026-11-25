@@ -57,7 +57,12 @@ apigen: deps #@ Generate API code using Goa
 .PHONY: megalinter
 megalinter: ## Run MegaLinter locally via Docker.
 	docker pull $(MEGALINTER_IMAGE)
-	docker run --rm --platform linux/amd64 -e GOTOOLCHAIN=auto -v '$(CURDIR):/tmp/lint:rw' $(MEGALINTER_IMAGE)
+	@git_common_dir=$$(git rev-parse --path-format=absolute --git-common-dir) || exit 1; \
+	case "$$git_common_dir/" in \
+		'$(CURDIR)/'*) set -- ;; \
+		*) set -- --mount "type=bind,src=$$git_common_dir,dst=$$git_common_dir" ;; \
+	esac; \
+	docker run --rm --platform linux/amd64 -e GOTOOLCHAIN=auto -v '$(CURDIR):/tmp/lint:rw' "$$@" $(MEGALINTER_IMAGE)
 
 .PHONY: lint
 lint: ## Run golangci-lint (local Go linting)

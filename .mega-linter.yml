@@ -34,6 +34,7 @@ REPOSITORY_CHECKOV_ARGUMENTS: >-
   --baseline .checkov.baseline --skip-check CKV_OPENAPI_4,CKV_OPENAPI_7,CKV_OPENAPI_16,CKV_OPENAPI_20,CKV_OPENAPI_21
 REPOSITORY_TRIVY_ARGUMENTS: --ignorefile .trivyignore.yaml
 SPELL_CSPELL_ANALYZE_FILE_NAMES: false
+# Setup failures block the job to prevent silently skipping the shared flag words.
 SPELL_CSPELL_PRE_COMMANDS:
   - command: >-
       cp .cspell.json /tmp/cspell.json.orig &&
