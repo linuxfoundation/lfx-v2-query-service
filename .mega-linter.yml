@@ -29,8 +29,10 @@ REPOSITORY_TRIVY_UNSECURED_ENV_VARIABLES:
 # and their tag comments, which requires GITHUB_TOKEN.
 ACTION_ZIZMOR_UNSECURED_ENV_VARIABLES:
   - GITHUB_TOKEN
+# Kubernetes probes monitor the service; remove the baseline when the local image has a health check.
 REPOSITORY_CHECKOV_ARGUMENTS: >-
-  --skip-check CKV_OPENAPI_4,CKV_OPENAPI_7,CKV_OPENAPI_16,CKV_OPENAPI_20,CKV_OPENAPI_21
+  --baseline .checkov.baseline --skip-check CKV_OPENAPI_4,CKV_OPENAPI_7,CKV_OPENAPI_16,CKV_OPENAPI_20,CKV_OPENAPI_21
+REPOSITORY_TRIVY_ARGUMENTS: --ignorefile .trivyignore.yaml
 SPELL_CSPELL_ANALYZE_FILE_NAMES: false
 SPELL_CSPELL_PRE_COMMANDS:
   - command: >-

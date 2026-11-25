@@ -1,0 +1,13 @@
+{
+  "failed_checks": [
+    {
+      "file": "/Dockerfile",
+      "findings": [
+        {
+          "resource": "/Dockerfile.",
+          "check_ids": ["CKV_DOCKER_2"]
+        }
+      ]
+    }
+  ]
+}
